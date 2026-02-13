@@ -1,0 +1,79 @@
+import { connect, NatsConnection, Subscription, StringCodec } from "nats";
+
+const sc = StringCodec();
+
+export class NatsBridge {
+  private conn: NatsConnection | null = null;
+  private subscriptions: Subscription[] = [];
+
+  constructor(
+    private url: string,
+    private groupId: string
+  ) {}
+
+  async connect(): Promise<void> {
+    this.conn = await connect({ servers: this.url });
+    console.log(`[nats] connected to ${this.url}`);
+  }
+
+  async publish(topic: string, data: Record<string, unknown>): Promise<void> {
+    if (!this.conn) throw new Error("Not connected to NATS");
+    this.conn.publish(topic, sc.encode(JSON.stringify(data)));
+  }
+
+  async publishOutput(content: string, type: string = "text"): Promise<void> {
+    await this.publish(`agent.${this.groupId}.output`, { type, content });
+  }
+
+  async publishResult(content: string): Promise<void> {
+    await this.publish(`agent.${this.groupId}.output`, {
+      type: "result",
+      content,
+    });
+  }
+
+  async publishIPC(command: string, payload: unknown): Promise<void> {
+    await this.publish(`host.ipc.${this.groupId}`, {
+      type: command,
+      payload,
+    });
+  }
+
+  subscribe(
+    topic: string,
+    handler: (data: Record<string, unknown>) => void
+  ): void {
+    if (!this.conn) throw new Error("Not connected to NATS");
+
+    const sub = this.conn.subscribe(topic);
+    this.subscriptions.push(sub);
+
+    (async () => {
+      for await (const msg of sub) {
+        try {
+          const data = JSON.parse(sc.decode(msg.data));
+          handler(data);
+        } catch (err) {
+          console.error(`[nats] failed to parse message on ${topic}:`, err);
+        }
+      }
+    })();
+  }
+
+  subscribeInput(handler: (data: Record<string, unknown>) => void): void {
+    this.subscribe(`agent.${this.groupId}.input`, handler);
+  }
+
+  subscribeControl(handler: (data: Record<string, unknown>) => void): void {
+    this.subscribe(`agent.${this.groupId}.control`, handler);
+  }
+
+  async close(): Promise<void> {
+    for (const sub of this.subscriptions) {
+      sub.unsubscribe();
+    }
+    if (this.conn) {
+      await this.conn.drain();
+    }
+  }
+}

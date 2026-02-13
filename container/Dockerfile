@@ -1,0 +1,23 @@
+FROM node:22-slim
+
+# System deps for Chromium
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium fonts-liberation fonts-noto-color-emoji \
+    git curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code globally
+RUN npm install -g @anthropic-ai/claude-code
+
+# Install agent runner deps
+WORKDIR /app
+COPY agent-runner/package.json agent-runner/package-lock.json* ./
+RUN npm ci --production 2>/dev/null || npm install --production
+COPY agent-runner/ .
+RUN npx tsc
+
+# Runtime config
+ENV CHROMIUM_PATH=/usr/bin/chromium
+USER node
+WORKDIR /workspace/group
+ENTRYPOINT ["node", "/app/dist/index.js"]

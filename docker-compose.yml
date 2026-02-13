@@ -1,0 +1,26 @@
+services:
+  praktor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+      - "4222:4222"
+    volumes:
+      - ./config/praktor.yaml:/etc/praktor/praktor.yaml:ro
+      - ./groups:/data/groups
+      - ./data:/data/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - PRAKTOR_CONFIG=/etc/praktor/praktor.yaml
+      - PRAKTOR_TELEGRAM_TOKEN=${PRAKTOR_TELEGRAM_TOKEN}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN}
+      - PRAKTOR_WEB_PASSWORD=${PRAKTOR_WEB_PASSWORD}
+    networks:
+      - praktor-net
+    restart: unless-stopped
+
+networks:
+  praktor-net:
+    driver: bridge

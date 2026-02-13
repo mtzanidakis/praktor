@@ -1,0 +1,28 @@
+telegram:
+  token: "${PRAKTOR_TELEGRAM_TOKEN}"
+  allow_from: []                    # Empty = allow all; list of Telegram user IDs
+
+agent:
+  image: "praktor-agent:latest"
+  max_containers: 5
+  idle_timeout: 30m
+  anthropic_api_key: "${ANTHROPIC_API_KEY}"
+  oauth_token: "${CLAUDE_CODE_OAUTH_TOKEN}"
+
+nats:
+  port: 4222
+
+store:
+  path: "data/praktor.db"
+
+web:
+  enabled: true
+  port: 8080
+  auth: "${PRAKTOR_WEB_PASSWORD}"    # Basic auth for dashboard
+
+scheduler:
+  poll_interval: 30s
+
+groups:
+  base_path: "groups"
+  main_chat_id: ""                   # Your Telegram self-chat ID
