@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mtzanidakis/praktor/internal/schedule"
 	"github.com/mtzanidakis/praktor/internal/store"
 	"github.com/mtzanidakis/praktor/internal/swarm"
 )
@@ -161,49 +162,143 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	jsonResponse(w, tasks)
+	groupNames := s.groupNameMap()
+	out := make([]map[string]any, 0, len(tasks))
+	for _, t := range tasks {
+		out = append(out, taskToAPI(t, groupNames))
+	}
+	jsonResponse(w, out)
 }
 
 func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
-	var t store.ScheduledTask
-	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
-		jsonError(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-	if t.GroupID == "" || t.Name == "" || t.Schedule == "" || t.Prompt == "" {
-		jsonError(w, "group_id, name, schedule, and prompt are required", http.StatusBadRequest)
-		return
-	}
-	t.ID = uuid.New().String()
-	if t.Status == "" {
-		t.Status = "active"
-	}
-	if t.ContextMode == "" {
-		t.ContextMode = "isolated"
-	}
-	if err := s.store.SaveTask(&t); err != nil {
-		jsonError(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	jsonResponse(w, t)
-}
-
-func (s *Server) updateTask(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
 	var body struct {
-		Status string `json:"status"`
+		GroupID     string `json:"group_id"`
+		Name        string `json:"name"`
+		Schedule    string `json:"schedule"`
+		Prompt      string `json:"prompt"`
+		ContextMode string `json:"context_mode"`
+		Enabled     *bool  `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	if body.Status != "" {
-		if err := s.store.UpdateTaskStatus(id, body.Status); err != nil {
-			jsonError(w, err.Error(), http.StatusInternalServerError)
+	if body.GroupID == "" || body.Name == "" || body.Schedule == "" || body.Prompt == "" {
+		jsonError(w, "group_id, name, schedule, and prompt are required", http.StatusBadRequest)
+		return
+	}
+
+	// Normalize schedule (handles plain cron strings)
+	normalized, err := schedule.NormalizeSchedule(body.Schedule)
+	if err != nil {
+		jsonError(w, fmt.Sprintf("invalid schedule: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	status := "active"
+	if body.Enabled != nil && !*body.Enabled {
+		status = "paused"
+	}
+
+	t := store.ScheduledTask{
+		ID:          uuid.New().String(),
+		GroupID:     body.GroupID,
+		Name:        body.Name,
+		Schedule:    normalized,
+		Prompt:      body.Prompt,
+		ContextMode: body.ContextMode,
+		Status:      status,
+	}
+	if t.ContextMode == "" {
+		t.ContextMode = "isolated"
+	}
+
+	// Calculate initial next_run_at
+	if status == "active" {
+		t.NextRunAt = schedule.CalculateNextRun(normalized)
+	}
+
+	if err := s.store.SaveTask(&t); err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonResponse(w, taskToAPI(t, s.groupNameMap()))
+}
+
+func (s *Server) updateTask(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	existing, err := s.store.GetTask(id)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if existing == nil {
+		jsonError(w, "task not found", http.StatusNotFound)
+		return
+	}
+
+	var body struct {
+		Name        *string `json:"name"`
+		Schedule    *string `json:"schedule"`
+		Prompt      *string `json:"prompt"`
+		GroupID     *string `json:"group_id"`
+		ContextMode *string `json:"context_mode"`
+		Enabled     *bool   `json:"enabled"`
+		Status      *string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Apply updates
+	if body.Name != nil {
+		existing.Name = *body.Name
+	}
+	if body.Prompt != nil {
+		existing.Prompt = *body.Prompt
+	}
+	if body.GroupID != nil {
+		existing.GroupID = *body.GroupID
+	}
+	if body.ContextMode != nil {
+		existing.ContextMode = *body.ContextMode
+	}
+
+	// Handle enabled bool → status mapping
+	if body.Enabled != nil {
+		if *body.Enabled {
+			existing.Status = "active"
+		} else {
+			existing.Status = "paused"
+		}
+	} else if body.Status != nil {
+		existing.Status = *body.Status
+	}
+
+	// Handle schedule change
+	if body.Schedule != nil {
+		normalized, err := schedule.NormalizeSchedule(*body.Schedule)
+		if err != nil {
+			jsonError(w, fmt.Sprintf("invalid schedule: %v", err), http.StatusBadRequest)
 			return
 		}
+		existing.Schedule = normalized
 	}
-	jsonResponse(w, map[string]string{"status": "updated"})
+
+	// Recalculate next_run_at
+	if existing.Status == "active" {
+		existing.NextRunAt = schedule.CalculateNextRun(existing.Schedule)
+	} else {
+		existing.NextRunAt = nil
+	}
+
+	if err := s.store.SaveTask(existing); err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonResponse(w, taskToAPI(*existing, s.groupNameMap()))
 }
 
 func (s *Server) deleteTask(w http.ResponseWriter, r *http.Request) {
@@ -307,6 +402,37 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, status)
+}
+
+func (s *Server) groupNameMap() map[string]string {
+	groups, _ := s.store.ListGroups()
+	m := make(map[string]string, len(groups))
+	for _, g := range groups {
+		m[g.ID] = g.Name
+	}
+	return m
+}
+
+func taskToAPI(t store.ScheduledTask, groupNames map[string]string) map[string]any {
+	m := map[string]any{
+		"id":               t.ID,
+		"name":             t.Name,
+		"schedule":         t.Schedule,
+		"schedule_display": schedule.FormatSchedule(t.Schedule),
+		"group_id":         t.GroupID,
+		"prompt":           t.Prompt,
+		"enabled":          t.Status == "active",
+	}
+	if name, ok := groupNames[t.GroupID]; ok {
+		m["group_name"] = name
+	}
+	if t.LastRunAt != nil {
+		m["last_run"] = formatMessageTime(*t.LastRunAt)
+	}
+	if t.NextRunAt != nil {
+		m["next_run"] = formatMessageTime(*t.NextRunAt)
+	}
+	return m
 }
 
 func mapSenderToRole(sender string) string {
