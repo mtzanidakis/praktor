@@ -21,6 +21,9 @@ COPY agent-runner/src/ src/
 COPY agent-runner/tsconfig.json .
 RUN npx tsc && npm prune --production
 
+# Add task CLI to PATH
+RUN printf '#!/bin/sh\nexec node /app/dist/task-cli.js "$@"\n' > /usr/local/bin/ptask && chmod +x /usr/local/bin/ptask
+
 # Ensure .claude dir exists with correct ownership
 RUN mkdir -p /home/node/.claude && chown -R node:node /home/node/.claude
 

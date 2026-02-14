@@ -94,6 +94,27 @@ func (s *Store) ListTasks() ([]ScheduledTask, error) {
 	return tasks, rows.Err()
 }
 
+func (s *Store) ListTasksForGroup(groupID string) ([]ScheduledTask, error) {
+	rows, err := s.db.Query(`
+		SELECT id, group_id, name, schedule, prompt, context_mode, status,
+		       next_run_at, last_run_at, last_status, last_error, created_at
+		FROM scheduled_tasks WHERE group_id = ? ORDER BY created_at`, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("list tasks for group: %w", err)
+	}
+	defer rows.Close()
+
+	var tasks []ScheduledTask
+	for rows.Next() {
+		t, err := scanTask(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan task: %w", err)
+		}
+		tasks = append(tasks, *t)
+	}
+	return tasks, rows.Err()
+}
+
 func (s *Store) GetDueTasks(now time.Time) ([]ScheduledTask, error) {
 	rows, err := s.db.Query(`
 		SELECT id, group_id, name, schedule, prompt, context_mode, status,

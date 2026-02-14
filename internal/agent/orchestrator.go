@@ -8,10 +8,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/mtzanidakis/praktor/internal/config"
 	"github.com/mtzanidakis/praktor/internal/container"
 	"github.com/mtzanidakis/praktor/internal/groups"
 	"github.com/mtzanidakis/praktor/internal/natsbus"
+	"github.com/mtzanidakis/praktor/internal/schedule"
 	"github.com/mtzanidakis/praktor/internal/store"
 	"github.com/nats-io/nats.go"
 )
@@ -251,11 +253,124 @@ func (o *Orchestrator) handleIPC(msg *nats.Msg) {
 	var cmd IPCCommand
 	if err := json.Unmarshal(msg.Data, &cmd); err != nil {
 		slog.Warn("invalid IPC command", "error", err)
+		o.respondIPC(msg, map[string]any{"error": "invalid command"})
 		return
 	}
 
-	slog.Info("IPC command received", "type", cmd.Type)
-	// IPC commands handled in later phases
+	// Extract groupID from subject: host.ipc.{groupID}
+	groupID := msg.Subject
+	if idx := len("host.ipc."); idx < len(groupID) {
+		groupID = groupID[idx:]
+	}
+
+	slog.Info("IPC command received", "type", cmd.Type, "group", groupID)
+
+	switch cmd.Type {
+	case "create_task":
+		o.ipcCreateTask(msg, groupID, cmd.Payload)
+	case "list_tasks":
+		o.ipcListTasks(msg, groupID)
+	case "delete_task":
+		o.ipcDeleteTask(msg, cmd.Payload)
+	default:
+		slog.Warn("unknown IPC command", "type", cmd.Type)
+		o.respondIPC(msg, map[string]any{"error": "unknown command: " + cmd.Type})
+	}
+}
+
+func (o *Orchestrator) respondIPC(msg *nats.Msg, data any) {
+	resp, err := json.Marshal(data)
+	if err != nil {
+		slog.Error("failed to marshal IPC response", "error", err)
+		return
+	}
+	if err := msg.Respond(resp); err != nil {
+		slog.Error("failed to respond to IPC", "error", err)
+	}
+}
+
+func (o *Orchestrator) ipcCreateTask(msg *nats.Msg, groupID string, payload json.RawMessage) {
+	var req struct {
+		Name     string `json:"name"`
+		Schedule string `json:"schedule"`
+		Prompt   string `json:"prompt"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil {
+		o.respondIPC(msg, map[string]any{"error": "invalid payload"})
+		return
+	}
+	if req.Name == "" || req.Schedule == "" || req.Prompt == "" {
+		o.respondIPC(msg, map[string]any{"error": "name, schedule, and prompt are required"})
+		return
+	}
+
+	normalized, err := schedule.NormalizeSchedule(req.Schedule)
+	if err != nil {
+		o.respondIPC(msg, map[string]any{"error": fmt.Sprintf("invalid schedule: %v", err)})
+		return
+	}
+
+	t := &store.ScheduledTask{
+		ID:          uuid.New().String(),
+		GroupID:     groupID,
+		Name:        req.Name,
+		Schedule:    normalized,
+		Prompt:      req.Prompt,
+		ContextMode: "isolated",
+		Status:      "active",
+		NextRunAt:   schedule.CalculateNextRun(normalized),
+	}
+
+	if err := o.store.SaveTask(t); err != nil {
+		o.respondIPC(msg, map[string]any{"error": fmt.Sprintf("save failed: %v", err)})
+		return
+	}
+
+	slog.Info("task created via IPC", "id", t.ID, "name", t.Name, "group", groupID)
+	o.respondIPC(msg, map[string]any{"ok": true, "id": t.ID})
+}
+
+func (o *Orchestrator) ipcListTasks(msg *nats.Msg, groupID string) {
+	tasks, err := o.store.ListTasksForGroup(groupID)
+	if err != nil {
+		o.respondIPC(msg, map[string]any{"error": fmt.Sprintf("list failed: %v", err)})
+		return
+	}
+
+	type taskEntry struct {
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		Schedule string `json:"schedule"`
+		Prompt   string `json:"prompt"`
+		Status   string `json:"status"`
+	}
+	out := make([]taskEntry, 0, len(tasks))
+	for _, t := range tasks {
+		out = append(out, taskEntry{
+			ID:       t.ID,
+			Name:     t.Name,
+			Schedule: t.Schedule,
+			Prompt:   t.Prompt,
+			Status:   t.Status,
+		})
+	}
+	o.respondIPC(msg, map[string]any{"ok": true, "tasks": out})
+}
+
+func (o *Orchestrator) ipcDeleteTask(msg *nats.Msg, payload json.RawMessage) {
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil || req.ID == "" {
+		o.respondIPC(msg, map[string]any{"error": "id is required"})
+		return
+	}
+	if err := o.store.DeleteTask(req.ID); err != nil {
+		o.respondIPC(msg, map[string]any{"error": fmt.Sprintf("delete failed: %v", err)})
+		return
+	}
+	slog.Info("task deleted via IPC", "id", req.ID)
+	o.respondIPC(msg, map[string]any{"ok": true})
 }
 
 func (o *Orchestrator) publishMessageEvent(msg *store.Message) {
