@@ -55,12 +55,7 @@ Praktor supports two authentication methods. Pick one:
 **Option B: Claude Code OAuth Token (use your Claude Pro/Team/Max subscription)**
 
 1. Install Claude Code: `npm install -g @anthropic-ai/claude-code`
-2. Run `claude` and complete the OAuth login flow in your browser
-3. After login, extract the token:
-   ```sh
-   jq -rcM .claudeAiOauth.accessToken ~/.claude/.credentials.json
-   ```
-4. Save the `accessToken` value
+2. Run `claude setup-token` and copy the token it gives you
 
 ### 3. Configure Praktor
 
