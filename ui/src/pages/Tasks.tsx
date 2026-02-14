@@ -4,7 +4,9 @@ interface Task {
   id: string;
   name: string;
   schedule: string;
+  schedule_display?: string;
   group_id?: string;
+  group_name?: string;
   prompt?: string;
   enabled: boolean;
   last_run?: string;
@@ -17,6 +19,11 @@ interface TaskForm {
   group_id: string;
   prompt: string;
   enabled: boolean;
+}
+
+interface Group {
+  id: string;
+  name: string;
 }
 
 const emptyForm: TaskForm = { name: '', schedule: '', group_id: '', prompt: '', enabled: true };
@@ -60,8 +67,28 @@ const btnDanger: React.CSSProperties = {
   cursor: 'pointer',
 };
 
+const badge = (color: string): React.CSSProperties => ({
+  display: 'inline-block',
+  padding: '2px 10px',
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 600,
+  background: `${color}22`,
+  color,
+});
+
+/** Extract the cron expression from schedule JSON for editing. */
+function parseCronFromSchedule(scheduleJSON: string): string {
+  try {
+    const s = JSON.parse(scheduleJSON);
+    if (s.kind === 'cron' && s.cron_expr) return s.cron_expr;
+  } catch { /* not JSON */ }
+  return scheduleJSON;
+}
+
 function Tasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [form, setForm] = useState<TaskForm>(emptyForm);
   const [editing, setEditing] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -77,9 +104,17 @@ function Tasks() {
       .catch((err) => setError(err.message));
   }, []);
 
+  const fetchGroups = useCallback(() => {
+    fetch('/api/groups')
+      .then((res) => res.json())
+      .then((data) => setGroups(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     fetchTasks();
-  }, [fetchTasks]);
+    fetchGroups();
+  }, [fetchTasks, fetchGroups]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,7 +127,10 @@ function Tasks() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error || `HTTP ${res.status}`);
+      }
       setForm(emptyForm);
       setEditing(null);
       setShowForm(false);
@@ -116,7 +154,7 @@ function Tasks() {
   const handleEdit = (task: Task) => {
     setForm({
       name: task.name,
-      schedule: task.schedule,
+      schedule: parseCronFromSchedule(task.schedule),
       group_id: task.group_id ?? '',
       prompt: task.prompt ?? '',
       enabled: task.enabled,
@@ -130,7 +168,7 @@ function Tasks() {
       const res = await fetch(`/api/tasks/${task.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...task, enabled: !task.enabled }),
+        body: JSON.stringify({ enabled: !task.enabled }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       fetchTasks();
@@ -184,13 +222,17 @@ function Tasks() {
               />
             </div>
             <div>
-              <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>Group ID</label>
-              <input
+              <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>Group</label>
+              <select
                 style={inputStyle}
                 value={form.group_id}
                 onChange={(e) => setForm({ ...form, group_id: e.target.value })}
-                placeholder="main"
-              />
+              >
+                <option value="">Select a group...</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#aaa', cursor: 'pointer' }}>
@@ -221,40 +263,46 @@ function Tasks() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {tasks.map((task) => (
           <div key={task.id} style={card}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {/* Row 1: Name + status badge */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                   <span style={{ fontSize: 16, fontWeight: 600 }}>{task.name}</span>
                   <span
-                    style={{
-                      fontSize: 11,
-                      padding: '2px 8px',
-                      borderRadius: 999,
-                      background: task.enabled ? '#22c55e22' : '#66666622',
-                      color: task.enabled ? '#22c55e' : '#666',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
+                    style={{ ...badge(task.enabled ? '#22c55e' : '#888'), cursor: 'pointer' }}
                     onClick={() => handleToggle(task)}
                   >
                     {task.enabled ? 'active' : 'paused'}
                   </span>
                 </div>
-                <div style={{ fontSize: 13, color: '#666' }}>
-                  <span style={{ fontFamily: 'monospace', color: '#888' }}>{task.schedule}</span>
-                  {task.group_id && <span style={{ marginLeft: 12 }}>Group: {task.group_id}</span>}
+
+                {/* Row 2: Schedule + group */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 8, fontSize: 13, color: '#888' }}>
+                  <span>
+                    {task.schedule_display || task.schedule}
+                  </span>
+                  {task.group_id && (
+                    <span style={badge('#6366f1')}>
+                      {task.group_name || task.group_id}
+                    </span>
+                  )}
                 </div>
+
+                {/* Row 3: Prompt preview */}
                 {task.prompt && (
-                  <div style={{ fontSize: 13, color: '#555', marginTop: 6, maxWidth: 500 }}>
-                    {task.prompt.length > 100 ? task.prompt.slice(0, 100) + '...' : task.prompt}
+                  <div style={{ fontSize: 13, color: '#555', marginBottom: 8, maxWidth: 600 }}>
+                    {task.prompt.length > 120 ? task.prompt.slice(0, 120) + '...' : task.prompt}
                   </div>
                 )}
-                <div style={{ fontSize: 12, color: '#444', marginTop: 6, display: 'flex', gap: 16 }}>
-                  {task.last_run && <span>Last: {task.last_run}</span>}
-                  {task.next_run && <span>Next: {task.next_run}</span>}
+
+                {/* Row 4: Timestamps */}
+                <div style={{ fontSize: 12, color: '#444', display: 'flex', gap: 16 }}>
+                  {task.last_run && <span>Last run: {task.last_run}</span>}
+                  {task.next_run && <span>Next run: {task.next_run}</span>}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
+
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: 16 }}>
                 <button
                   style={{ ...btnDanger, color: '#888', borderColor: '#333' }}
                   onClick={() => handleEdit(task)}
