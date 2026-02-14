@@ -7,6 +7,7 @@ import (
 
 	"github.com/mtzanidakis/praktor/internal/agent"
 	"github.com/mtzanidakis/praktor/internal/config"
+	"github.com/mtzanidakis/praktor/internal/schedule"
 	"github.com/mtzanidakis/praktor/internal/store"
 )
 
@@ -77,7 +78,7 @@ func (s *Scheduler) execute(ctx context.Context, task store.ScheduledTask) {
 	}
 
 	// Calculate next run time
-	nextRun := CalculateNextRun(task.Schedule)
+	nextRun := schedule.CalculateNextRun(task.Schedule)
 
 	if err := s.store.UpdateTaskRun(task.ID, lastStatus, lastError, nextRun); err != nil {
 		slog.Error("failed to update task run", "id", task.ID, "error", err)
