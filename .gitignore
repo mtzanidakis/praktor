@@ -1,5 +1,5 @@
 bin/
-data/praktor.db
+data/praktor.db*
 data/nats/
 data/sessions/
 ui/node_modules/
