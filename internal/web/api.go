@@ -44,7 +44,45 @@ func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	jsonResponse(w, groups)
+
+	// Enrich with agent status, message count, and last active
+	running, _ := s.orch.ListRunning(r.Context())
+	runningSet := make(map[string]bool, len(running))
+	for _, c := range running {
+		runningSet[c.GroupID] = true
+	}
+
+	msgStats, _ := s.store.GetGroupMessageStats()
+
+	out := make([]map[string]any, 0, len(groups))
+	for _, g := range groups {
+		groupType := "standard"
+		if g.IsMain {
+			groupType = "main"
+		}
+
+		agentStatus := "stopped"
+		if runningSet[g.ID] {
+			agentStatus = "running"
+		}
+
+		entry := map[string]any{
+			"id":           g.ID,
+			"name":         g.Name,
+			"type":         groupType,
+			"agent_status": agentStatus,
+		}
+
+		if stats, ok := msgStats[g.ID]; ok {
+			entry["message_count"] = stats.MessageCount
+			entry["last_active"] = formatMessageTime(stats.LastActive)
+		} else {
+			entry["message_count"] = 0
+		}
+
+		out = append(out, entry)
+	}
+	jsonResponse(w, out)
 }
 
 func (s *Server) createGroup(w http.ResponseWriter, r *http.Request) {

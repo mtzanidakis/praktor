@@ -91,3 +91,34 @@ func (s *Store) GetRecentMessages(limit int) ([]Message, error) {
 	}
 	return messages, rows.Err()
 }
+
+type GroupMessageStats struct {
+	GroupID      string
+	MessageCount int
+	LastActive   time.Time
+}
+
+func (s *Store) GetGroupMessageStats() (map[string]GroupMessageStats, error) {
+	rows, err := s.db.Query(`
+		SELECT group_id, COUNT(*) as cnt, COALESCE(MAX(created_at), '') as last_active
+		FROM messages
+		GROUP BY group_id`)
+	if err != nil {
+		return nil, fmt.Errorf("get group message stats: %w", err)
+	}
+	defer rows.Close()
+
+	stats := make(map[string]GroupMessageStats)
+	for rows.Next() {
+		var gs GroupMessageStats
+		var lastActive string
+		if err := rows.Scan(&gs.GroupID, &gs.MessageCount, &lastActive); err != nil {
+			return nil, fmt.Errorf("scan group stats: %w", err)
+		}
+		if lastActive != "" {
+			gs.LastActive, _ = time.Parse("2006-01-02 15:04:05", lastActive)
+		}
+		stats[gs.GroupID] = gs
+	}
+	return stats, rows.Err()
+}
