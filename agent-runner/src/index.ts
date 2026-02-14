@@ -1,6 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { NatsBridge } from "./nats-bridge.js";
-import { readFileSync } from "fs";
+import { readFileSync, mkdirSync, writeFileSync } from "fs";
 
 const NATS_URL = process.env.NATS_URL || "nats://localhost:4222";
 const GROUP_ID = process.env.GROUP_ID || "default";
@@ -11,23 +11,50 @@ const CLAUDE_MODEL = process.env.CLAUDE_MODEL || undefined;
 let bridge: NatsBridge;
 let isProcessing = false;
 
-async function loadSystemPrompt(): Promise<string> {
+function installGlobalInstructions(cwd: string): void {
+  // Write global instructions to multiple locations so Claude Code discovers
+  // them through its native CLAUDE.md loading:
+  //   1. ~/.claude/CLAUDE.md (user-level — always loaded)
+  //   2. {cwd}/CLAUDE.md (project-level — merged with existing group CLAUDE.md)
+  try {
+    const global = readFileSync("/workspace/global/CLAUDE.md", "utf-8");
+
+    // User-level instructions (always read by Claude Code)
+    const userClaudeDir = "/home/node/.claude";
+    mkdirSync(userClaudeDir, { recursive: true });
+    writeFileSync(`${userClaudeDir}/CLAUDE.md`, global);
+    console.log(`[agent] installed global instructions to ${userClaudeDir}/CLAUDE.md`);
+
+    // Project-level: prepend global to existing group CLAUDE.md
+    const projectClaude = `${cwd}/CLAUDE.md`;
+    let existing = "";
+    try {
+      existing = readFileSync(projectClaude, "utf-8");
+    } catch {
+      // No existing group CLAUDE.md
+    }
+    // Only prepend if not already present
+    if (!existing.includes("Scheduled Task Management")) {
+      const merged = existing
+        ? `${global}\n\n---\n\n${existing}`
+        : global;
+      writeFileSync(projectClaude, merged);
+      console.log(`[agent] merged global instructions into ${projectClaude}`);
+    }
+  } catch (err) {
+    console.warn("[agent] could not install global instructions:", err);
+  }
+}
+
+function loadSystemPrompt(): string {
   const parts: string[] = [];
 
-  // Load global CLAUDE.md
+  // Include global instructions in system prompt as well (belt and suspenders)
   try {
     const global = readFileSync("/workspace/global/CLAUDE.md", "utf-8");
     parts.push(global);
   } catch {
     // Global instructions not available
-  }
-
-  // Load group-specific CLAUDE.md
-  try {
-    const group = readFileSync("/workspace/group/CLAUDE.md", "utf-8");
-    parts.push(group);
-  } catch {
-    // Group instructions not available
   }
 
   return parts.join("\n\n---\n\n");
@@ -46,7 +73,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
   console.log(`[agent] processing message for group ${GROUP_ID}: ${text.substring(0, 100)}...`);
 
   try {
-    const systemPrompt = await loadSystemPrompt();
+    const systemPrompt = loadSystemPrompt();
     const cwd = IS_MAIN ? "/workspace/project" : "/workspace/group";
 
     console.log(`[agent] starting claude query, cwd=${cwd}`);
@@ -70,6 +97,17 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
           "Task",
           "TaskOutput",
         ],
+        mcpServers: {
+          "praktor-tasks": {
+            type: "stdio",
+            command: "node",
+            args: ["/app/dist/mcp-server.js"],
+            env: {
+              NATS_URL,
+              GROUP_ID,
+            },
+          },
+        },
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
         stderr: (data: string) => {
@@ -141,6 +179,9 @@ async function handleControl(
 async function main(): Promise<void> {
   console.log(`[agent] starting for group ${GROUP_ID} (main: ${IS_MAIN})`);
   console.log(`[agent] NATS URL: ${NATS_URL}`);
+
+  const cwd = IS_MAIN ? "/workspace/project" : "/workspace/group";
+  installGlobalInstructions(cwd);
 
   bridge = new NatsBridge(NATS_URL, GROUP_ID);
   await bridge.connect();
