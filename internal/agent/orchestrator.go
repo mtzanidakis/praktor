@@ -87,11 +87,13 @@ func (o *Orchestrator) HandleMessage(ctx context.Context, groupID, text string, 
 	if s, ok := meta["sender"]; ok {
 		sender = s
 	}
-	_ = o.store.SaveMessage(&store.Message{
+	msg := &store.Message{
 		GroupID: groupID,
 		Sender:  sender,
 		Content: text,
-	})
+	}
+	_ = o.store.SaveMessage(msg)
+	o.publishMessageEvent(msg)
 
 	// Enqueue message
 	q := o.getQueue(groupID)
@@ -229,11 +231,13 @@ func (o *Orchestrator) handleAgentOutput(msg *nats.Msg) {
 	if output.Type == "result" {
 		// Only forward the final result to Telegram; "text" events are
 		// intermediate streaming chunks that are part of the same response.
-		_ = o.store.SaveMessage(&store.Message{
+		agentMsg := &store.Message{
 			GroupID: groupID,
 			Sender:  "agent",
 			Content: output.Content,
-		})
+		}
+		_ = o.store.SaveMessage(agentMsg)
+		o.publishMessageEvent(agentMsg)
 
 		o.listenerMu.RLock()
 		for _, l := range o.listeners {
@@ -252,6 +256,43 @@ func (o *Orchestrator) handleIPC(msg *nats.Msg) {
 
 	slog.Info("IPC command received", "type", cmd.Type)
 	// IPC commands handled in later phases
+}
+
+func (o *Orchestrator) publishMessageEvent(msg *store.Message) {
+	if o.client == nil {
+		return
+	}
+
+	role := "user"
+	if msg.Sender == "agent" {
+		role = "assistant"
+	}
+
+	now := time.Now()
+	timeStr := msg.CreatedAt.Format("15:04")
+	if msg.CreatedAt.IsZero() {
+		timeStr = now.Format("15:04")
+	}
+
+	event := map[string]any{
+		"type":      "message",
+		"group_id":  msg.GroupID,
+		"timestamp": now.UTC().Format(time.RFC3339),
+		"data": map[string]any{
+			"id":   msg.ID,
+			"role": role,
+			"text": msg.Content,
+			"time": timeStr,
+		},
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		return
+	}
+
+	topic := natsbus.TopicEventsAgent(msg.GroupID)
+	_ = o.client.Publish(topic, data)
 }
 
 func (o *Orchestrator) StopAgent(ctx context.Context, groupID string) error {

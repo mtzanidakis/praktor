@@ -3,11 +3,13 @@ package web
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/mtzanidakis/praktor/internal/agent"
 	"github.com/mtzanidakis/praktor/internal/config"
@@ -27,6 +29,7 @@ type Server struct {
 	swarmCoord *swarm.Coordinator
 	hub        *Hub
 	cfg        config.WebConfig
+	startedAt  time.Time
 }
 
 func NewServer(s *store.Store, bus *natsbus.Bus, orch *agent.Orchestrator, swarmCoord *swarm.Coordinator, cfg config.WebConfig) *Server {
@@ -37,6 +40,7 @@ func NewServer(s *store.Store, bus *natsbus.Bus, orch *agent.Orchestrator, swarm
 		swarmCoord: swarmCoord,
 		hub:        NewHub(),
 		cfg:        cfg,
+		startedAt:  time.Now(),
 	}
 }
 
@@ -119,11 +123,13 @@ func (s *Server) subscribeEvents() {
 		return
 	}
 
-	// Forward all event topics to WebSocket
+	// Forward all event topics to WebSocket as raw JSON
 	_, _ = client.Subscribe(natsbus.TopicEventsAll, func(msg *nats.Msg) {
-		s.hub.Broadcast(Event{
-			Type:    "nats_event",
-			Payload: string(msg.Data),
-		})
+		var event Event
+		if err := json.Unmarshal(msg.Data, &event); err != nil {
+			slog.Warn("invalid NATS event payload", "error", err)
+			return
+		}
+		s.hub.Broadcast(event)
 	})
 }

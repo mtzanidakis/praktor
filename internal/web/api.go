@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -84,7 +85,18 @@ func (s *Server) getGroupMessages(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	jsonResponse(w, messages)
+
+	// Transform to frontend Message interface: {id, role, text, time}
+	out := make([]map[string]string, 0, len(messages))
+	for _, m := range messages {
+		out = append(out, map[string]string{
+			"id":   fmt.Sprintf("%d", m.ID),
+			"role": mapSenderToRole(m.Sender),
+			"text": m.Content,
+			"time": formatMessageTime(m.CreatedAt),
+		})
+	}
+	jsonResponse(w, out)
 }
 
 func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
@@ -211,25 +223,80 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 	groups, _ := s.store.ListGroups()
 	tasks, _ := s.store.ListTasks()
 
-	activeTasks := 0
+	pendingTasks := 0
 	for _, t := range tasks {
 		if t.Status == "active" {
-			activeTasks++
+			pendingTasks++
 		}
 	}
 
-	status := map[string]any{
-		"status":            "ok",
-		"active_containers": len(agents),
-		"total_groups":      len(groups),
-		"active_tasks":      activeTasks,
-		"nats":              "ok",
-		"timestamp":         time.Now().UTC(),
+	// Build group ID → name lookup
+	groupNames := make(map[string]string, len(groups))
+	for _, g := range groups {
+		groupNames[g.ID] = g.Name
 	}
 
-	// Add version info
-	status["version"] = strings.TrimSpace("dev")
+	// Format uptime
+	uptime := formatUptime(time.Since(s.startedAt))
+
+	// Recent messages
+	recentMsgs, _ := s.store.GetRecentMessages(10)
+	recentOut := make([]map[string]string, 0, len(recentMsgs))
+	for _, m := range recentMsgs {
+		groupName := groupNames[m.GroupID]
+		if groupName == "" {
+			groupName = m.GroupID
+		}
+		recentOut = append(recentOut, map[string]string{
+			"id":    fmt.Sprintf("%d", m.ID),
+			"group": groupName,
+			"role":  mapSenderToRole(m.Sender),
+			"text":  m.Content,
+			"time":  formatMessageTime(m.CreatedAt),
+		})
+	}
+
+	status := map[string]any{
+		"status":          "ok",
+		"active_agents":   len(agents),
+		"groups_count":    len(groups),
+		"pending_tasks":   pendingTasks,
+		"uptime":          uptime,
+		"recent_messages": recentOut,
+		"nats":            "ok",
+		"timestamp":       time.Now().UTC(),
+		"version":         strings.TrimSpace("dev"),
+	}
+
 	jsonResponse(w, status)
+}
+
+func mapSenderToRole(sender string) string {
+	if sender == "agent" {
+		return "assistant"
+	}
+	return "user"
+}
+
+func formatMessageTime(t time.Time) string {
+	now := time.Now()
+	if t.Year() == now.Year() && t.YearDay() == now.YearDay() {
+		return t.Format("15:04")
+	}
+	return t.Format("Jan 2 15:04")
+}
+
+func formatUptime(d time.Duration) string {
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	mins := int(d.Minutes()) % 60
+	if days > 0 {
+		return fmt.Sprintf("%dd %dh %dm", days, hours, mins)
+	}
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, mins)
+	}
+	return fmt.Sprintf("%dm", mins)
 }
 
 func jsonResponse(w http.ResponseWriter, data any) {
