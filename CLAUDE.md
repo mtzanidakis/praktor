@@ -33,9 +33,9 @@ internal/
   swarm/                         # Multi-container swarm coordination
   web/                           # HTTP server, REST API, WebSocket hub, embedded SPA
   groups/                        # Group registration, CLAUDE.md management
-container/
-  Dockerfile                     # Agent image: node:22-slim + Chromium + Claude Code
-  agent-runner/src/              # TypeScript entrypoint: NATS bridge + Claude Code SDK
+Dockerfile                       # Gateway image (multi-stage: UI + Go + Alpine)
+Dockerfile.agent                 # Agent image: node:22-slim + Chromium + Claude Code
+agent-runner/src/                # TypeScript entrypoint: NATS bridge + Claude Code SDK
 ui/                              # React/Vite SPA (dark theme, indigo accent)
   src/pages/                     # Dashboard, Groups, Conversations, Tasks, Swarms
   src/hooks/useWebSocket.ts      # Real-time WebSocket event hook
@@ -50,7 +50,7 @@ go run ./cmd/praktor version           # Print version
 go run ./cmd/praktor gateway           # Start the gateway (needs config)
 CGO_ENABLED=0 go build ./cmd/praktor   # Build static binary
 CGO_ENABLED=0 go test ./internal/...   # Run all tests
-make agent-image                       # Build the agent Docker image
+make containers                        # Build both Docker images (gateway + agent)
 docker compose up                      # Run full stack
 ```
 
