@@ -119,13 +119,11 @@ func (c *Coordinator) runSwarmAgent(ctx context.Context, swarmID string, agent S
 		Status: "running",
 	}
 
-	natsURL := fmt.Sprintf("nats://host.docker.internal:%d", c.bus.Port())
-
 	_, err := c.containers.StartAgent(ctx, container.AgentOpts{
 		GroupID:     groupID,
 		GroupFolder: agent.GroupFolder,
 		IsMain:      false,
-		NATSUrl:     natsURL,
+		NATSUrl:     c.bus.AgentNATSURL(),
 	})
 	if err != nil {
 		result.Status = "error"

@@ -2,6 +2,7 @@ package natsbus
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -50,6 +51,29 @@ func (b *Bus) ClientURL() string {
 
 func (b *Bus) Port() int {
 	return b.cfg.Port
+}
+
+// AgentNATSURL returns the NATS URL that agent containers should use.
+// When the gateway runs inside Docker, it uses the container hostname;
+// otherwise it falls back to localhost.
+func (b *Bus) AgentNATSURL() string {
+	host := "localhost"
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		// Running inside Docker — use hostname which is resolvable
+		// from other containers on the same network.
+		if h, err := os.Hostname(); err == nil && h != "" {
+			host = h
+		}
+	}
+	url := fmt.Sprintf("nats://%s:%d", host, b.cfg.Port)
+	slog.Info("agent NATS URL resolved", "url", url)
+	return url
+}
+
+// NumClients returns the number of connected NATS clients.
+// The gateway itself is always one client; agent containers are additional.
+func (b *Bus) NumClients() int {
+	return int(b.server.NumClients())
 }
 
 func (b *Bus) Close() {
