@@ -9,11 +9,12 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@anthropic-ai/claude-code": "^1.0.0",
-    "nats": "^2.28.0"
+    "@anthropic-ai/claude-agent-sdk": "latest",
+    "@anthropic-ai/claude-code": "latest",
+    "nats": "latest"
   },
   "devDependencies": {
-    "typescript": "^5.7.0",
-    "@types/node": "^22.0.0"
+    "typescript": "latest",
+    "@types/node": "latest"
   }
 }

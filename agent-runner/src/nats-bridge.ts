@@ -1,4 +1,4 @@
-import { connect, NatsConnection, Subscription, StringCodec } from "nats";
+import { connect, Msg, NatsConnection, Subscription, StringCodec } from "nats";
 
 const sc = StringCodec();
 
@@ -14,6 +14,11 @@ export class NatsBridge {
   async connect(): Promise<void> {
     this.conn = await connect({ servers: this.url });
     console.log(`[nats] connected to ${this.url}`);
+  }
+
+  async flush(): Promise<void> {
+    if (!this.conn) throw new Error("Not connected to NATS");
+    await this.conn.flush();
   }
 
   async publish(topic: string, data: Record<string, unknown>): Promise<void> {
@@ -32,6 +37,10 @@ export class NatsBridge {
     });
   }
 
+  async publishReady(): Promise<void> {
+    await this.publish(`agent.${this.groupId}.ready`, { status: "ready" });
+  }
+
   async publishIPC(command: string, payload: unknown): Promise<void> {
     await this.publish(`host.ipc.${this.groupId}`, {
       type: command,
@@ -41,7 +50,7 @@ export class NatsBridge {
 
   subscribe(
     topic: string,
-    handler: (data: Record<string, unknown>) => void
+    handler: (data: Record<string, unknown>, msg: Msg) => void
   ): void {
     if (!this.conn) throw new Error("Not connected to NATS");
 
@@ -52,7 +61,7 @@ export class NatsBridge {
       for await (const msg of sub) {
         try {
           const data = JSON.parse(sc.decode(msg.data));
-          handler(data);
+          handler(data, msg);
         } catch (err) {
           console.error(`[nats] failed to parse message on ${topic}:`, err);
         }
@@ -61,10 +70,12 @@ export class NatsBridge {
   }
 
   subscribeInput(handler: (data: Record<string, unknown>) => void): void {
-    this.subscribe(`agent.${this.groupId}.input`, handler);
+    this.subscribe(`agent.${this.groupId}.input`, (data) => handler(data));
   }
 
-  subscribeControl(handler: (data: Record<string, unknown>) => void): void {
+  subscribeControl(
+    handler: (data: Record<string, unknown>, msg: Msg) => void
+  ): void {
     this.subscribe(`agent.${this.groupId}.control`, handler);
   }
 

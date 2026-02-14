@@ -1,4 +1,4 @@
-import { query } from "@anthropic-ai/claude-code";
+import { query } from "@anthropic-ai/claude-agent-sdk";
 import { NatsBridge } from "./nats-bridge.js";
 import { readFileSync } from "fs";
 
@@ -48,10 +48,13 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
     const systemPrompt = await loadSystemPrompt();
     const cwd = IS_MAIN ? "/workspace/project" : "/workspace/group";
 
-    const result = await query({
+    console.log(`[agent] starting claude query, cwd=${cwd}`);
+
+    const result = query({
       prompt: text,
       options: {
         cwd,
+        pathToClaudeCodeExecutable: "/app/node_modules/.bin/claude",
         systemPrompt: systemPrompt || undefined,
         allowedTools: [
           "Bash",
@@ -66,18 +69,37 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
           "TaskOutput",
         ],
         permissionMode: "bypassPermissions",
+        allowDangerouslySkipPermissions: true,
+        stderr: (data: string) => {
+          console.error(`[claude-stderr] ${data.trimEnd()}`);
+        },
       },
     });
 
     // Process streaming result
     let fullResponse = "";
-    for await (const event of result) {
-      if (event.type === "text") {
-        const content = (event as { type: string; content: string }).content;
-        fullResponse += content;
-
-        // Stream partial output
-        await bridge.publishOutput(content, "text");
+    try {
+      for await (const event of result) {
+        console.log(`[agent] event: type=${event.type}${"subtype" in event ? ` subtype=${event.subtype}` : ""}`);
+        if (event.type === "result" && event.subtype === "success") {
+          fullResponse = event.result;
+        } else if (event.type === "assistant") {
+          // Extract text blocks from assistant messages
+          for (const block of event.message.content) {
+            if (block.type === "text") {
+              await bridge.publishOutput(block.text, "text");
+            }
+          }
+        }
+      }
+    } catch (streamErr) {
+      // Claude Code native binary may exit with code 1 after streaming
+      // a successful result. If we already have the result, treat it as
+      // a non-fatal warning rather than a failure.
+      if (fullResponse) {
+        console.warn(`[agent] claude process exited with error after successful result, ignoring:`, streamErr);
+      } else {
+        throw streamErr;
       }
     }
 
@@ -96,9 +118,11 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
   }
 }
 
-async function handleControl(data: Record<string, unknown>): Promise<void> {
+async function handleControl(
+  data: Record<string, unknown>,
+  msg: import("nats").Msg
+): Promise<void> {
   const command = data.command as string;
-  console.log(`[agent] control command: ${command}`);
 
   switch (command) {
     case "shutdown":
@@ -107,7 +131,7 @@ async function handleControl(data: Record<string, unknown>): Promise<void> {
       process.exit(0);
       break;
     case "ping":
-      await bridge.publishOutput("pong", "control");
+      msg.respond(new TextEncoder().encode(JSON.stringify({ status: "ok" })));
       break;
   }
 }
@@ -122,6 +146,10 @@ async function main(): Promise<void> {
   bridge.subscribeInput(handleMessage);
   bridge.subscribeControl(handleControl);
 
+  // Flush to ensure subscriptions are registered with NATS server
+  await bridge.flush();
+
+  await bridge.publishReady();
   console.log(`[agent] ready and listening for messages`);
 
   // Keep process alive
