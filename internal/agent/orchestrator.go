@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/mtzanidakis/praktor/internal/config"
 	"github.com/mtzanidakis/praktor/internal/container"
@@ -147,16 +148,42 @@ func (o *Orchestrator) executeMessage(ctx context.Context, groupID string, msg Q
 	// Ensure container is running
 	info := o.containers.GetRunning(groupID)
 	if info == nil {
-		natsURL := fmt.Sprintf("nats://host.docker.internal:%d", o.bus.Port())
+		// Capture NATS client count before starting so we can detect when agent connects
+		clientsBefore := o.bus.NumClients()
+		slog.Info("starting agent", "group", groupID, "nats_clients_before", clientsBefore)
 
 		info, err = o.containers.StartAgent(ctx, container.AgentOpts{
 			GroupID:     groupID,
 			GroupFolder: grp.Folder,
 			IsMain:      grp.IsMain,
-			NATSUrl:     natsURL,
+			NATSUrl:     o.bus.AgentNATSURL(),
 		})
 		if err != nil {
 			return fmt.Errorf("start agent: %w", err)
+		}
+
+		// Wait for agent to connect to NATS by watching client count
+		deadline := time.After(30 * time.Second)
+		ticker := time.NewTicker(250 * time.Millisecond)
+		defer ticker.Stop()
+
+	waitLoop:
+		for {
+			select {
+			case <-deadline:
+				slog.Warn("agent ready timeout, sending anyway", "group", groupID, "nats_clients", o.bus.NumClients())
+				break waitLoop
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-ticker.C:
+				current := o.bus.NumClients()
+				if current > clientsBefore {
+					// Give the agent a moment to set up subscriptions after connecting
+					time.Sleep(500 * time.Millisecond)
+					slog.Info("agent container ready", "group", groupID, "nats_clients", current)
+					break waitLoop
+				}
+			}
 		}
 	}
 
@@ -170,7 +197,12 @@ func (o *Orchestrator) executeMessage(ctx context.Context, groupID string, msg Q
 	}
 
 	data, _ := json.Marshal(payload)
-	return o.client.Publish(natsbus.TopicAgentInput(groupID), data)
+	topic := natsbus.TopicAgentInput(groupID)
+	slog.Info("publishing message to agent", "group", groupID, "topic", topic)
+	if err := o.client.Publish(topic, data); err != nil {
+		return fmt.Errorf("publish message: %w", err)
+	}
+	return o.client.Flush()
 }
 
 func (o *Orchestrator) handleAgentOutput(msg *nats.Msg) {
@@ -193,7 +225,9 @@ func (o *Orchestrator) handleAgentOutput(msg *nats.Msg) {
 		return
 	}
 
-	if output.Type == "result" || output.Type == "text" {
+	if output.Type == "result" {
+		// Only forward the final result to Telegram; "text" events are
+		// intermediate streaming chunks that are part of the same response.
 		_ = o.store.SaveMessage(&store.Message{
 			GroupID: groupID,
 			Sender:  "agent",

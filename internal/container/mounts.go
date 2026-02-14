@@ -21,17 +21,20 @@ func buildMounts(opts AgentOpts) []string {
 		binds = append(binds, fmt.Sprintf("%s:%s", cwd, "/workspace/project"))
 	}
 
-	// Group-specific workspace
+	// Group-specific workspace — must be writable by node user (uid 1000)
 	groupPath := filepath.Join(cwd, "groups", opts.GroupFolder)
+	os.MkdirAll(groupPath, 0o777)
+	os.Chmod(groupPath, 0o777)
 	binds = append(binds, fmt.Sprintf("%s:%s", groupPath, "/workspace/group"))
 
 	// Global shared instructions (read-only)
 	globalPath := filepath.Join(cwd, "groups", "global")
 	binds = append(binds, fmt.Sprintf("%s:%s:ro", globalPath, "/workspace/global"))
 
-	// Claude session data
+	// Claude session data — must be writable by the node user (uid 1000) inside the container
 	sessionPath := filepath.Join(cwd, "data", "sessions", opts.GroupFolder, ".claude")
-	os.MkdirAll(sessionPath, 0o755)
+	os.MkdirAll(sessionPath, 0o777)
+	os.Chmod(sessionPath, 0o777)
 	binds = append(binds, fmt.Sprintf("%s:%s", sessionPath, "/home/node/.claude"))
 
 	// Extra mounts

@@ -15,14 +15,18 @@ import (
 	"github.com/mtzanidakis/praktor/internal/natsbus"
 )
 
-const labelPrefix = "praktor"
+const (
+	labelPrefix = "praktor"
+	networkName = "praktor-net"
+)
 
 type Manager struct {
-	docker *client.Client
-	bus    *natsbus.Bus
-	cfg    config.AgentConfig
-	mu     sync.RWMutex
-	active map[string]*ContainerInfo // groupID → container
+	docker      *client.Client
+	bus         *natsbus.Bus
+	cfg         config.AgentConfig
+	mu          sync.RWMutex
+	active      map[string]*ContainerInfo // groupID → container
+	networkName string                    // resolved network name
 }
 
 type ContainerInfo struct {
@@ -57,6 +61,29 @@ func NewManager(bus *natsbus.Bus, cfg config.AgentConfig) (*Manager, error) {
 	}, nil
 }
 
+func (m *Manager) ensureNetwork(ctx context.Context) error {
+	if m.networkName != "" {
+		return nil
+	}
+
+	_, err := m.docker.NetworkInspect(ctx, networkName, network.InspectOptions{})
+	if err == nil {
+		m.networkName = networkName
+		return nil
+	}
+
+	// Create it (for non-Compose runs like make dev)
+	_, err = m.docker.NetworkCreate(ctx, networkName, network.CreateOptions{
+		Driver: "bridge",
+	})
+	if err != nil {
+		return fmt.Errorf("create network %s: %w", networkName, err)
+	}
+	m.networkName = networkName
+	slog.Info("created docker network", "network", networkName)
+	return nil
+}
+
 func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -69,7 +96,16 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 		return nil, fmt.Errorf("max containers (%d) reached", m.cfg.MaxContainers)
 	}
 
+	if err := m.ensureNetwork(ctx); err != nil {
+		return nil, err
+	}
+
 	containerName := fmt.Sprintf("praktor-agent-%s", opts.GroupID)
+
+	// Remove any stale container with the same name
+	timeout := 5
+	_ = m.docker.ContainerStop(ctx, containerName, dockercontainer.StopOptions{Timeout: &timeout})
+	_ = m.docker.ContainerRemove(ctx, containerName, dockercontainer.RemoveOptions{Force: true})
 
 	env := []string{
 		fmt.Sprintf("NATS_URL=%s", opts.NATSUrl),
@@ -96,7 +132,7 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 
 	hostCfg := &dockercontainer.HostConfig{
 		Binds:       mounts,
-		NetworkMode: "praktor-net",
+		NetworkMode: dockercontainer.NetworkMode(m.networkName),
 	}
 
 	networkCfg := &network.NetworkingConfig{}
