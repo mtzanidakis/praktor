@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
 
 	"github.com/docker/docker/api/types/build"
 	"github.com/docker/docker/client"
@@ -15,7 +14,7 @@ import (
 
 func BuildAgentImage(ctx context.Context, docker *client.Client, imageName string) error {
 	cwd, _ := os.Getwd()
-	buildContext := filepath.Join(cwd, "container")
+	buildContext := cwd
 
 	tar, err := goarchive.TarWithOptions(buildContext, &goarchive.TarOptions{})
 	if err != nil {
@@ -24,7 +23,7 @@ func BuildAgentImage(ctx context.Context, docker *client.Client, imageName strin
 
 	resp, err := docker.ImageBuild(ctx, tar, build.ImageBuildOptions{
 		Tags:       []string{imageName},
-		Dockerfile: "Dockerfile",
+		Dockerfile: "Dockerfile.agent",
 		Remove:     true,
 	})
 	if err != nil {

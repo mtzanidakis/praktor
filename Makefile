@@ -1,4 +1,4 @@
-.PHONY: build run test clean ui agent-image
+.PHONY: build run test clean ui containers
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 
@@ -18,9 +18,10 @@ clean:
 ui:
 	cd ui && npm install && npm run build
 
-# Build the agent container image
-agent-image:
-	cd container && docker build -t praktor-agent:latest .
+# Build both container images (gateway + agent)
+containers:
+	docker build -t praktor:latest -f Dockerfile .
+	docker build -t praktor-agent:latest -f Dockerfile.agent .
 
 # Development: run without building UI
 dev:

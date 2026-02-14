@@ -13,7 +13,8 @@ RUN npm install -g @anthropic-ai/claude-code
 WORKDIR /app
 COPY agent-runner/package.json agent-runner/package-lock.json* ./
 RUN npm ci --production 2>/dev/null || npm install --production
-COPY agent-runner/ .
+COPY agent-runner/src/ src/
+COPY agent-runner/tsconfig.json .
 RUN npx tsc
 
 # Runtime config
