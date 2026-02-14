@@ -26,6 +26,7 @@ type TelegramConfig struct {
 
 type AgentConfig struct {
 	Image           string        `yaml:"image"`
+	Model           string        `yaml:"model"`
 	MaxContainers   int           `yaml:"max_containers"`
 	IdleTimeout     time.Duration `yaml:"idle_timeout"`
 	AnthropicAPIKey string        `yaml:"anthropic_api_key"`
@@ -60,6 +61,7 @@ func defaults() Config {
 	return Config{
 		Agent: AgentConfig{
 			Image:         "praktor-agent:latest",
+			Model:         "claude-opus-4-6",
 			MaxContainers: 5,
 			IdleTimeout:   30 * time.Minute,
 		},
@@ -142,5 +144,8 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("PRAKTOR_MAIN_CHAT_ID"); v != "" {
 		cfg.Groups.MainChatID = v
+	}
+	if v := os.Getenv("PRAKTOR_AGENT_MODEL"); v != "" {
+		cfg.Agent.Model = v
 	}
 }

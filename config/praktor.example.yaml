@@ -4,6 +4,7 @@ telegram:
 
 agent:
   image: "praktor-agent:latest"
+  model: "claude-opus-4-6"            # Default Claude model for agents
   max_containers: 5
   idle_timeout: 30m
   anthropic_api_key: "${ANTHROPIC_API_KEY}"

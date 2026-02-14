@@ -156,6 +156,7 @@ func (o *Orchestrator) executeMessage(ctx context.Context, groupID string, msg Q
 			GroupID:     groupID,
 			GroupFolder: grp.Folder,
 			IsMain:      grp.IsMain,
+			Model:       grp.Model,
 			NATSUrl:     o.bus.AgentNATSURL(),
 		})
 		if err != nil {

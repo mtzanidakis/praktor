@@ -42,6 +42,7 @@ type AgentOpts struct {
 	GroupID     string
 	GroupFolder string
 	IsMain      bool
+	Model       string
 	SessionID   string
 	Mounts      []Mount
 	NATSUrl     string
@@ -120,6 +121,11 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 	}
 	if m.cfg.OAuthToken != "" {
 		env = append(env, fmt.Sprintf("CLAUDE_CODE_OAUTH_TOKEN=%s", m.cfg.OAuthToken))
+	}
+	if model := opts.Model; model != "" {
+		env = append(env, fmt.Sprintf("CLAUDE_MODEL=%s", model))
+	} else if m.cfg.Model != "" {
+		env = append(env, fmt.Sprintf("CLAUDE_MODEL=%s", m.cfg.Model))
 	}
 
 	mounts := buildMounts(opts)

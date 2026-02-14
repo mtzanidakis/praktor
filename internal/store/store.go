@@ -52,6 +52,7 @@ func (s *Store) migrate() error {
 			name        TEXT NOT NULL,
 			folder      TEXT NOT NULL UNIQUE,
 			is_main     BOOLEAN DEFAULT FALSE,
+			model       TEXT,
 			created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
@@ -97,6 +98,14 @@ func (s *Store) migrate() error {
 			started_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
 			completed_at DATETIME
 		)`,
+	}
+
+	// Schema additions (idempotent ALTER TABLE)
+	alterations := []string{
+		`ALTER TABLE groups ADD COLUMN model TEXT`,
+	}
+	for _, a := range alterations {
+		_, _ = s.db.Exec(a) // ignore "duplicate column" errors
 	}
 
 	for _, m := range migrations {

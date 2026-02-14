@@ -6,6 +6,7 @@ const NATS_URL = process.env.NATS_URL || "nats://localhost:4222";
 const GROUP_ID = process.env.GROUP_ID || "default";
 const IS_MAIN = process.env.IS_MAIN === "true";
 const SESSION_ID = process.env.SESSION_ID || undefined;
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || undefined;
 
 let bridge: NatsBridge;
 let isProcessing = false;
@@ -53,6 +54,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
     const result = query({
       prompt: text,
       options: {
+        model: CLAUDE_MODEL,
         cwd,
         pathToClaudeCodeExecutable: "/app/node_modules/.bin/claude",
         systemPrompt: systemPrompt || undefined,
