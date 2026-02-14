@@ -20,13 +20,25 @@ func New(cfg config.StoreConfig) (*Store, error) {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
 
-	db, err := sql.Open("sqlite", cfg.Path+"?_journal_mode=WAL&_busy_timeout=5000")
+	db, err := sql.Open("sqlite", cfg.Path)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("ping sqlite: %w", err)
+	}
+
+	// Enable WAL mode for concurrent read/write access and set a busy
+	// timeout so writers retry instead of immediately returning SQLITE_BUSY.
+	pragmas := []string{
+		"PRAGMA journal_mode=WAL",
+		"PRAGMA busy_timeout=5000",
+	}
+	for _, p := range pragmas {
+		if _, err := db.Exec(p); err != nil {
+			return nil, fmt.Errorf("exec %s: %w", p, err)
+		}
 	}
 
 	s := &Store{db: db}
