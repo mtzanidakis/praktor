@@ -1,24 +1,32 @@
-FROM node:22-slim
+FROM node:24-alpine
 
 # System deps for Chromium
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium fonts-liberation fonts-noto-color-emoji \
-    git curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Claude Code globally
-RUN npm install -g @anthropic-ai/claude-code
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    font-liberation \
+    font-noto-cjk \
+    font-noto-emoji \
+    git \
+    ca-certificates \
+    su-exec \
+    bash && \
+    update-ca-certificates
 
 # Install agent runner deps
 WORKDIR /app
 COPY agent-runner/package.json agent-runner/package-lock.json* ./
-RUN npm ci --production 2>/dev/null || npm install --production
+RUN npm ci 2>/dev/null || npm install
 COPY agent-runner/src/ src/
 COPY agent-runner/tsconfig.json .
-RUN npx tsc
+RUN npx tsc && npm prune --production
+
+# Ensure .claude dir exists with correct ownership
+RUN mkdir -p /home/node/.claude && chown -R node:node /home/node/.claude
 
 # Runtime config
 ENV CHROMIUM_PATH=/usr/bin/chromium
-USER node
+
+# Entrypoint: fix ownership of mounted volumes, then drop to node user
 WORKDIR /workspace/group
-ENTRYPOINT ["node", "/app/dist/index.js"]
+ENTRYPOINT ["sh", "-c", "chown -R node:node /home/node/.claude /workspace/group 2>/dev/null; exec su-exec node node /app/dist/index.js"]

@@ -5,11 +5,10 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
-      - "4222:4222"
     volumes:
       - ./config/praktor.yaml:/etc/praktor/praktor.yaml:ro
       - ./groups:/data/groups
-      - ./data:/data/data
+      - ./data:/data
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - PRAKTOR_CONFIG=/etc/praktor/praktor.yaml
@@ -23,4 +22,5 @@ services:
 
 networks:
   praktor-net:
+    name: praktor-net
     driver: bridge
