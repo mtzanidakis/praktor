@@ -1,24 +1,37 @@
 # Build ptask CLI
 FROM golang:1.26-alpine AS ptask-builder
 WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
 COPY . .
+RUN go mod download
 RUN CGO_ENABLED=0 go build -o /ptask ./cmd/ptask
 
-FROM node:24-alpine
+# Bundle agent runner with esbuild (no node_modules needed at runtime)
+FROM node:24-alpine AS agent-builder
+WORKDIR /app
+COPY agent-runner/package.json agent-runner/package-lock.json* ./
+RUN npm ci 2>/dev/null || npm install
+COPY agent-runner/src/ src/
+COPY agent-runner/tsconfig.json .
+RUN npx esbuild --bundle --format=cjs --platform=node --target=node24 \
+      --outfile=out/index.js src/index.ts && \
+    npx esbuild --bundle --format=cjs --platform=node --target=node24 \
+      --outfile=out/mcp-server.js src/mcp-server.ts
 
-# System deps for Chromium
+# Runtime image — no node_modules, just bundled JS files
+FROM alpine:3.23
+
 RUN apk add --no-cache \
-    #chromium \
-    #nss \
-    #font-liberation \
-    #font-noto-cjk \
-    #font-noto-emoji \
-    git \
+    bash \
     ca-certificates \
+    chromium \
     curl \
-    bash && \
+    font-liberation \
+    font-noto-cjk \
+    font-noto-emoji \
+    git \
+    nodejs \
+    nss \
+    tzdata && \
     update-ca-certificates
 
 RUN adduser \
@@ -43,15 +56,8 @@ RUN set -e; \
     echo "$CHECKSUM  /usr/local/bin/claude" | sha256sum -c - && \
     chmod +x /usr/local/bin/claude
 
-# Install agent runner deps
-WORKDIR /app
-COPY agent-runner/package.json agent-runner/package-lock.json* ./
-RUN npm ci 2>/dev/null || npm install
-COPY agent-runner/src/ src/
-COPY agent-runner/tsconfig.json .
-RUN npx tsc && npm prune --production
-
-# Add task CLI to PATH
+# Copy built artifacts from builder stages
+COPY --from=agent-builder /app/out/ /app/
 COPY --from=ptask-builder /ptask /usr/local/bin/ptask
 
 # Pre-create volume mount points with correct ownership so Docker
@@ -64,4 +70,4 @@ ENV CHROMIUM_PATH=/usr/bin/chromium
 
 USER praktor
 WORKDIR /workspace/group
-ENTRYPOINT ["node", "/app/dist/index.js"]
+ENTRYPOINT ["node", "/app/index.js"]

@@ -15,6 +15,7 @@
   },
   "devDependencies": {
     "@types/node": "latest",
+    "esbuild": "latest",
     "typescript": "latest"
   }
 }
