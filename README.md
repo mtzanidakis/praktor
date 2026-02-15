@@ -15,8 +15,8 @@ Praktor is a single Go binary that orchestrates the full loop: it receives messa
 ## Features
 
 - **Telegram I/O** - Chat with Claude from your phone
-- **Per-group isolation** - Each group runs in its own Docker container with its own filesystem and memory
-- **Admin channel** - Your private Telegram chat has elevated access to the full project
+- **Per-group isolation** - Each group runs in its own Docker container with its own filesystem and memory (Docker named volumes)
+- **Admin channel** - Your private Telegram chat for admin control
 - **Scheduled tasks** - Cron, interval, or one-shot jobs that run Claude and deliver results
 - **Agent swarms** - Spin up teams of specialized agents that collaborate on complex tasks
 - **Mission Control** - Real-time web dashboard with WebSocket updates
@@ -95,14 +95,14 @@ groups:
   main_chat_id: ""        # Your Telegram user ID for admin channel
 ```
 
-To set your admin channel, put your Telegram user ID in `main_chat_id`. The admin channel gets read-write access to the full project directory.
+To set your admin channel, put your Telegram user ID in `main_chat_id`.
 
 ### 4. Build and Run
 
-Build the agent container image first, then start the stack:
+Build the container images and start the stack:
 
 ```sh
-# Build both container images
+# Build both container images (gateway + agent)
 make containers
 
 # Start Praktor
@@ -110,6 +110,8 @@ docker compose up -d
 ```
 
 The web dashboard is available at `http://localhost:8080`.
+
+Data is stored in Docker named volumes (`praktor-data`, `praktor-global`) — no host directory bind mounts needed. Both gateway and agent containers run as non-root user `praktor` (uid 10321).
 
 Open Telegram and send a message to your bot. Praktor will spin up an agent container and respond.
 
