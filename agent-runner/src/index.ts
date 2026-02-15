@@ -2,6 +2,19 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import { NatsBridge } from "./nats-bridge.js";
 import { readFileSync, mkdirSync, writeFileSync } from "fs";
 
+// Patch console to prepend timestamps matching gateway format (YYYY/MM/DD HH:MM:SS)
+const origLog = console.log;
+const origWarn = console.warn;
+const origError = console.error;
+function ts(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+console.log = (...args: unknown[]) => origLog(ts(), ...args);
+console.warn = (...args: unknown[]) => origWarn(ts(), ...args);
+console.error = (...args: unknown[]) => origError(ts(), ...args);
+
 const NATS_URL = process.env.NATS_URL || "nats://localhost:4222";
 const GROUP_ID = process.env.GROUP_ID || "default";
 const IS_MAIN = process.env.IS_MAIN === "true";
