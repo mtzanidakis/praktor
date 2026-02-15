@@ -22,24 +22,25 @@ The gateway binary runs all core services: Telegram bot, NATS message bus, agent
 
 ```
 cmd/praktor/main.go              # CLI: `gateway` and `version` subcommands
+cmd/ptask/main.go                # Task management CLI (Go, runs inside agent containers)
 internal/
   config/                        # YAML config + env var overrides
   store/                         # SQLite (modernc.org/sqlite, pure Go) - groups, messages, tasks, swarms
   natsbus/                       # Embedded NATS server + client helpers + topic naming
-  container/                     # Docker container lifecycle, image building, mount strategy
+  container/                     # Docker container lifecycle, image building, volume mounts
   agent/                         # Message orchestrator, per-group queue, session tracking
   telegram/                      # Telegram bot (telego), long-polling, message chunking
   scheduler/                     # Cron/interval task polling (adhocore/gronx)
   swarm/                         # Multi-container swarm coordination
   web/                           # HTTP server, REST API, WebSocket hub, embedded SPA
   groups/                        # Group registration, CLAUDE.md management
-Dockerfile                       # Gateway image (multi-stage: UI + Go + Alpine)
-Dockerfile.agent                 # Agent image: node:22-slim + Chromium + Claude Code
-agent-runner/src/                # TypeScript entrypoint: NATS bridge + Claude Code SDK
+Dockerfile                       # Gateway image (multi-stage: UI + Go + scratch)
+Dockerfile.agent                 # Agent image (multi-stage: Go + esbuild + alpine)
+agent-runner/src/                # TypeScript entrypoint: NATS bridge + Claude Code SDK (bundled with esbuild)
 ui/                              # React/Vite SPA (dark theme, indigo accent)
   src/pages/                     # Dashboard, Groups, Conversations, Tasks, Swarms
   src/hooks/useWebSocket.ts      # Real-time WebSocket event hook
-groups/{main,global}/CLAUDE.md   # Default agent memory files
+groups/global/CLAUDE.md          # Global agent instructions (seeded to praktor-global volume)
 config/praktor.example.yaml      # Example configuration
 ```
 
@@ -69,7 +70,7 @@ Loaded from YAML (default: `config/praktor.yaml`, override with `PRAKTOR_CONFIG`
 | `PRAKTOR_WEB_PORT` | `web.port` | Web UI port (default: 8080) |
 | `PRAKTOR_NATS_PORT` | `nats.port` | NATS port (default: 4222) |
 | `PRAKTOR_STORE_PATH` | `store.path` | SQLite DB path (default: `data/praktor.db`) |
-| `PRAKTOR_GROUPS_BASE` | `groups.base_path` | Groups directory (default: `groups`) |
+| `PRAKTOR_GROUPS_BASE` | `groups.base_path` | Groups directory (default: `data/groups`) |
 | `PRAKTOR_MAIN_CHAT_ID` | `groups.main_chat_id` | Telegram chat ID for admin channel |
 
 ## NATS Topics
@@ -101,7 +102,15 @@ WS             /api/ws                  # WebSocket for real-time events
 
 ## Container Mount Strategy
 
-Main group mounts the project root at `/workspace/project` (rw). All groups mount their own directory at `/workspace/group` (rw), global instructions at `/workspace/global` (ro), and Claude session data at `/home/node/.claude` (rw).
+All containers use Docker named volumes (no host path dependencies):
+
+| Volume | Container Path | Mode | Purpose |
+|--------|---------------|------|---------|
+| `praktor-wk-{folder}` | `/workspace/group` | rw | Group workspace |
+| `praktor-global` | `/workspace/global` | ro | Global instructions |
+| `praktor-sess-{folder}` | `/home/praktor/.claude` | rw | Claude session data |
+
+The gateway uses `praktor-data` for SQLite/NATS and `praktor-global` for global instructions. Both gateway and agents run as non-root user `praktor` (uid 10321).
 
 ## Go Dependencies
 
