@@ -9,3 +9,5 @@ config/praktor.yaml
 *.dll
 *.so
 *.dylib
+/ptask
+/praktor

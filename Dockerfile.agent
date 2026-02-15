@@ -1,3 +1,11 @@
+# Build ptask CLI
+FROM golang:1.26-alpine AS ptask-builder
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o /ptask ./cmd/ptask
+
 FROM node:24-alpine
 
 # System deps for Chromium
@@ -44,7 +52,7 @@ COPY agent-runner/tsconfig.json .
 RUN npx tsc && npm prune --production
 
 # Add task CLI to PATH
-RUN printf '#!/bin/sh\nexec node /app/dist/task-cli.js "$@"\n' > /usr/local/bin/ptask && chmod +x /usr/local/bin/ptask
+COPY --from=ptask-builder /ptask /usr/local/bin/ptask
 
 # Pre-create volume mount points with correct ownership so Docker
 # populates new named volumes with the right permissions and structure.
