@@ -80,7 +80,7 @@ func defaults() Config {
 			PollInterval: 30 * time.Second,
 		},
 		Groups: GroupsConfig{
-			BasePath: "groups",
+			BasePath: "data/groups",
 		},
 	}
 }

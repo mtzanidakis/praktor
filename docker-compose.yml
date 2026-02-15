@@ -1,15 +1,18 @@
 services:
   praktor:
+    container_name: praktor
     build:
       context: .
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
+    group_add:
+      - "${DOCKER_GID:-131}"
     volumes:
       - ./config/praktor.yaml:/etc/praktor/praktor.yaml:ro
-      - ./groups:/data/groups
-      - ./data:/data
       - /var/run/docker.sock:/var/run/docker.sock
+      - praktor-data:/data
+      - praktor-global:/data/groups/global
     environment:
       - PRAKTOR_CONFIG=/etc/praktor/praktor.yaml
       - PRAKTOR_TELEGRAM_TOKEN=${PRAKTOR_TELEGRAM_TOKEN}
@@ -19,6 +22,12 @@ services:
     networks:
       - praktor-net
     restart: unless-stopped
+
+volumes:
+  praktor-data:
+    name: praktor-data
+  praktor-global:
+    name: praktor-global
 
 networks:
   praktor-net:

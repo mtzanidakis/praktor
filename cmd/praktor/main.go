@@ -75,6 +75,12 @@ func runGateway() error {
 
 	// Groups manager
 	grpMgr := groups.NewManager(db, cfg.Groups)
+	if err := grpMgr.EnsureGlobalDirectory(); err != nil {
+		return fmt.Errorf("ensure global directory: %w", err)
+	}
+	if err := grpMgr.EnsureMainGroup(); err != nil {
+		return fmt.Errorf("ensure main group: %w", err)
+	}
 
 	// Container manager
 	ctrMgr, err := container.NewManager(bus, cfg.Agent)

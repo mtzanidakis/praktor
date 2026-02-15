@@ -25,5 +25,5 @@ scheduler:
   poll_interval: 30s
 
 groups:
-  base_path: "groups"
+  base_path: "data/groups"
   main_chat_id: ""                   # Your Telegram self-chat ID

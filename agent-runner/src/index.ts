@@ -20,7 +20,7 @@ function installGlobalInstructions(cwd: string): void {
     const global = readFileSync("/workspace/global/CLAUDE.md", "utf-8");
 
     // User-level instructions (always read by Claude Code)
-    const userClaudeDir = "/home/node/.claude";
+    const userClaudeDir = "/home/praktor/.claude";
     mkdirSync(userClaudeDir, { recursive: true });
     writeFileSync(`${userClaudeDir}/CLAUDE.md`, global);
     console.log(`[agent] installed global instructions to ${userClaudeDir}/CLAUDE.md`);
@@ -74,7 +74,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
 
   try {
     const systemPrompt = loadSystemPrompt();
-    const cwd = IS_MAIN ? "/workspace/project" : "/workspace/group";
+    const cwd = "/workspace/group";
 
     console.log(`[agent] starting claude query, cwd=${cwd}`);
 
@@ -180,8 +180,7 @@ async function main(): Promise<void> {
   console.log(`[agent] starting for group ${GROUP_ID} (main: ${IS_MAIN})`);
   console.log(`[agent] NATS URL: ${NATS_URL}`);
 
-  const cwd = IS_MAIN ? "/workspace/project" : "/workspace/group";
-  installGlobalInstructions(cwd);
+  installGlobalInstructions("/workspace/group");
 
   bridge = new NatsBridge(NATS_URL, GROUP_ID);
   await bridge.connect();

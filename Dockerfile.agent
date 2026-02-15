@@ -2,16 +2,23 @@ FROM node:24-alpine
 
 # System deps for Chromium
 RUN apk add --no-cache \
-    chromium \
-    nss \
-    font-liberation \
-    font-noto-cjk \
-    font-noto-emoji \
+    #chromium \
+    #nss \
+    #font-liberation \
+    #font-noto-cjk \
+    #font-noto-emoji \
     git \
     ca-certificates \
-    su-exec \
     bash && \
     update-ca-certificates
+
+RUN adduser \
+   --disabled-password \
+   --gecos "praktor user" \
+   --home "/home/praktor" \
+   --shell "/sbin/nologin" \
+   --uid 10321 \
+   praktor
 
 # Install agent runner deps
 WORKDIR /app
@@ -24,12 +31,14 @@ RUN npx tsc && npm prune --production
 # Add task CLI to PATH
 RUN printf '#!/bin/sh\nexec node /app/dist/task-cli.js "$@"\n' > /usr/local/bin/ptask && chmod +x /usr/local/bin/ptask
 
-# Ensure .claude dir exists with correct ownership
-RUN mkdir -p /home/node/.claude && chown -R node:node /home/node/.claude
+# Pre-create volume mount points with correct ownership so Docker
+# populates new named volumes with the right permissions and structure.
+RUN mkdir -p /home/praktor/.claude/debug /workspace/group /workspace/global && \
+    chown -R praktor:praktor /home/praktor/.claude /workspace/group /workspace/global
 
 # Runtime config
 ENV CHROMIUM_PATH=/usr/bin/chromium
 
-# Entrypoint: fix ownership of mounted volumes, then drop to node user
+USER praktor
 WORKDIR /workspace/group
-ENTRYPOINT ["sh", "-c", "chown -R node:node /home/node/.claude /workspace/group 2>/dev/null; exec su-exec node node /app/dist/index.js"]
+ENTRYPOINT ["node", "/app/dist/index.js"]

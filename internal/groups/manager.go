@@ -77,6 +77,50 @@ func (m *Manager) EnsureDirectories(groupFolder string) error {
 	return nil
 }
 
+func (m *Manager) EnsureGlobalDirectory() error {
+	dir := filepath.Join(m.basePath, "global")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create global dir: %w", err)
+	}
+
+	claudeMD := filepath.Join(dir, "CLAUDE.md")
+	if _, err := os.Stat(claudeMD); os.IsNotExist(err) {
+		defaultContent := "# Global Instructions\n\nThis file is loaded by all agent groups.\n"
+		if err := os.WriteFile(claudeMD, []byte(defaultContent), 0o644); err != nil {
+			return fmt.Errorf("create global CLAUDE.md: %w", err)
+		}
+	}
+	return nil
+}
+
+// EnsureMainGroup registers the main group in the database if main_chat_id
+// is configured and the group doesn't already exist.
+func (m *Manager) EnsureMainGroup() error {
+	if m.cfg.MainChatID == "" {
+		return nil
+	}
+
+	existing, err := m.store.GetGroup(m.cfg.MainChatID)
+	if err != nil {
+		return fmt.Errorf("check main group: %w", err)
+	}
+	if existing != nil {
+		if existing.IsMain {
+			return nil
+		}
+		existing.IsMain = true
+		existing.Folder = "main"
+		return m.store.SaveGroup(existing)
+	}
+
+	return m.Register(store.Group{
+		ID:     m.cfg.MainChatID,
+		Name:   "Main",
+		Folder: "main",
+		IsMain: true,
+	})
+}
+
 func (m *Manager) GroupPath(groupFolder string) string {
 	return filepath.Join(m.basePath, groupFolder)
 }

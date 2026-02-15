@@ -2,8 +2,7 @@ package container
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
+	"strings"
 )
 
 type Mount struct {
@@ -13,31 +12,19 @@ type Mount struct {
 }
 
 func buildMounts(opts AgentOpts) []string {
-	cwd, _ := os.Getwd()
+	folder := sanitizeVolumeName(opts.GroupFolder)
 	var binds []string
 
-	if opts.IsMain {
-		// Main group gets project root mounted
-		binds = append(binds, fmt.Sprintf("%s:%s", cwd, "/workspace/project"))
-	}
+	// Group-specific workspace (named volume)
+	binds = append(binds, fmt.Sprintf("praktor-wk-%s:/workspace/group", folder))
 
-	// Group-specific workspace — must be writable by node user (uid 1000)
-	groupPath := filepath.Join(cwd, "groups", opts.GroupFolder)
-	os.MkdirAll(groupPath, 0o777)
-	os.Chmod(groupPath, 0o777)
-	binds = append(binds, fmt.Sprintf("%s:%s", groupPath, "/workspace/group"))
+	// Global shared instructions (named volume, read-only)
+	binds = append(binds, "praktor-global:/workspace/global:ro")
 
-	// Global shared instructions (read-only)
-	globalPath := filepath.Join(cwd, "groups", "global")
-	binds = append(binds, fmt.Sprintf("%s:%s:ro", globalPath, "/workspace/global"))
+	// Claude session data (named volume)
+	binds = append(binds, fmt.Sprintf("praktor-sess-%s:/home/praktor/.claude", folder))
 
-	// Claude session data — must be writable by the node user (uid 1000) inside the container
-	sessionPath := filepath.Join(cwd, "data", "sessions", opts.GroupFolder, ".claude")
-	os.MkdirAll(sessionPath, 0o777)
-	os.Chmod(sessionPath, 0o777)
-	binds = append(binds, fmt.Sprintf("%s:%s", sessionPath, "/home/node/.claude"))
-
-	// Extra mounts
+	// Extra mounts (user-configured, kept as-is)
 	for _, m := range opts.Mounts {
 		bind := fmt.Sprintf("%s:%s", m.Source, m.Target)
 		if m.ReadOnly {
@@ -47,4 +34,14 @@ func buildMounts(opts AgentOpts) []string {
 	}
 
 	return binds
+}
+
+// sanitizeVolumeName replaces characters not allowed in Docker volume names.
+func sanitizeVolumeName(s string) string {
+	return strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			return r
+		}
+		return '-'
+	}, s)
 }
