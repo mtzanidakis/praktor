@@ -1,7 +1,4 @@
 bin/
-data/praktor.db*
-data/nats/
-data/sessions/
 ui/node_modules/
 ui/dist/
 agent-runner/node_modules/
