@@ -1,9 +1,10 @@
-# Build ptask CLI
-FROM golang:1.26-alpine AS ptask-builder
+# Build Go CLIs (ptask + getcc) and download Claude Code binary
+FROM golang:1.26-alpine AS go-build
 WORKDIR /src
 COPY . .
 RUN go mod download
 RUN CGO_ENABLED=0 go build -o /ptask ./cmd/ptask
+RUN CGO_ENABLED=0 go run ./cmd/getcc -save /claude
 
 # Bundle agent runner with esbuild (no node_modules needed at runtime)
 FROM node:24-alpine AS agent-builder
@@ -42,23 +43,10 @@ RUN adduser \
    --uid 10321 \
    praktor
 
-# Install Claude Code native binary
-ARG TARGETARCH
-RUN set -e; \
-    if [ "$TARGETARCH" = "arm64" ]; then \
-      URL="https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/2.1.42/linux-arm64-musl/claude"; \
-      CHECKSUM="85be36f185e18a9a0bd7abc84727b42e4ea98e549a3d73114c7eb37e8355fddc"; \
-    else \
-      URL="https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/2.1.42/linux-x64-musl/claude"; \
-      CHECKSUM="f92ed4b7999a0d564233260b1102c6ceedfd5174a40aea03ce1c9037fbbb0498"; \
-    fi; \
-    curl -fsSL -o /usr/local/bin/claude "$URL" && \
-    echo "$CHECKSUM  /usr/local/bin/claude" | sha256sum -c - && \
-    chmod +x /usr/local/bin/claude
-
 # Copy built artifacts from builder stages
 COPY --from=agent-builder /app/out/ /app/
-COPY --from=ptask-builder /ptask /usr/local/bin/ptask
+COPY --from=go-build /ptask /usr/local/bin/ptask
+COPY --from=go-build /claude /usr/local/bin/claude
 
 # Pre-create volume mount points with correct ownership so Docker
 # populates new named volumes with the right permissions and structure.
