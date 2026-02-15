@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 	"time"
 
@@ -126,6 +127,9 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 		env = append(env, fmt.Sprintf("CLAUDE_MODEL=%s", model))
 	} else if m.cfg.Model != "" {
 		env = append(env, fmt.Sprintf("CLAUDE_MODEL=%s", m.cfg.Model))
+	}
+	if tz := os.Getenv("TZ"); tz != "" {
+		env = append(env, fmt.Sprintf("TZ=%s", tz))
 	}
 
 	mounts := buildMounts(opts)
