@@ -14,6 +14,7 @@ services:
       - praktor-data:/data
       - praktor-global:/data/groups/global
     environment:
+      - TZ=Europe/Athens
       - PRAKTOR_CONFIG=/etc/praktor/praktor.yaml
       - PRAKTOR_TELEGRAM_TOKEN=${PRAKTOR_TELEGRAM_TOKEN}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
