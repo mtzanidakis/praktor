@@ -443,11 +443,12 @@ func mapSenderToRole(sender string) string {
 }
 
 func formatMessageTime(t time.Time) string {
+	local := t.Local()
 	now := time.Now()
-	if t.Year() == now.Year() && t.YearDay() == now.YearDay() {
-		return t.Format("15:04")
+	if local.Year() == now.Year() && local.YearDay() == now.YearDay() {
+		return local.Format("15:04")
 	}
-	return t.Format("Jan 2 15:04")
+	return local.Format("Jan 2 15:04")
 }
 
 func formatUptime(d time.Duration) string {
