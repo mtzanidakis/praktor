@@ -30,8 +30,11 @@ RUN apk add --no-cache \
     font-noto-cjk \
     font-noto-emoji \
     git \
+    libgcc \
+    libstdc++ \
     nodejs \
     nss \
+    ripgrep \
     tzdata && \
     update-ca-certificates
 
@@ -55,6 +58,7 @@ RUN mkdir -p /home/praktor/.claude/debug /workspace/group /workspace/global && \
 
 # Runtime config
 ENV CHROMIUM_PATH=/usr/bin/chromium
+ENV USE_BUILTIN_RIPGREP=0
 
 USER praktor
 WORKDIR /workspace/group
