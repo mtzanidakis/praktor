@@ -114,7 +114,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
           "praktor-tasks": {
             type: "stdio",
             command: "node",
-            args: ["/app/dist/mcp-server.js"],
+            args: ["/app/mcp-server.js"],
             env: {
               NATS_URL,
               GROUP_ID,
