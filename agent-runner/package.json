@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "latest",
-    "@anthropic-ai/claude-code": "latest",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "nats": "latest"
   },

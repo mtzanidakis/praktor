@@ -20,6 +20,20 @@ RUN adduser \
    --uid 10321 \
    praktor
 
+# Install Claude Code native binary
+ARG TARGETARCH
+RUN set -e; \
+    if [ "$TARGETARCH" = "arm64" ]; then \
+      URL="https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/2.1.42/linux-arm64-musl/claude"; \
+      CHECKSUM="85be36f185e18a9a0bd7abc84727b42e4ea98e549a3d73114c7eb37e8355fddc"; \
+    else \
+      URL="https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/2.1.42/linux-x64-musl/claude"; \
+      CHECKSUM="f92ed4b7999a0d564233260b1102c6ceedfd5174a40aea03ce1c9037fbbb0498"; \
+    fi; \
+    wget -O /usr/local/bin/claude "$URL" && \
+    echo "$CHECKSUM  /usr/local/bin/claude" | sha256sum -c - && \
+    chmod +x /usr/local/bin/claude
+
 # Install agent runner deps
 WORKDIR /app
 COPY agent-runner/package.json agent-runner/package-lock.json* ./

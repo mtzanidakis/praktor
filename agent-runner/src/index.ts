@@ -96,7 +96,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
       options: {
         model: CLAUDE_MODEL,
         cwd,
-        pathToClaudeCodeExecutable: "/app/node_modules/.bin/claude",
+        pathToClaudeCodeExecutable: "/usr/local/bin/claude",
         systemPrompt: systemPrompt || undefined,
         allowedTools: [
           "Bash",
