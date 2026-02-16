@@ -58,20 +58,6 @@ func (s *Store) DB() *sql.DB {
 }
 
 func (s *Store) migrate() error {
-	// Drop old tables from previous schema (groups-based)
-	drops := []string{
-		`DROP TABLE IF EXISTS swarm_runs`,
-		`DROP TABLE IF EXISTS agent_sessions`,
-		`DROP TABLE IF EXISTS scheduled_tasks`,
-		`DROP TABLE IF EXISTS messages`,
-		`DROP TABLE IF EXISTS groups`,
-	}
-	for _, d := range drops {
-		if _, err := s.db.Exec(d); err != nil {
-			return fmt.Errorf("exec drop: %w", err)
-		}
-	}
-
 	migrations := []string{
 		`CREATE TABLE IF NOT EXISTS agents (
 			id          TEXT PRIMARY KEY,
