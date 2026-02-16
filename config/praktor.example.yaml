@@ -8,7 +8,6 @@ defaults:
   model: "claude-sonnet-4-5-20250929"  # Default Claude model for agents
   max_running: 5
   idle_timeout: 10m
-  base_path: "data/agents"
   anthropic_api_key: "${ANTHROPIC_API_KEY}"
   oauth_token: "${CLAUDE_CODE_OAUTH_TOKEN}"
 
@@ -32,9 +31,6 @@ router:
 
 nats:
   port: 4222
-
-store:
-  path: "data/praktor.db"
 
 web:
   enabled: true

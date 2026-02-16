@@ -19,8 +19,8 @@ func TestDefaults(t *testing.T) {
 	if cfg.Defaults.IdleTimeout != 10*time.Minute {
 		t.Errorf("expected idle_timeout 10m, got %v", cfg.Defaults.IdleTimeout)
 	}
-	if cfg.Defaults.BasePath != "data/agents" {
-		t.Errorf("expected base_path data/agents, got %s", cfg.Defaults.BasePath)
+	if AgentsBasePath != "data/agents" {
+		t.Errorf("expected AgentsBasePath data/agents, got %s", AgentsBasePath)
 	}
 	if cfg.NATS.Port != 4222 {
 		t.Errorf("expected nats port 4222, got %d", cfg.NATS.Port)
@@ -31,8 +31,8 @@ func TestDefaults(t *testing.T) {
 	if !cfg.Web.Enabled {
 		t.Error("expected web enabled by default")
 	}
-	if cfg.Store.Path != "data/praktor.db" {
-		t.Errorf("expected store path data/praktor.db, got %s", cfg.Store.Path)
+	if StorePath != "data/praktor.db" {
+		t.Errorf("expected StorePath data/praktor.db, got %s", StorePath)
 	}
 }
 
@@ -74,7 +74,6 @@ telegram:
 defaults:
   image: "custom-agent:v1"
   max_running: 10
-  base_path: "/custom/agents"
 web:
   port: 3000
   enabled: false
@@ -103,9 +102,6 @@ web:
 	}
 	if cfg.Defaults.MaxRunning != 10 {
 		t.Errorf("expected max_running 10, got %d", cfg.Defaults.MaxRunning)
-	}
-	if cfg.Defaults.BasePath != "/custom/agents" {
-		t.Errorf("expected base_path /custom/agents, got %s", cfg.Defaults.BasePath)
 	}
 	if cfg.Web.Port != 3000 {
 		t.Errorf("expected web port 3000, got %d", cfg.Web.Port)

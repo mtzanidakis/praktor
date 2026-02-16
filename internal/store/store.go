@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/mtzanidakis/praktor/internal/config"
 	_ "modernc.org/sqlite"
 )
 
@@ -14,13 +13,13 @@ type Store struct {
 	db *sql.DB
 }
 
-func New(cfg config.StoreConfig) (*Store, error) {
-	dir := filepath.Dir(cfg.Path)
+func New(path string) (*Store, error) {
+	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
 
-	db, err := sql.Open("sqlite", cfg.Path)
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}

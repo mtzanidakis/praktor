@@ -13,7 +13,7 @@ import (
 func newTestRouter(t *testing.T) *Router {
 	t.Helper()
 	dir := t.TempDir()
-	s, err := store.New(config.StoreConfig{Path: filepath.Join(dir, "test.db")})
+	s, err := store.New(filepath.Join(dir, "test.db"))
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
