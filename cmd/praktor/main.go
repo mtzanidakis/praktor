@@ -91,6 +91,9 @@ func runGateway() error {
 	// Agent orchestrator
 	orch := agent.NewOrchestrator(bus, ctrMgr, db, grpMgr, cfg.Agent)
 
+	// Idle reaper
+	go orch.StartIdleReaper(ctx)
+
 	// Swarm coordinator
 	swarmCoord := swarm.NewCoordinator(bus, ctrMgr, db)
 

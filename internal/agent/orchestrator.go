@@ -25,6 +25,7 @@ type Orchestrator struct {
 	store      *store.Store
 	groups     *groups.Manager
 	cfg        config.AgentConfig
+	sessions   *SessionTracker
 	queues     map[string]*GroupQueue
 	mu         sync.RWMutex
 	listeners  []OutputListener
@@ -45,6 +46,7 @@ func NewOrchestrator(bus *natsbus.Bus, ctr *container.Manager, s *store.Store, g
 		store:      s,
 		groups:     grp,
 		cfg:        cfg,
+		sessions:   NewSessionTracker(),
 		queues:     make(map[string]*GroupQueue),
 	}
 
@@ -190,6 +192,16 @@ func (o *Orchestrator) executeMessage(ctx context.Context, groupID string, msg Q
 				}
 			}
 		}
+
+		now := time.Now()
+		o.sessions.Set(groupID, &Session{
+			ID:          info.ID,
+			GroupID:     groupID,
+			ContainerID: info.ID,
+			Status:      "running",
+			StartedAt:   now,
+			LastActive:  now,
+		})
 	}
 
 	// Send message to container via NATS
@@ -207,6 +219,7 @@ func (o *Orchestrator) executeMessage(ctx context.Context, groupID string, msg Q
 	if err := o.client.Publish(topic, data); err != nil {
 		return fmt.Errorf("publish message: %w", err)
 	}
+	o.sessions.Touch(groupID)
 	return o.client.Flush()
 }
 
@@ -229,6 +242,8 @@ func (o *Orchestrator) handleAgentOutput(msg *nats.Msg) {
 	if err := json.Unmarshal(msg.Data, &output); err != nil {
 		return
 	}
+
+	o.sessions.Touch(groupID)
 
 	if output.Type == "result" {
 		// Only forward the final result to Telegram; "text" events are
@@ -411,7 +426,54 @@ func (o *Orchestrator) publishMessageEvent(msg *store.Message) {
 }
 
 func (o *Orchestrator) StopAgent(ctx context.Context, groupID string) error {
+	o.sessions.Remove(groupID)
 	return o.containers.StopAgent(ctx, groupID)
+}
+
+func (o *Orchestrator) StartIdleReaper(ctx context.Context) {
+	if o.cfg.IdleTimeout == 0 {
+		return
+	}
+
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			idle := o.sessions.ListIdle(o.cfg.IdleTimeout)
+			for _, groupID := range idle {
+				slog.Info("stopping idle agent", "group", groupID, "timeout", o.cfg.IdleTimeout)
+				if err := o.StopAgent(ctx, groupID); err != nil {
+					slog.Error("failed to stop idle agent", "group", groupID, "error", err)
+					continue
+				}
+				o.publishIdleStopEvent(groupID)
+			}
+		}
+	}
+}
+
+func (o *Orchestrator) publishIdleStopEvent(groupID string) {
+	if o.client == nil {
+		return
+	}
+
+	event := map[string]any{
+		"type":      "agent_stopped",
+		"group_id":  groupID,
+		"reason":    "idle_timeout",
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		return
+	}
+
+	_ = o.client.Publish(natsbus.TopicEventsAgent(groupID), data)
 }
 
 func (o *Orchestrator) ListRunning(ctx context.Context) ([]container.ContainerInfo, error) {

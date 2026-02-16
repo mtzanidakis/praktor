@@ -63,7 +63,7 @@ func defaults() Config {
 			Image:         "praktor-agent:latest",
 			Model:         "claude-opus-4-6",
 			MaxContainers: 5,
-			IdleTimeout:   30 * time.Minute,
+			IdleTimeout:   10 * time.Minute,
 		},
 		NATS: NATSConfig{
 			Port:    4222,
