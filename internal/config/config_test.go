@@ -22,8 +22,8 @@ func TestDefaults(t *testing.T) {
 	if AgentsBasePath != "data/agents" {
 		t.Errorf("expected AgentsBasePath data/agents, got %s", AgentsBasePath)
 	}
-	if cfg.NATS.Port != 4222 {
-		t.Errorf("expected nats port 4222, got %d", cfg.NATS.Port)
+	if NATSPort != 4222 {
+		t.Errorf("expected nats port 4222, got %d", NATSPort)
 	}
 	if cfg.Web.Port != 8080 {
 		t.Errorf("expected web port 8080, got %d", cfg.Web.Port)

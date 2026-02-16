@@ -10,8 +10,7 @@ import (
 
 func TestBusStartStop(t *testing.T) {
 	dir := t.TempDir()
-	bus, err := New(config.NATSConfig{
-		Port:    0, // Random port
+	bus, err := NewForTest(config.NATSConfig{
 		DataDir: dir,
 	})
 	if err != nil {
@@ -27,8 +26,7 @@ func TestBusStartStop(t *testing.T) {
 
 func TestPubSub(t *testing.T) {
 	dir := t.TempDir()
-	bus, err := New(config.NATSConfig{
-		Port:    0,
+	bus, err := NewForTest(config.NATSConfig{
 		DataDir: dir,
 	})
 	if err != nil {
@@ -67,8 +65,7 @@ func TestPubSub(t *testing.T) {
 
 func TestPublishJSON(t *testing.T) {
 	dir := t.TempDir()
-	bus, err := New(config.NATSConfig{
-		Port:    0,
+	bus, err := NewForTest(config.NATSConfig{
 		DataDir: dir,
 	})
 	if err != nil {

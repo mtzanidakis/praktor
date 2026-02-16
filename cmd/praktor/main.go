@@ -72,7 +72,7 @@ func runGateway() error {
 		return fmt.Errorf("init nats: %w", err)
 	}
 	defer bus.Close()
-	slog.Info("nats started", "port", cfg.NATS.Port)
+	slog.Info("nats started", "port", config.NATSPort)
 
 	// Agent registry (replaces groups manager)
 	reg := registry.New(db, cfg.Agents, cfg.Defaults, config.AgentsBasePath)
