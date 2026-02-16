@@ -20,6 +20,7 @@ Praktor is a single Go binary that orchestrates the full loop: it receives messa
 - **Per-agent isolation** - Each agent runs in its own Docker container with its own filesystem and memory (Docker named volumes)
 - **Scheduled tasks** - Cron, interval, or one-shot jobs that run agents and deliver results via Telegram
 - **Agent swarms** - Spin up teams of specialized agents that collaborate on complex tasks
+- **Agent identity** - Each agent has an `AGENT.md` file with personality, vibe, and expertise — editable from Mission Control or by agents themselves
 - **User profile** - Agents know who you are via `USER.md` — editable from the web UI or by agents themselves
 - **Mission Control** - Real-time web dashboard with WebSocket updates
 - **Web & browser access** - Agents can search the web and control Chromium

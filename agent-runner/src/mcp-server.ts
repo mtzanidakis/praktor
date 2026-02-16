@@ -108,7 +108,7 @@ server.tool(
 
 server.tool(
   "user_profile_read",
-  "Read the user's profile (USER.md) containing their name, preferences, and other personal information.",
+  "Read the HUMAN user's profile (USER.md) containing their name, preferences, and personal information. This is NOT your agent identity — your identity is in /workspace/agent/AGENT.md which you can read/edit directly.",
   {},
   async () => {
     const resp = await sendIPC("read_user_md", {});
@@ -123,7 +123,7 @@ server.tool(
 
 server.tool(
   "user_profile_update",
-  "Update the user's profile (USER.md). Provide the full markdown content to replace the existing profile.",
+  "Update the HUMAN user's profile (USER.md). Provide the full markdown content to replace the existing profile. Only use this when the user asks to change THEIR profile. Do NOT use this for your agent identity — edit /workspace/agent/AGENT.md directly instead.",
   {
     content: z.string().describe("Full markdown content for USER.md"),
   },

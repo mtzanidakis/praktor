@@ -35,6 +35,9 @@ function Agents() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selected, setSelected] = useState<Agent | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [agentMd, setAgentMd] = useState('');
+  const [agentMdSaved, setAgentMdSaved] = useState(false);
+  const [agentMdLoading, setAgentMdLoading] = useState(false);
 
   useEffect(() => {
     fetch('/api/agents/definitions')
@@ -45,6 +48,28 @@ function Agents() {
       .then((data) => setAgents(Array.isArray(data) ? data : []))
       .catch((err) => setError(err.message));
   }, []);
+
+  useEffect(() => {
+    if (!selected) return;
+    setAgentMdLoading(true);
+    fetch(`/api/agents/definitions/${selected.id}/agent-md`)
+      .then((res) => res.json())
+      .then((data) => setAgentMd(data.content || ''))
+      .catch(() => setAgentMd(''))
+      .finally(() => setAgentMdLoading(false));
+  }, [selected?.id]);
+
+  const saveAgentMd = () => {
+    if (!selected) return;
+    fetch(`/api/agents/definitions/${selected.id}/agent-md`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: agentMd }),
+    }).then(() => {
+      setAgentMdSaved(true);
+      setTimeout(() => setAgentMdSaved(false), 2000);
+    });
+  };
 
   return (
     <div>
@@ -137,6 +162,55 @@ function Agents() {
                   <span style={{ color: 'var(--text-tertiary)' }}>Last Active: </span>
                   <span style={{ color: 'var(--text-primary)' }}>{selected.last_active}</span>
                 </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: 20 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: 'var(--text-primary)' }}>
+                Agent Identity (AGENT.md)
+              </h3>
+              {agentMdLoading ? (
+                <div style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>Loading...</div>
+              ) : (
+                <>
+                  <textarea
+                    value={agentMd}
+                    onChange={(e) => setAgentMd(e.target.value)}
+                    style={{
+                      width: '100%',
+                      minHeight: 180,
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                      background: 'var(--bg-main)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 6,
+                      padding: 12,
+                      resize: 'vertical',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                    <button
+                      onClick={saveAgentMd}
+                      style={{
+                        padding: '6px 18px',
+                        background: 'var(--accent)',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        fontSize: 13,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Save
+                    </button>
+                    {agentMdSaved && (
+                      <span style={{ color: 'var(--green)', fontSize: 13 }}>Saved</span>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </div>

@@ -1,10 +1,14 @@
 package container
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -287,4 +291,82 @@ func (m *Manager) CleanupStale(ctx context.Context) error {
 
 func (m *Manager) BuildImage(ctx context.Context) error {
 	return BuildAgentImage(ctx, m.docker, m.cfg.Image)
+}
+
+// ReadVolumeFile reads a file from a Docker named volume by creating a
+// temporary container, copying the file out, and removing the container.
+func (m *Manager) ReadVolumeFile(ctx context.Context, workspace, filePath, image string) (string, error) {
+	volName := fmt.Sprintf("praktor-wk-%s", sanitizeVolumeName(workspace))
+	containerName := fmt.Sprintf("praktor-vol-tmp-%s-%d", sanitizeVolumeName(workspace), time.Now().UnixNano())
+
+	resp, err := m.docker.ContainerCreate(ctx,
+		&dockercontainer.Config{Image: image, Entrypoint: []string{"true"}},
+		&dockercontainer.HostConfig{Binds: []string{volName + ":/vol"}},
+		nil, nil, containerName,
+	)
+	if err != nil {
+		return "", fmt.Errorf("create temp container: %w", err)
+	}
+	defer func() {
+		_ = m.docker.ContainerRemove(ctx, resp.ID, dockercontainer.RemoveOptions{Force: true})
+	}()
+
+	srcPath := path.Join("/vol", filePath)
+	reader, _, err := m.docker.CopyFromContainer(ctx, resp.ID, srcPath)
+	if err != nil {
+		return "", fmt.Errorf("copy from volume: %w", err)
+	}
+	defer reader.Close()
+
+	tr := tar.NewReader(reader)
+	if _, err := tr.Next(); err != nil {
+		return "", fmt.Errorf("read tar: %w", err)
+	}
+	data, err := io.ReadAll(tr)
+	if err != nil {
+		return "", fmt.Errorf("read file: %w", err)
+	}
+	return string(data), nil
+}
+
+// WriteVolumeFile writes a file into a Docker named volume by creating a
+// temporary container, copying the file in, and removing the container.
+func (m *Manager) WriteVolumeFile(ctx context.Context, workspace, filePath, content, image string) error {
+	volName := fmt.Sprintf("praktor-wk-%s", sanitizeVolumeName(workspace))
+	containerName := fmt.Sprintf("praktor-vol-tmp-%s-%d", sanitizeVolumeName(workspace), time.Now().UnixNano())
+
+	resp, err := m.docker.ContainerCreate(ctx,
+		&dockercontainer.Config{Image: image, Entrypoint: []string{"true"}},
+		&dockercontainer.HostConfig{Binds: []string{volName + ":/vol"}},
+		nil, nil, containerName,
+	)
+	if err != nil {
+		return fmt.Errorf("create temp container: %w", err)
+	}
+	defer func() {
+		_ = m.docker.ContainerRemove(ctx, resp.ID, dockercontainer.RemoveOptions{Force: true})
+	}()
+
+	// Build tar archive with the file
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	if err := tw.WriteHeader(&tar.Header{
+		Name: path.Base(filePath),
+		Mode: 0o644,
+		Size: int64(len(content)),
+	}); err != nil {
+		return fmt.Errorf("write tar header: %w", err)
+	}
+	if _, err := tw.Write([]byte(content)); err != nil {
+		return fmt.Errorf("write tar body: %w", err)
+	}
+	if err := tw.Close(); err != nil {
+		return fmt.Errorf("close tar: %w", err)
+	}
+
+	dstDir := path.Join("/vol", path.Dir(filePath))
+	if err := m.docker.CopyToContainer(ctx, resp.ID, dstDir, &buf, dockercontainer.CopyToContainerOptions{}); err != nil {
+		return fmt.Errorf("copy to volume: %w", err)
+	}
+	return nil
 }

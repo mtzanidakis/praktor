@@ -160,6 +160,59 @@ func TestUserMDReadWrite(t *testing.T) {
 	}
 }
 
+func TestAgentMDTemplate(t *testing.T) {
+	reg, _ := newTestRegistry(t)
+
+	if err := reg.Sync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	content, err := reg.GetAgentMD("general")
+	if err != nil {
+		t.Fatalf("get agent md: %v", err)
+	}
+	if content == "" {
+		t.Fatal("expected AGENT.md to be created with template")
+	}
+	if !strings.Contains(content, "# Agent Identity") {
+		t.Error("expected template to contain '# Agent Identity'")
+	}
+}
+
+func TestAgentMDReadWrite(t *testing.T) {
+	reg, _ := newTestRegistry(t)
+
+	if err := reg.Sync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	custom := "# Agent Identity\n\n## Name\nCoder Bot\n"
+	if err := reg.SaveAgentMD("coder", custom); err != nil {
+		t.Fatalf("save agent md: %v", err)
+	}
+
+	content, err := reg.GetAgentMD("coder")
+	if err != nil {
+		t.Fatalf("get agent md: %v", err)
+	}
+	if content != custom {
+		t.Errorf("expected %q, got %q", custom, content)
+	}
+}
+
+func TestAgentMDNotExist(t *testing.T) {
+	reg, _ := newTestRegistry(t)
+
+	// Before sync, AGENT.md doesn't exist
+	content, err := reg.GetAgentMD("general")
+	if err != nil {
+		t.Fatalf("get agent md: %v", err)
+	}
+	if content != "" {
+		t.Errorf("expected empty content before sync, got %q", content)
+	}
+}
+
 func TestUserMDNotExist(t *testing.T) {
 	reg, _ := newTestRegistry(t)
 

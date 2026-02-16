@@ -1,6 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { NatsBridge } from "./nats-bridge.js";
-import { readFileSync, mkdirSync, writeFileSync, rmSync } from "fs";
+import { readFileSync, mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
 
 // Patch console to prepend timestamps matching gateway format (YYYY/MM/DD HH:MM:SS)
 const origLog = console.log;
@@ -47,7 +47,31 @@ function installGlobalInstructions(): void {
   }
 }
 
-function loadSystemPrompt(): string {
+const agentMdTemplate = `# Agent Identity
+
+## Name
+(Agent display name)
+
+## Vibe
+(Personality, communication style)
+
+## Expertise
+(Areas of specialization)
+`;
+
+function ensureAgentMd(): void {
+  const path = "/workspace/agent/AGENT.md";
+  if (!existsSync(path)) {
+    try {
+      writeFileSync(path, agentMdTemplate);
+      console.log("[agent] created AGENT.md template");
+    } catch (err) {
+      console.warn("[agent] could not create AGENT.md:", err);
+    }
+  }
+}
+
+function loadSystemPrompt(includeIdentity = true): string {
   const parts: string[] = [];
 
   // User profile (loaded before global instructions so agents know the user)
@@ -56,6 +80,21 @@ function loadSystemPrompt(): string {
     parts.push(user);
   } catch {
     // User profile not available
+  }
+
+  // Agent identity (excluded for routing queries to avoid personality bleed)
+  if (includeIdentity) {
+    try {
+      const agent = readFileSync("/workspace/agent/AGENT.md", "utf-8");
+      parts.push(
+        "The following is your agent identity. " +
+        "This is stored at /workspace/agent/AGENT.md and you can update it " +
+        "anytime using the Edit or Write tool (e.g. to set your name, vibe, or expertise).\n\n" +
+        agent
+      );
+    } catch {
+      // Agent identity not available
+    }
   }
 
   // Include global instructions in system prompt as well (belt and suspenders)
@@ -182,10 +221,18 @@ async function handleRoute(
     return;
   }
 
+  // If already processing a regular message, skip the routing query to avoid
+  // concurrent Claude Code processes interfering via shared session state.
+  if (isProcessing) {
+    console.log("[agent] busy processing, returning default agent for routing");
+    msg.respond(new TextEncoder().encode(JSON.stringify({ agent: AGENT_ID })));
+    return;
+  }
+
   console.log(`[agent] routing query: ${text.substring(0, 100)}...`);
 
   try {
-    const systemPrompt = loadSystemPrompt();
+    const systemPrompt = loadSystemPrompt(false);
     const cwd = "/workspace/agent";
 
     // Build agent descriptions from environment if available
@@ -246,6 +293,7 @@ async function main(): Promise<void> {
   console.log(`[agent] NATS URL: ${NATS_URL}`);
 
   installGlobalInstructions();
+  ensureAgentMd();
 
   // Clean up Claude Code internal files that accumulate over time
   for (const dir of ["/home/praktor/.claude/debug", "/home/praktor/.claude/todos"]) {

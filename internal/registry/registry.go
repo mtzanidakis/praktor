@@ -156,7 +156,39 @@ func (r *Registry) ensureDirectories(workspace string) error {
 			return fmt.Errorf("create CLAUDE.md: %w", err)
 		}
 	}
+
+	agentMD := filepath.Join(dir, "AGENT.md")
+	if _, err := os.Stat(agentMD); os.IsNotExist(err) {
+		if err := os.WriteFile(agentMD, []byte(agentMDTemplate), 0o644); err != nil {
+			return fmt.Errorf("create AGENT.md: %w", err)
+		}
+	}
 	return nil
+}
+
+func (r *Registry) GetAgentMD(agentID string) (string, error) {
+	workspace := agentID
+	if def, ok := r.agents[agentID]; ok && def.Workspace != "" {
+		workspace = def.Workspace
+	}
+	path := filepath.Join(r.basePath, workspace, "AGENT.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return string(data), nil
+}
+
+func (r *Registry) SaveAgentMD(agentID, content string) error {
+	workspace := agentID
+	if def, ok := r.agents[agentID]; ok && def.Workspace != "" {
+		workspace = def.Workspace
+	}
+	path := filepath.Join(r.basePath, workspace, "AGENT.md")
+	return os.WriteFile(path, []byte(content), 0o644)
 }
 
 func (r *Registry) GetUserMD() (string, error) {
@@ -175,6 +207,18 @@ func (r *Registry) SaveUserMD(content string) error {
 	path := filepath.Join(r.basePath, "global", "USER.md")
 	return os.WriteFile(path, []byte(content), 0o644)
 }
+
+const agentMDTemplate = `# Agent Identity
+
+## Name
+(Agent display name)
+
+## Vibe
+(Personality, communication style)
+
+## Expertise
+(Areas of specialization)
+`
 
 const userMDTemplate = `# User Profile
 

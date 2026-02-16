@@ -13,11 +13,25 @@ import (
 	"github.com/mtzanidakis/praktor/internal/swarm"
 )
 
+const agentMDTemplate = `# Agent Identity
+
+## Name
+(Agent display name)
+
+## Vibe
+(Personality, communication style)
+
+## Expertise
+(Areas of specialization)
+`
+
 func (s *Server) registerAPI(mux *http.ServeMux) {
 	// Agents (definitions from config, persisted in DB)
 	mux.HandleFunc("GET /api/agents/definitions", s.listAgentDefinitions)
 	mux.HandleFunc("GET /api/agents/definitions/{id}", s.getAgentDefinition)
 	mux.HandleFunc("GET /api/agents/definitions/{id}/messages", s.getAgentMessages)
+	mux.HandleFunc("GET /api/agents/definitions/{id}/agent-md", s.getAgentMD)
+	mux.HandleFunc("PUT /api/agents/definitions/{id}/agent-md", s.updateAgentMD)
 
 	// Running agent containers
 	mux.HandleFunc("GET /api/agents", s.listRunningAgents)
@@ -386,6 +400,60 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, status)
+}
+
+func (s *Server) getAgentMD(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	a, err := s.store.GetAgent(id)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if a == nil {
+		jsonError(w, "agent not found", http.StatusNotFound)
+		return
+	}
+	workspace := a.Workspace
+	if workspace == "" {
+		workspace = id
+	}
+	image := s.registry.ResolveImage(id)
+	content, err := s.orch.ReadVolumeFile(r.Context(), workspace, "AGENT.md", image)
+	if err != nil || content == "" {
+		// Volume or file doesn't exist yet — return template
+		content = agentMDTemplate
+	}
+	jsonResponse(w, map[string]string{"content": content})
+}
+
+func (s *Server) updateAgentMD(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	a, err := s.store.GetAgent(id)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if a == nil {
+		jsonError(w, "agent not found", http.StatusNotFound)
+		return
+	}
+	var body struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	workspace := a.Workspace
+	if workspace == "" {
+		workspace = id
+	}
+	image := s.registry.ResolveImage(id)
+	if err := s.orch.WriteVolumeFile(r.Context(), workspace, "AGENT.md", body.Content, image); err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonResponse(w, map[string]string{"status": "saved"})
 }
 
 func (s *Server) getUserProfile(w http.ResponseWriter, r *http.Request) {

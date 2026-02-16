@@ -610,3 +610,11 @@ func (o *Orchestrator) publishIdleStopEvent(agentID string) {
 func (o *Orchestrator) ListRunning(ctx context.Context) ([]container.ContainerInfo, error) {
 	return o.containers.ListRunning(ctx)
 }
+
+func (o *Orchestrator) ReadVolumeFile(ctx context.Context, workspace, filePath, image string) (string, error) {
+	return o.containers.ReadVolumeFile(ctx, workspace, filePath, image)
+}
+
+func (o *Orchestrator) WriteVolumeFile(ctx context.Context, workspace, filePath, content, image string) error {
+	return o.containers.WriteVolumeFile(ctx, workspace, filePath, content, image)
+}
