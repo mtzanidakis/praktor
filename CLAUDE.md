@@ -75,6 +75,10 @@ Loaded from YAML (default: `config/praktor.yaml`, override with `PRAKTOR_CONFIG`
 | `PRAKTOR_NATS_PORT` | `nats.port` | NATS port (default: 4222) |
 | `PRAKTOR_AGENT_MODEL` | `defaults.model` | Override default Claude model |
 
+Hardcoded paths (not configurable): `data/praktor.db` (SQLite), `data/agents` (agent workspaces).
+
+The `telegram.main_chat_id` setting specifies which Telegram chat receives scheduled task results.
+
 ### Agent Definitions
 
 Agents are defined in the `agents` map in YAML config. Each agent has:

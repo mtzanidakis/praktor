@@ -1,23 +1,24 @@
 # Praktor
 
-Personal AI agent assistant. Message Claude from Telegram, get responses powered by Claude Code running in isolated Docker containers, and monitor everything from a web dashboard.
+Personal AI agent assistant. Define named agents with distinct roles and models, message them from Telegram with smart routing, and monitor everything from a web dashboard.
 
 ```
-Telegram ──> Go Gateway ──> Embedded NATS ──> Agent Containers (Docker)
-                 |                                     |
-             SQLite DB                         Claude Code SDK
+Telegram ──> Go Gateway ──> Router ──> Embedded NATS ──> Agent Containers (Docker)
+                 |                                            |
+             SQLite DB                                Claude Code SDK
                  |
           Web UI (React SPA)
 ```
 
-Praktor is a single Go binary that orchestrates the full loop: it receives messages from a Telegram bot, spins up isolated Docker containers running Claude Code, streams responses back, and serves a Mission Control web UI for monitoring. Each Telegram group gets its own sandboxed container with persistent memory via per-group `CLAUDE.md` files.
+Praktor is a single Go binary that orchestrates the full loop: it receives messages from a Telegram bot, routes them to the right agent, spins up isolated Docker containers running Claude Code, streams responses back, and serves a Mission Control web UI for monitoring. Each agent gets its own sandboxed container with persistent memory via per-agent `CLAUDE.md` files.
 
 ## Features
 
-- **Telegram I/O** - Chat with Claude from your phone
-- **Per-group isolation** - Each group runs in its own Docker container with its own filesystem and memory (Docker named volumes)
-- **Admin channel** - Your private Telegram chat for admin control
-- **Scheduled tasks** - Cron, interval, or one-shot jobs that run Claude and deliver results
+- **Named agents** - Define multiple agents with distinct roles, models, and configurations
+- **Smart routing** - `@agent_name` prefix or AI-powered routing via the default agent
+- **Telegram I/O** - Chat with your agents from your phone
+- **Per-agent isolation** - Each agent runs in its own Docker container with its own filesystem and memory (Docker named volumes)
+- **Scheduled tasks** - Cron, interval, or one-shot jobs that run agents and deliver results via Telegram
 - **Agent swarms** - Spin up teams of specialized agents that collaborate on complex tasks
 - **Mission Control** - Real-time web dashboard with WebSocket updates
 - **Web & browser access** - Agents can search the web and control Chromium
@@ -80,22 +81,32 @@ CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token
 PRAKTOR_WEB_PASSWORD=your-secret-password
 ```
 
-Edit `config/praktor.yaml` to customize settings. Key options:
+Edit `config/praktor.yaml` to configure your agents:
 
 ```yaml
 telegram:
-  allow_from: []          # List of Telegram user IDs allowed to use the bot
-                          # Empty = allow everyone (fine for personal use)
+  allow_from: []            # Telegram user IDs allowed to use the bot (empty = allow all)
+  main_chat_id: 0           # Your chat ID for scheduled task results
 
-agent:
-  max_containers: 5       # Max concurrent agent containers
-  idle_timeout: 30m       # Stop idle containers after this duration
+defaults:
+  max_running: 5            # Max concurrent agent containers
+  idle_timeout: 10m         # Stop idle containers after this duration
 
-groups:
-  main_chat_id: ""        # Your Telegram user ID for admin channel
+agents:
+  general:
+    description: "General-purpose assistant for everyday tasks"
+  coder:
+    description: "Software engineering specialist"
+    model: "claude-opus-4-6"
+    env:
+      GITHUB_TOKEN: "${GITHUB_TOKEN}"
+  researcher:
+    description: "Web research and analysis"
+    allowed_tools: [WebSearch, WebFetch, Read, Write]
+
+router:
+  default_agent: general    # Agent used for routing and as fallback
 ```
-
-To set your admin channel, put your Telegram user ID in `main_chat_id`.
 
 ### 4. Build and Run
 
@@ -113,7 +124,7 @@ The web dashboard is available at `http://localhost:8080`.
 
 Data is stored in Docker named volumes (`praktor-data`, `praktor-global`) — no host directory bind mounts needed. Both gateway and agent containers run as non-root user `praktor` (uid 10321).
 
-Open Telegram and send a message to your bot. Praktor will spin up an agent container and respond.
+Open Telegram and send a message to your bot. Praktor will route it to the right agent, spin up a container, and respond. Use `@coder fix the bug` to explicitly target an agent.
 
 ### 5. Verify
 
