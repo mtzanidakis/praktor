@@ -50,3 +50,17 @@ func (t *SessionTracker) Touch(groupID string) {
 		s.LastActive = time.Now()
 	}
 }
+
+func (t *SessionTracker) ListIdle(timeout time.Duration) []string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	var idle []string
+	now := time.Now()
+	for groupID, s := range t.sessions {
+		if now.Sub(s.LastActive) > timeout {
+			idle = append(idle, groupID)
+		}
+	}
+	return idle
+}

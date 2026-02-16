@@ -16,8 +16,8 @@ func TestDefaults(t *testing.T) {
 	if cfg.Agent.MaxContainers != 5 {
 		t.Errorf("expected max_containers 5, got %d", cfg.Agent.MaxContainers)
 	}
-	if cfg.Agent.IdleTimeout != 30*time.Minute {
-		t.Errorf("expected idle_timeout 30m, got %v", cfg.Agent.IdleTimeout)
+	if cfg.Agent.IdleTimeout != 10*time.Minute {
+		t.Errorf("expected idle_timeout 10m, got %v", cfg.Agent.IdleTimeout)
 	}
 	if cfg.NATS.Port != 4222 {
 		t.Errorf("expected nats port 4222, got %d", cfg.NATS.Port)
