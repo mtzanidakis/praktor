@@ -263,7 +263,7 @@ func (o *Orchestrator) RouteQuery(ctx context.Context, agentID string, message s
 			opts.Secrets = def.Secrets
 		}
 
-		_, err = o.containers.StartAgent(ctx, opts)
+		info, err = o.containers.StartAgent(ctx, opts)
 		if err != nil {
 			return "", fmt.Errorf("start agent for routing: %w", err)
 		}
@@ -286,7 +286,19 @@ func (o *Orchestrator) RouteQuery(ctx context.Context, agentID string, message s
 				}
 			}
 		}
+
+		now := time.Now()
+		o.sessions.Set(agentID, &Session{
+			ID:          info.ID,
+			AgentID:     agentID,
+			ContainerID: info.ID,
+			Status:      "running",
+			StartedAt:   now,
+			LastActive:  now,
+		})
 	}
+
+	o.sessions.Touch(agentID)
 
 	// Send routing query via NATS request-reply
 	topic := natsbus.TopicAgentRoute(agentID)
