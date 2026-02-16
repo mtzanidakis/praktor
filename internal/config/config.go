@@ -15,7 +15,6 @@ type Config struct {
 	Agents    map[string]AgentDefinition    `yaml:"agents"`
 	Router    RouterConfig                  `yaml:"router"`
 	NATS      NATSConfig                    `yaml:"nats"`
-	Store     StoreConfig                   `yaml:"store"`
 	Web       WebConfig                     `yaml:"web"`
 	Scheduler SchedulerConfig               `yaml:"scheduler"`
 }
@@ -33,8 +32,12 @@ type DefaultsConfig struct {
 	IdleTimeout     time.Duration `yaml:"idle_timeout"`
 	AnthropicAPIKey string        `yaml:"anthropic_api_key"`
 	OAuthToken      string        `yaml:"oauth_token"`
-	BasePath        string        `yaml:"base_path"`
 }
+
+const (
+	AgentsBasePath = "data/agents"
+	StorePath      = "data/praktor.db"
+)
 
 type AgentDefinition struct {
 	Description  string            `yaml:"description"`
@@ -56,9 +59,6 @@ type NATSConfig struct {
 	DataDir string `yaml:"data_dir"`
 }
 
-type StoreConfig struct {
-	Path string `yaml:"path"`
-}
 
 type WebConfig struct {
 	Enabled bool   `yaml:"enabled"`
@@ -75,16 +75,12 @@ func defaults() Config {
 		Defaults: DefaultsConfig{
 			Image:         "praktor-agent:latest",
 			Model:         "claude-opus-4-6",
-			MaxRunning: 5,
-			IdleTimeout:   10 * time.Minute,
-			BasePath:      "data/agents",
+			MaxRunning:  5,
+			IdleTimeout: 10 * time.Minute,
 		},
 		NATS: NATSConfig{
 			Port:    4222,
 			DataDir: "data/nats",
-		},
-		Store: StoreConfig{
-			Path: "data/praktor.db",
 		},
 		Web: WebConfig{
 			Enabled: true,
@@ -172,13 +168,7 @@ func applyEnv(cfg *Config) {
 			cfg.NATS.Port = port
 		}
 	}
-	if v := os.Getenv("PRAKTOR_STORE_PATH"); v != "" {
-		cfg.Store.Path = v
-	}
 	if v := os.Getenv("PRAKTOR_AGENT_MODEL"); v != "" {
 		cfg.Defaults.Model = v
-	}
-	if v := os.Getenv("PRAKTOR_AGENTS_BASE"); v != "" {
-		cfg.Defaults.BasePath = v
 	}
 }

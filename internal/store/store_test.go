@@ -5,14 +5,12 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/mtzanidakis/praktor/internal/config"
 )
 
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 	dir := t.TempDir()
-	s, err := New(config.StoreConfig{Path: filepath.Join(dir, "test.db")})
+	s, err := New(filepath.Join(dir, "test.db"))
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

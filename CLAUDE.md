@@ -73,8 +73,7 @@ Loaded from YAML (default: `config/praktor.yaml`, override with `PRAKTOR_CONFIG`
 | `PRAKTOR_WEB_PASSWORD` | `web.auth` | Basic auth password for web UI |
 | `PRAKTOR_WEB_PORT` | `web.port` | Web UI port (default: 8080) |
 | `PRAKTOR_NATS_PORT` | `nats.port` | NATS port (default: 4222) |
-| `PRAKTOR_STORE_PATH` | `store.path` | SQLite DB path (default: `data/praktor.db`) |
-| `PRAKTOR_AGENTS_BASE` | `defaults.base_path` | Agents directory (default: `data/agents`) |
+| `PRAKTOR_AGENT_MODEL` | `defaults.model` | Override default Claude model |
 
 ### Agent Definitions
 

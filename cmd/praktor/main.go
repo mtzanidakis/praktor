@@ -59,12 +59,12 @@ func runGateway() error {
 	defer cancel()
 
 	// SQLite store
-	db, err := store.New(cfg.Store)
+	db, err := store.New(config.StorePath)
 	if err != nil {
 		return fmt.Errorf("init store: %w", err)
 	}
 	defer db.Close()
-	slog.Info("store initialized", "path", cfg.Store.Path)
+	slog.Info("store initialized", "path", config.StorePath)
 
 	// Embedded NATS
 	bus, err := natsbus.New(cfg.NATS)
@@ -75,7 +75,7 @@ func runGateway() error {
 	slog.Info("nats started", "port", cfg.NATS.Port)
 
 	// Agent registry (replaces groups manager)
-	reg := registry.New(db, cfg.Agents, cfg.Defaults, cfg.Defaults.BasePath)
+	reg := registry.New(db, cfg.Agents, cfg.Defaults, config.AgentsBasePath)
 	if err := reg.Sync(); err != nil {
 		return fmt.Errorf("sync agent registry: %w", err)
 	}
