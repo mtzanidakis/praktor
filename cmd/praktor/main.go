@@ -100,7 +100,7 @@ func runGateway() error {
 	swarmCoord := swarm.NewCoordinator(bus, ctrMgr, db)
 
 	// Scheduler
-	sched := scheduler.New(db, orch, cfg.Scheduler)
+	sched := scheduler.New(db, orch, cfg.Scheduler, cfg.Telegram.MainChatID)
 	go sched.Start(ctx)
 	slog.Info("scheduler started")
 

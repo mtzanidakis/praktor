@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/mtzanidakis/praktor/internal/agent"
@@ -15,13 +16,15 @@ type Scheduler struct {
 	store        *store.Store
 	orch         *agent.Orchestrator
 	pollInterval time.Duration
+	mainChatID   int64
 }
 
-func New(s *store.Store, orch *agent.Orchestrator, cfg config.SchedulerConfig) *Scheduler {
+func New(s *store.Store, orch *agent.Orchestrator, cfg config.SchedulerConfig, mainChatID int64) *Scheduler {
 	return &Scheduler{
 		store:        s,
 		orch:         orch,
 		pollInterval: cfg.PollInterval,
+		mainChatID:   mainChatID,
 	}
 }
 
@@ -64,6 +67,9 @@ func (s *Scheduler) execute(ctx context.Context, task store.ScheduledTask) {
 	meta := map[string]string{
 		"sender":  "scheduler",
 		"task_id": task.ID,
+	}
+	if s.mainChatID != 0 {
+		meta["chat_id"] = strconv.FormatInt(s.mainChatID, 10)
 	}
 
 	err := s.orch.HandleMessage(ctx, task.AgentID, task.Prompt, meta)

@@ -1,6 +1,7 @@
 telegram:
   token: "${PRAKTOR_TELEGRAM_TOKEN}"
   allow_from: []                    # Empty = allow all; list of Telegram user IDs
+  main_chat_id: 0                   # Chat ID for scheduled task results
 
 defaults:
   image: "praktor-agent:latest"

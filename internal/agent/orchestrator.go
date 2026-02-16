@@ -28,6 +28,7 @@ type Orchestrator struct {
 	cfg        config.DefaultsConfig
 	sessions   *SessionTracker
 	queues     map[string]*AgentQueue
+	lastMeta   map[string]map[string]string // agentID → last message meta
 	mu         sync.RWMutex
 	listeners  []OutputListener
 	listenerMu sync.RWMutex
@@ -49,6 +50,7 @@ func NewOrchestrator(bus *natsbus.Bus, ctr *container.Manager, s *store.Store, r
 		cfg:        cfg,
 		sessions:   NewSessionTracker(),
 		queues:     make(map[string]*AgentQueue),
+		lastMeta:   make(map[string]map[string]string),
 	}
 
 	client, err := natsbus.NewClient(bus)
@@ -224,6 +226,11 @@ func (o *Orchestrator) executeMessage(ctx context.Context, agentID string, msg Q
 		payload[k] = v
 	}
 
+	// Store meta so output handler can route responses back
+	o.mu.Lock()
+	o.lastMeta[agentID] = msg.Meta
+	o.mu.Unlock()
+
 	data, _ := json.Marshal(payload)
 	topic := natsbus.TopicAgentInput(agentID)
 	slog.Info("publishing message to agent", "agent", agentID, "topic", topic)
@@ -344,8 +351,7 @@ func (o *Orchestrator) handleAgentOutput(msg *nats.Msg) {
 func (o *Orchestrator) getLastMeta(agentID string) map[string]string {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
-	// Return empty meta - chat_id is stored via message metadata
-	return nil
+	return o.lastMeta[agentID]
 }
 
 func (o *Orchestrator) handleIPC(msg *nats.Msg) {

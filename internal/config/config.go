@@ -21,8 +21,9 @@ type Config struct {
 }
 
 type TelegramConfig struct {
-	Token     string  `yaml:"token"`
-	AllowFrom []int64 `yaml:"allow_from"`
+	Token      string  `yaml:"token"`
+	AllowFrom  []int64 `yaml:"allow_from"`
+	MainChatID int64   `yaml:"main_chat_id"`
 }
 
 type DefaultsConfig struct {
