@@ -50,6 +50,14 @@ function installGlobalInstructions(): void {
 function loadSystemPrompt(): string {
   const parts: string[] = [];
 
+  // User profile (loaded before global instructions so agents know the user)
+  try {
+    const user = readFileSync("/workspace/global/USER.md", "utf-8");
+    parts.push(user);
+  } catch {
+    // User profile not available
+  }
+
   // Include global instructions in system prompt as well (belt and suspenders)
   try {
     const global = readFileSync("/workspace/global/CLAUDE.md", "utf-8");

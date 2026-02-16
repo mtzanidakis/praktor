@@ -34,6 +34,10 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/swarms", s.createSwarm)
 	mux.HandleFunc("GET /api/swarms/{id}", s.getSwarm)
 
+	// User profile
+	mux.HandleFunc("GET /api/user-profile", s.getUserProfile)
+	mux.HandleFunc("PUT /api/user-profile", s.updateUserProfile)
+
 	// System
 	mux.HandleFunc("GET /api/status", s.getStatus)
 }
@@ -382,6 +386,30 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, status)
+}
+
+func (s *Server) getUserProfile(w http.ResponseWriter, r *http.Request) {
+	content, err := s.registry.GetUserMD()
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonResponse(w, map[string]string{"content": content})
+}
+
+func (s *Server) updateUserProfile(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := s.registry.SaveUserMD(body.Content); err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonResponse(w, map[string]string{"status": "saved"})
 }
 
 func (s *Server) agentNameMap() map[string]string {

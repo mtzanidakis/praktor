@@ -117,6 +117,7 @@ GET/POST       /api/tasks                            # List/create scheduled tas
 PUT/DELETE     /api/tasks/{id}                       # Update/delete task
 GET/POST       /api/swarms                           # List/create swarm runs
 GET            /api/swarms/{id}                      # Swarm status
+GET/PUT        /api/user-profile                      # Read/update USER.md
 GET            /api/status                           # System health
 WS             /api/ws                               # WebSocket for real-time events
 ```

@@ -11,6 +11,7 @@ interface IPCResponse {
   ok?: boolean;
   error?: string;
   id?: string;
+  content?: string;
   tasks?: Array<{
     id: string;
     name: string;
@@ -101,6 +102,38 @@ server.tool(
     }
     return {
       content: [{ type: "text" as const, text: "Task deleted successfully." }],
+    };
+  }
+);
+
+server.tool(
+  "user_profile_read",
+  "Read the user's profile (USER.md) containing their name, preferences, and other personal information.",
+  {},
+  async () => {
+    const resp = await sendIPC("read_user_md", {});
+    if (resp.error) {
+      return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }] };
+    }
+    return {
+      content: [{ type: "text" as const, text: resp.content || "(No user profile set)" }],
+    };
+  }
+);
+
+server.tool(
+  "user_profile_update",
+  "Update the user's profile (USER.md). Provide the full markdown content to replace the existing profile.",
+  {
+    content: z.string().describe("Full markdown content for USER.md"),
+  },
+  async ({ content }) => {
+    const resp = await sendIPC("update_user_md", { content });
+    if (resp.error) {
+      return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }] };
+    }
+    return {
+      content: [{ type: "text" as const, text: "User profile updated successfully." }],
     };
   }
 );

@@ -389,6 +389,10 @@ func (o *Orchestrator) handleIPC(msg *nats.Msg) {
 		o.ipcListTasks(msg, agentID)
 	case "delete_task":
 		o.ipcDeleteTask(msg, cmd.Payload)
+	case "read_user_md":
+		o.ipcReadUserMD(msg)
+	case "update_user_md":
+		o.ipcUpdateUserMD(msg, cmd.Payload)
 	default:
 		slog.Warn("unknown IPC command", "type", cmd.Type)
 		o.respondIPC(msg, map[string]any{"error": "unknown command: " + cmd.Type})
@@ -487,6 +491,31 @@ func (o *Orchestrator) ipcDeleteTask(msg *nats.Msg, payload json.RawMessage) {
 		return
 	}
 	slog.Info("task deleted via IPC", "id", req.ID)
+	o.respondIPC(msg, map[string]any{"ok": true})
+}
+
+func (o *Orchestrator) ipcReadUserMD(msg *nats.Msg) {
+	content, err := o.registry.GetUserMD()
+	if err != nil {
+		o.respondIPC(msg, map[string]any{"error": fmt.Sprintf("read failed: %v", err)})
+		return
+	}
+	o.respondIPC(msg, map[string]any{"ok": true, "content": content})
+}
+
+func (o *Orchestrator) ipcUpdateUserMD(msg *nats.Msg, payload json.RawMessage) {
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil {
+		o.respondIPC(msg, map[string]any{"error": "invalid payload"})
+		return
+	}
+	if err := o.registry.SaveUserMD(req.Content); err != nil {
+		o.respondIPC(msg, map[string]any{"error": fmt.Sprintf("save failed: %v", err)})
+		return
+	}
+	slog.Info("user profile updated via IPC")
 	o.respondIPC(msg, map[string]any{"ok": true})
 }
 

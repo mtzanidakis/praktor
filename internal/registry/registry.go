@@ -159,6 +159,44 @@ func (r *Registry) ensureDirectories(workspace string) error {
 	return nil
 }
 
+func (r *Registry) GetUserMD() (string, error) {
+	path := filepath.Join(r.basePath, "global", "USER.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return string(data), nil
+}
+
+func (r *Registry) SaveUserMD(content string) error {
+	path := filepath.Join(r.basePath, "global", "USER.md")
+	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+const userMDTemplate = `# User Profile
+
+## Name
+(Your full name)
+
+## Preferred Name
+(What you'd like to be called)
+
+## Pronouns
+(e.g. he/him, she/her, they/them)
+
+## Timezone
+(e.g. Europe/Athens)
+
+## Notes
+(Anything else you'd like agents to know about you)
+
+## Interests
+(Topics, hobbies, areas of expertise)
+`
+
 func (r *Registry) ensureGlobalDirectory() error {
 	dir := filepath.Join(r.basePath, "global")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -172,5 +210,13 @@ func (r *Registry) ensureGlobalDirectory() error {
 			return fmt.Errorf("create global CLAUDE.md: %w", err)
 		}
 	}
+
+	userMD := filepath.Join(dir, "USER.md")
+	if _, err := os.Stat(userMD); os.IsNotExist(err) {
+		if err := os.WriteFile(userMD, []byte(userMDTemplate), 0o644); err != nil {
+			return fmt.Errorf("create USER.md: %w", err)
+		}
+	}
+
 	return nil
 }

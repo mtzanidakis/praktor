@@ -5,6 +5,7 @@ import Agents from './pages/Agents';
 import Conversations from './pages/Conversations';
 import Tasks from './pages/Tasks';
 import Swarms from './pages/Swarms';
+import UserProfile from './pages/UserProfile';
 
 // SVG icon components (16x16)
 function IconDashboard() {
@@ -62,6 +63,15 @@ function IconSwarms() {
   );
 }
 
+function IconUser() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="5" r="3" />
+      <path d="M2 14c0-2.8 2.7-5 6-5s6 2.2 6 5" />
+    </svg>
+  );
+}
+
 function IconSun() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -88,6 +98,7 @@ function IconMoon() {
 
 const navItems = [
   { to: '/', label: 'Dashboard', Icon: IconDashboard },
+  { to: '/user', label: 'User', Icon: IconUser },
   { to: '/agents', label: 'Agents', Icon: IconAgents },
   { to: '/conversations', label: 'Conversations', Icon: IconConversations },
   { to: '/tasks', label: 'Tasks', Icon: IconTasks },
@@ -216,6 +227,7 @@ function App() {
       }}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/user" element={<UserProfile />} />
           <Route path="/agents" element={<Agents />} />
           <Route path="/conversations" element={<Conversations />} />
           <Route path="/tasks" element={<Tasks />} />

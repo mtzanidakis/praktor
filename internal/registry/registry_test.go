@@ -2,6 +2,7 @@ package registry
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mtzanidakis/praktor/internal/config"
@@ -116,5 +117,58 @@ func TestAgentDescriptions(t *testing.T) {
 	}
 	if descs["general"] != "General assistant" {
 		t.Errorf("unexpected description for general: %q", descs["general"])
+	}
+}
+
+func TestUserMDTemplate(t *testing.T) {
+	reg, _ := newTestRegistry(t)
+
+	if err := reg.Sync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	content, err := reg.GetUserMD()
+	if err != nil {
+		t.Fatalf("get user md: %v", err)
+	}
+	if content == "" {
+		t.Fatal("expected USER.md to be created with template")
+	}
+	if !strings.Contains(content, "# User Profile") {
+		t.Error("expected template to contain '# User Profile'")
+	}
+}
+
+func TestUserMDReadWrite(t *testing.T) {
+	reg, _ := newTestRegistry(t)
+
+	if err := reg.Sync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	custom := "# User Profile\n\n## Name\nAlice\n"
+	if err := reg.SaveUserMD(custom); err != nil {
+		t.Fatalf("save user md: %v", err)
+	}
+
+	content, err := reg.GetUserMD()
+	if err != nil {
+		t.Fatalf("get user md: %v", err)
+	}
+	if content != custom {
+		t.Errorf("expected %q, got %q", custom, content)
+	}
+}
+
+func TestUserMDNotExist(t *testing.T) {
+	reg, _ := newTestRegistry(t)
+
+	// Before sync, USER.md doesn't exist
+	content, err := reg.GetUserMD()
+	if err != nil {
+		t.Fatalf("get user md: %v", err)
+	}
+	if content != "" {
+		t.Errorf("expected empty content before sync, got %q", content)
 	}
 }
