@@ -98,11 +98,11 @@ function IconMoon() {
 
 const navItems = [
   { to: '/', label: 'Dashboard', Icon: IconDashboard },
-  { to: '/user', label: 'User', Icon: IconUser },
   { to: '/agents', label: 'Agents', Icon: IconAgents },
   { to: '/conversations', label: 'Conversations', Icon: IconConversations },
   { to: '/tasks', label: 'Tasks', Icon: IconTasks },
   { to: '/swarms', label: 'Swarms', Icon: IconSwarms },
+  { to: '/user', label: 'User', Icon: IconUser },
 ];
 
 function App() {
