@@ -1,15 +1,85 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Praktor Mission Control</title>
     <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
+      *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+      :root, [data-theme="dark"] {
+        --bg-body: #0b0b0f;
+        --bg-sidebar: #101014;
+        --bg-card: #15151a;
+        --bg-card-hover: #1a1a20;
+        --bg-input: #0e0e13;
+        --bg-elevated: #1c1c22;
+        --border: #1f1f28;
+        --border-subtle: #18181f;
+        --text-primary: #e4e4ea;
+        --text-secondary: #8a8a96;
+        --text-tertiary: #5a5a66;
+        --text-muted: #44444f;
+        --accent: #6366f1;
+        --accent-hover: #5558e6;
+        --accent-muted: rgba(99, 102, 241, 0.12);
+        --green: #22c55e;
+        --green-muted: rgba(34, 197, 94, 0.12);
+        --amber: #eab308;
+        --amber-muted: rgba(234, 179, 8, 0.12);
+        --red: #ef4444;
+        --red-muted: rgba(239, 68, 68, 0.12);
+        --red-light: #f87171;
+        --shadow: 0 1px 3px rgba(0,0,0,0.4);
+        --shadow-lg: 0 4px 12px rgba(0,0,0,0.5);
+        color-scheme: dark;
+      }
+
+      [data-theme="light"] {
+        --bg-body: #f4f4f8;
+        --bg-sidebar: #ffffff;
+        --bg-card: #ffffff;
+        --bg-card-hover: #f8f8fb;
+        --bg-input: #f0f0f4;
+        --bg-elevated: #f6f6fa;
+        --border: #e0e0e8;
+        --border-subtle: #e8e8ef;
+        --text-primary: #18181b;
+        --text-secondary: #6b6b78;
+        --text-tertiary: #9b9ba8;
+        --text-muted: #b0b0bc;
+        --accent: #6366f1;
+        --accent-hover: #5558e6;
+        --accent-muted: rgba(99, 102, 241, 0.08);
+        --green: #16a34a;
+        --green-muted: rgba(22, 163, 74, 0.10);
+        --amber: #ca8a04;
+        --amber-muted: rgba(202, 138, 4, 0.10);
+        --red: #dc2626;
+        --red-muted: rgba(220, 38, 38, 0.08);
+        --red-light: #dc2626;
+        --shadow: 0 1px 3px rgba(0,0,0,0.06);
+        --shadow-lg: 0 4px 12px rgba(0,0,0,0.08);
+        color-scheme: light;
+      }
+
       body {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        background: #0a0a0a;
-        color: #e0e0e0;
+        background: var(--bg-body);
+        color: var(--text-primary);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      /* Scrollbar styling */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+      /* Smooth transitions for theme switching */
+      body, aside, main, div, span, h1, h2, h3, h4, p, a, button, input, textarea, select, form, label {
+        transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
       }
     </style>
   </head>

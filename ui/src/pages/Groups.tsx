@@ -10,21 +10,21 @@ interface Group {
 }
 
 const card: React.CSSProperties = {
-  background: '#141414',
-  border: '1px solid #1e1e1e',
-  borderRadius: 12,
+  background: 'var(--bg-card)',
+  border: '1px solid var(--border)',
+  borderRadius: 10,
   padding: 20,
   cursor: 'pointer',
-  transition: 'border-color 0.15s ease',
+  boxShadow: 'var(--shadow)',
 };
 
-const badge = (color: string): React.CSSProperties => ({
+const badge = (color: string, bg: string): React.CSSProperties => ({
   display: 'inline-block',
   padding: '2px 10px',
   borderRadius: 999,
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 600,
-  background: `${color}22`,
+  background: bg,
   color,
 });
 
@@ -45,10 +45,10 @@ function Groups() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 32 }}>Groups</h1>
+      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 28, color: 'var(--text-primary)' }}>Groups</h1>
 
       {error && (
-        <div style={{ ...card, color: '#f87171', marginBottom: 16, cursor: 'default' }}>
+        <div style={{ ...card, color: 'var(--red-light)', marginBottom: 16, cursor: 'default' }}>
           Failed to load groups: {error}
         </div>
       )}
@@ -59,22 +59,25 @@ function Groups() {
             key={group.id}
             style={{
               ...card,
-              borderColor: selected?.id === group.id ? '#6366f1' : '#1e1e1e',
+              borderColor: selected?.id === group.id ? 'var(--accent)' : 'var(--border)',
             }}
             onClick={() => setSelected(selected?.id === group.id ? null : group)}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ fontSize: 16, fontWeight: 600 }}>{group.name}</span>
+              <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>{group.name}</span>
               {group.agent_status && (
-                <span style={badge(group.agent_status === 'running' ? '#22c55e' : '#888')}>
+                <span style={badge(
+                  group.agent_status === 'running' ? 'var(--green)' : 'var(--text-secondary)',
+                  group.agent_status === 'running' ? 'var(--green-muted)' : 'var(--accent-muted)',
+                )}>
                   {group.agent_status}
                 </span>
               )}
             </div>
             {group.type && (
-              <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Type: {group.type}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 4 }}>Type: {group.type}</div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#555' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-tertiary)' }}>
               <span>{group.message_count ?? 0} messages</span>
               {group.last_active && <span>{group.last_active}</span>}
             </div>
@@ -83,36 +86,36 @@ function Groups() {
       </div>
 
       {groups.length === 0 && !error && (
-        <div style={{ color: '#555', fontSize: 14 }}>No groups found</div>
+        <div style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>No groups found</div>
       )}
 
       {selected && (
-        <div style={{ marginTop: 32 }}>
+        <div style={{ marginTop: 28 }}>
           <div style={{ ...card, cursor: 'default' }}>
-            <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16, color: '#6366f1' }}>
+            <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, color: 'var(--accent)' }}>
               {selected.name}
             </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 13 }}>
               <div>
-                <span style={{ color: '#666' }}>ID: </span>
-                <span style={{ fontFamily: 'monospace', color: '#aaa' }}>{selected.id}</span>
+                <span style={{ color: 'var(--text-tertiary)' }}>ID: </span>
+                <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{selected.id}</span>
               </div>
               <div>
-                <span style={{ color: '#666' }}>Type: </span>
-                <span>{selected.type ?? 'unknown'}</span>
+                <span style={{ color: 'var(--text-tertiary)' }}>Type: </span>
+                <span style={{ color: 'var(--text-primary)' }}>{selected.type ?? 'unknown'}</span>
               </div>
               <div>
-                <span style={{ color: '#666' }}>Agent Status: </span>
-                <span>{selected.agent_status ?? 'unknown'}</span>
+                <span style={{ color: 'var(--text-tertiary)' }}>Agent Status: </span>
+                <span style={{ color: 'var(--text-primary)' }}>{selected.agent_status ?? 'unknown'}</span>
               </div>
               <div>
-                <span style={{ color: '#666' }}>Messages: </span>
-                <span>{selected.message_count ?? 0}</span>
+                <span style={{ color: 'var(--text-tertiary)' }}>Messages: </span>
+                <span style={{ color: 'var(--text-primary)' }}>{selected.message_count ?? 0}</span>
               </div>
               {selected.last_active && (
                 <div>
-                  <span style={{ color: '#666' }}>Last Active: </span>
-                  <span>{selected.last_active}</span>
+                  <span style={{ color: 'var(--text-tertiary)' }}>Last Active: </span>
+                  <span style={{ color: 'var(--text-primary)' }}>{selected.last_active}</span>
                 </div>
               )}
             </div>
