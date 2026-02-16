@@ -165,54 +165,62 @@ function Agents() {
               )}
             </div>
 
-            <div style={{ marginTop: 20 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: 'var(--text-primary)' }}>
-                Agent Identity (AGENT.md)
-              </h3>
-              {agentMdLoading ? (
-                <div style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>Loading...</div>
-              ) : (
-                <>
-                  <textarea
-                    value={agentMd}
-                    onChange={(e) => setAgentMd(e.target.value)}
+          </div>
+
+          <div style={{ ...card, cursor: 'default', marginTop: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div>
+                <h3 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
+                  Agent Identity
+                </h3>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '4px 0 0' }}>
+                  Personal identity and instructions for this agent via AGENT.md
+                </p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                {agentMdSaved && (
+                  <span style={{ color: 'var(--green)', fontSize: 13, fontWeight: 500 }}>Saved</span>
+                )}
+                {!agentMdLoading && (
+                  <button
+                    onClick={saveAgentMd}
                     style={{
-                      width: '100%',
-                      minHeight: 180,
-                      fontFamily: 'monospace',
-                      fontSize: 13,
-                      background: 'var(--bg-main)',
-                      color: 'var(--text-primary)',
-                      border: '1px solid var(--border)',
+                      padding: '6px 18px',
+                      background: 'var(--accent)',
+                      color: '#fff',
+                      border: 'none',
                       borderRadius: 6,
-                      padding: 12,
-                      resize: 'vertical',
-                      boxSizing: 'border-box',
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      fontWeight: 600,
                     }}
-                  />
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
-                    <button
-                      onClick={saveAgentMd}
-                      style={{
-                        padding: '6px 18px',
-                        background: 'var(--accent)',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: 6,
-                        cursor: 'pointer',
-                        fontSize: 13,
-                        fontWeight: 600,
-                      }}
-                    >
-                      Save
-                    </button>
-                    {agentMdSaved && (
-                      <span style={{ color: 'var(--green)', fontSize: 13 }}>Saved</span>
-                    )}
-                  </div>
-                </>
-              )}
+                  >
+                    Save
+                  </button>
+                )}
+              </div>
             </div>
+            {agentMdLoading ? (
+              <div style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>Loading...</div>
+            ) : (
+              <textarea
+                value={agentMd}
+                onChange={(e) => setAgentMd(e.target.value)}
+                style={{
+                  width: '100%',
+                  minHeight: 180,
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  background: 'var(--bg-main)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  padding: 12,
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
+                }}
+              />
+            )}
           </div>
         </div>
       )}
