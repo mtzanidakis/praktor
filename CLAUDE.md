@@ -43,7 +43,6 @@ agent-runner/src/                # TypeScript entrypoint: NATS bridge + Claude C
 ui/                              # React/Vite SPA (dark theme, indigo accent)
   src/pages/                     # Dashboard, Agents, Conversations, Tasks, Swarms
   src/hooks/useWebSocket.ts      # Real-time WebSocket event hook
-agents/global/CLAUDE.md          # Global agent instructions (seeded to praktor-global volume)
 config/praktor.example.yaml      # Example configuration
 ```
 
