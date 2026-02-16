@@ -48,7 +48,7 @@ func (c *Coordinator) RunSwarm(ctx context.Context, req SwarmRequest) (*store.Sw
 
 	run := &store.SwarmRun{
 		ID:      req.ID,
-		GroupID: req.LeadGroup,
+		AgentID: req.LeadAgent,
 		Task:    req.Task,
 		Status:  "running",
 		Agents:  agentsJSON,
@@ -112,7 +112,7 @@ func (c *Coordinator) executeSwarm(ctx context.Context, req SwarmRequest, run *s
 }
 
 func (c *Coordinator) runSwarmAgent(ctx context.Context, swarmID string, agent SwarmAgent) AgentResult {
-	groupID := fmt.Sprintf("swarm-%s-%s", swarmID[:8], agent.Role)
+	agentID := fmt.Sprintf("swarm-%s-%s", swarmID[:8], agent.Role)
 
 	result := AgentResult{
 		Role:   agent.Role,
@@ -120,10 +120,9 @@ func (c *Coordinator) runSwarmAgent(ctx context.Context, swarmID string, agent S
 	}
 
 	_, err := c.containers.StartAgent(ctx, container.AgentOpts{
-		GroupID:     groupID,
-		GroupFolder: agent.GroupFolder,
-		IsMain:      false,
-		NATSUrl:     c.bus.AgentNATSURL(),
+		AgentID:   agentID,
+		Workspace: agent.Workspace,
+		NATSUrl:   c.bus.AgentNATSURL(),
 	})
 	if err != nil {
 		result.Status = "error"
@@ -131,19 +130,19 @@ func (c *Coordinator) runSwarmAgent(ctx context.Context, swarmID string, agent S
 		return result
 	}
 
-	defer c.containers.StopAgent(ctx, groupID)
+	defer c.containers.StopAgent(ctx, agentID)
 
 	// Send task to agent
 	payload := map[string]string{
 		"text":     agent.Prompt,
-		"groupID":  groupID,
+		"agentID":  agentID,
 		"swarm_id": swarmID,
 	}
 	data, _ := json.Marshal(payload)
 
 	// Subscribe for result
 	resultCh := make(chan string, 1)
-	sub, err := c.client.Subscribe(natsbus.TopicAgentOutput(groupID), func(msg *nats.Msg) {
+	sub, err := c.client.Subscribe(natsbus.TopicAgentOutput(agentID), func(msg *nats.Msg) {
 		var output struct {
 			Type    string `json:"type"`
 			Content string `json:"content"`
@@ -160,7 +159,7 @@ func (c *Coordinator) runSwarmAgent(ctx context.Context, swarmID string, agent S
 	defer sub.Unsubscribe()
 
 	// Send prompt
-	if err := c.client.Publish(natsbus.TopicAgentInput(groupID), data); err != nil {
+	if err := c.client.Publish(natsbus.TopicAgentInput(agentID), data); err != nil {
 		result.Status = "error"
 		result.Error = "failed to send prompt"
 		return result

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 
-interface Group {
+interface Agent {
   id: string;
   name: string;
 }
@@ -21,40 +21,40 @@ const card: React.CSSProperties = {
 };
 
 function Conversations() {
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const { events, status: wsStatus } = useWebSocket();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch('/api/groups')
+    fetch('/api/agents/definitions')
       .then((res) => res.json())
       .then((data) => {
-        const g = Array.isArray(data) ? data : [];
-        setGroups(g);
-        if (g.length > 0 && !selectedGroupId) {
-          setSelectedGroupId(g[0].id);
+        const a = Array.isArray(data) ? data : [];
+        setAgents(a);
+        if (a.length > 0 && !selectedAgentId) {
+          setSelectedAgentId(a[0].id);
         }
       })
       .catch(() => {});
-  }, [selectedGroupId]);
+  }, [selectedAgentId]);
 
   useEffect(() => {
-    if (!selectedGroupId) return;
+    if (!selectedAgentId) return;
     setLoadingMessages(true);
-    fetch(`/api/groups/${selectedGroupId}/messages`)
+    fetch(`/api/agents/definitions/${selectedAgentId}/messages`)
       .then((res) => res.json())
       .then((data) => setMessages(Array.isArray(data) ? data : []))
       .catch(() => setMessages([]))
       .finally(() => setLoadingMessages(false));
-  }, [selectedGroupId]);
+  }, [selectedAgentId]);
 
   useEffect(() => {
-    if (!selectedGroupId) return;
+    if (!selectedAgentId) return;
     const relevant = events.filter(
-      (e) => e.group_id === selectedGroupId && e.type === 'message'
+      (e) => e.agent_id === selectedAgentId && e.type === 'message'
     );
     if (relevant.length === 0) return;
     const latest = relevant[relevant.length - 1];
@@ -65,13 +65,13 @@ function Conversations() {
         return [...prev, msg];
       });
     }
-  }, [events, selectedGroupId]);
+  }, [events, selectedAgentId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const selectedGroup = groups.find((g) => g.id === selectedGroupId);
+  const selectedAgent = agents.find((a) => a.id === selectedAgentId);
 
   const wsColor = wsStatus === 'connected' ? 'var(--green)' : wsStatus === 'connecting' ? 'var(--amber)' : 'var(--red)';
 
@@ -92,28 +92,28 @@ function Conversations() {
       </div>
 
       <div style={{ display: 'flex', gap: 16, height: 'calc(100vh - 140px)' }}>
-        {/* Group list */}
+        {/* Agent list */}
         <div style={{ ...card, width: 200, padding: 6, overflowY: 'auto', flexShrink: 0 }}>
-          {groups.map((group) => (
+          {agents.map((agent) => (
             <div
-              key={group.id}
-              onClick={() => setSelectedGroupId(group.id)}
+              key={agent.id}
+              onClick={() => setSelectedAgentId(agent.id)}
               style={{
                 padding: '8px 12px',
                 borderRadius: 7,
                 cursor: 'pointer',
                 fontSize: 14,
-                fontWeight: selectedGroupId === group.id ? 600 : 400,
-                background: selectedGroupId === group.id ? 'var(--accent)' : 'transparent',
-                color: selectedGroupId === group.id ? '#fff' : 'var(--text-secondary)',
+                fontWeight: selectedAgentId === agent.id ? 600 : 400,
+                background: selectedAgentId === agent.id ? 'var(--accent)' : 'transparent',
+                color: selectedAgentId === agent.id ? '#fff' : 'var(--text-secondary)',
                 marginBottom: 1,
               }}
             >
-              {group.name}
+              {agent.name}
             </div>
           ))}
-          {groups.length === 0 && (
-            <div style={{ padding: 12, color: 'var(--text-tertiary)', fontSize: 13 }}>No groups</div>
+          {agents.length === 0 && (
+            <div style={{ padding: 12, color: 'var(--text-tertiary)', fontSize: 13 }}>No agents</div>
           )}
         </div>
 
@@ -126,7 +126,7 @@ function Conversations() {
             fontSize: 15,
             color: 'var(--text-primary)',
           }}>
-            {selectedGroup?.name ?? 'Select a group'}
+            {selectedAgent?.name ?? 'Select an agent'}
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
             {loadingMessages && <div style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Loading...</div>}

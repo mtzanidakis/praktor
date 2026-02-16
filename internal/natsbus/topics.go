@@ -3,22 +3,25 @@ package natsbus
 import "fmt"
 
 // Topic patterns for NATS pub/sub communication.
-// %s placeholders are replaced with group/swarm IDs.
 
-func TopicAgentInput(groupID string) string {
-	return fmt.Sprintf("agent.%s.input", groupID)
+func TopicAgentInput(agentID string) string {
+	return fmt.Sprintf("agent.%s.input", agentID)
 }
 
-func TopicAgentOutput(groupID string) string {
-	return fmt.Sprintf("agent.%s.output", groupID)
+func TopicAgentOutput(agentID string) string {
+	return fmt.Sprintf("agent.%s.output", agentID)
 }
 
-func TopicAgentControl(groupID string) string {
-	return fmt.Sprintf("agent.%s.control", groupID)
+func TopicAgentControl(agentID string) string {
+	return fmt.Sprintf("agent.%s.control", agentID)
 }
 
-func TopicIPC(groupID string) string {
-	return fmt.Sprintf("host.ipc.%s", groupID)
+func TopicAgentRoute(agentID string) string {
+	return fmt.Sprintf("agent.%s.route", agentID)
+}
+
+func TopicIPC(agentID string) string {
+	return fmt.Sprintf("host.ipc.%s", agentID)
 }
 
 func TopicSwarmOrchestrate(swarmID string) string {
@@ -33,8 +36,8 @@ func TopicSwarmResults(swarmID string) string {
 	return fmt.Sprintf("swarm.%s.results", swarmID)
 }
 
-func TopicEventsAgent(groupID string) string {
-	return fmt.Sprintf("events.agent.%s", groupID)
+func TopicEventsAgent(agentID string) string {
+	return fmt.Sprintf("events.agent.%s", agentID)
 }
 
 const (

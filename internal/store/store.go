@@ -58,28 +58,44 @@ func (s *Store) DB() *sql.DB {
 }
 
 func (s *Store) migrate() error {
+	// Drop old tables from previous schema (groups-based)
+	drops := []string{
+		`DROP TABLE IF EXISTS swarm_runs`,
+		`DROP TABLE IF EXISTS agent_sessions`,
+		`DROP TABLE IF EXISTS scheduled_tasks`,
+		`DROP TABLE IF EXISTS messages`,
+		`DROP TABLE IF EXISTS groups`,
+	}
+	for _, d := range drops {
+		if _, err := s.db.Exec(d); err != nil {
+			return fmt.Errorf("exec drop: %w", err)
+		}
+	}
+
 	migrations := []string{
-		`CREATE TABLE IF NOT EXISTS groups (
+		`CREATE TABLE IF NOT EXISTS agents (
 			id          TEXT PRIMARY KEY,
 			name        TEXT NOT NULL,
-			folder      TEXT NOT NULL UNIQUE,
-			is_main     BOOLEAN DEFAULT FALSE,
+			description TEXT,
 			model       TEXT,
+			image       TEXT,
+			workspace   TEXT NOT NULL UNIQUE,
+			claude_md   TEXT,
 			created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS messages (
 			id          INTEGER PRIMARY KEY AUTOINCREMENT,
-			group_id    TEXT NOT NULL REFERENCES groups(id),
+			agent_id    TEXT NOT NULL REFERENCES agents(id),
 			sender      TEXT NOT NULL,
 			content     TEXT NOT NULL,
 			metadata    TEXT,
 			created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_messages_group ON messages(group_id, created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_messages_agent ON messages(agent_id, created_at)`,
 		`CREATE TABLE IF NOT EXISTS scheduled_tasks (
 			id           TEXT PRIMARY KEY,
-			group_id     TEXT NOT NULL REFERENCES groups(id),
+			agent_id     TEXT NOT NULL REFERENCES agents(id),
 			name         TEXT NOT NULL,
 			schedule     TEXT NOT NULL,
 			prompt       TEXT NOT NULL,
@@ -94,7 +110,7 @@ func (s *Store) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_tasks_next_run ON scheduled_tasks(status, next_run_at)`,
 		`CREATE TABLE IF NOT EXISTS agent_sessions (
 			id           TEXT PRIMARY KEY,
-			group_id     TEXT NOT NULL REFERENCES groups(id),
+			agent_id     TEXT NOT NULL REFERENCES agents(id),
 			container_id TEXT,
 			status       TEXT DEFAULT 'active',
 			started_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -102,7 +118,7 @@ func (s *Store) migrate() error {
 		)`,
 		`CREATE TABLE IF NOT EXISTS swarm_runs (
 			id           TEXT PRIMARY KEY,
-			group_id     TEXT NOT NULL REFERENCES groups(id),
+			agent_id     TEXT NOT NULL REFERENCES agents(id),
 			task         TEXT NOT NULL,
 			status       TEXT DEFAULT 'running',
 			agents       TEXT NOT NULL,
@@ -110,14 +126,6 @@ func (s *Store) migrate() error {
 			started_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
 			completed_at DATETIME
 		)`,
-	}
-
-	// Schema additions (idempotent ALTER TABLE)
-	alterations := []string{
-		`ALTER TABLE groups ADD COLUMN model TEXT`,
-	}
-	for _, a := range alterations {
-		_, _ = s.db.Exec(a) // ignore "duplicate column" errors
 	}
 
 	for _, m := range migrations {

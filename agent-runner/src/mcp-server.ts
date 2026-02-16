@@ -5,7 +5,7 @@ import { z } from "zod";
 
 const sc = StringCodec();
 const NATS_URL = process.env.NATS_URL || "nats://localhost:4222";
-const GROUP_ID = process.env.GROUP_ID || "default";
+const AGENT_ID = process.env.AGENT_ID || process.env.GROUP_ID || "default";
 
 interface IPCResponse {
   ok?: boolean;
@@ -25,7 +25,7 @@ async function sendIPC(
   payload: Record<string, unknown>
 ): Promise<IPCResponse> {
   const conn = await connect({ servers: NATS_URL });
-  const topic = `host.ipc.${GROUP_ID}`;
+  const topic = `host.ipc.${AGENT_ID}`;
   const data = sc.encode(JSON.stringify({ type, payload }));
   const resp = await conn.request(topic, data, { timeout: 10000 });
   const result: IPCResponse = JSON.parse(sc.decode(resp.data));
@@ -69,7 +69,7 @@ server.tool(
 
 server.tool(
   "scheduled_task_list",
-  "List all scheduled tasks for this group.",
+  "List all scheduled tasks for this agent.",
   {},
   async () => {
     const resp = await sendIPC("list_tasks", {});

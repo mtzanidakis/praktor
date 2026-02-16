@@ -3,29 +3,29 @@ package agent
 import "sync"
 
 type QueuedMessage struct {
-	GroupID string
+	AgentID string
 	Text    string
 	Meta    map[string]string
 }
 
-type GroupQueue struct {
-	groupID string
+type AgentQueue struct {
+	agentID string
 	pending []QueuedMessage
 	mu      sync.Mutex
 	locked  bool
 }
 
-func NewGroupQueue(groupID string) *GroupQueue {
-	return &GroupQueue{groupID: groupID}
+func NewAgentQueue(agentID string) *AgentQueue {
+	return &AgentQueue{agentID: agentID}
 }
 
-func (q *GroupQueue) Enqueue(msg QueuedMessage) {
+func (q *AgentQueue) Enqueue(msg QueuedMessage) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.pending = append(q.pending, msg)
 }
 
-func (q *GroupQueue) Dequeue() (QueuedMessage, bool) {
+func (q *AgentQueue) Dequeue() (QueuedMessage, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -38,7 +38,7 @@ func (q *GroupQueue) Dequeue() (QueuedMessage, bool) {
 	return msg, true
 }
 
-func (q *GroupQueue) TryLock() bool {
+func (q *AgentQueue) TryLock() bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -49,13 +49,13 @@ func (q *GroupQueue) TryLock() bool {
 	return true
 }
 
-func (q *GroupQueue) Unlock() {
+func (q *AgentQueue) Unlock() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.locked = false
 }
 
-func (q *GroupQueue) Len() int {
+func (q *AgentQueue) Len() int {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	return len(q.pending)

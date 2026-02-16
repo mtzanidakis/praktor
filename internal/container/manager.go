@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,15 +25,15 @@ const (
 type Manager struct {
 	docker      *client.Client
 	bus         *natsbus.Bus
-	cfg         config.AgentConfig
+	cfg         config.DefaultsConfig
 	mu          sync.RWMutex
-	active      map[string]*ContainerInfo // groupID → container
+	active      map[string]*ContainerInfo // agentID → container
 	networkName string                    // resolved network name
 }
 
 type ContainerInfo struct {
 	ID        string    `json:"id"`
-	GroupID   string    `json:"group_id"`
+	AgentID   string    `json:"agent_id"`
 	Name      string    `json:"name"`
 	Status    string    `json:"status"`
 	StartedAt time.Time `json:"started_at"`
@@ -40,16 +41,19 @@ type ContainerInfo struct {
 }
 
 type AgentOpts struct {
-	GroupID     string
-	GroupFolder string
-	IsMain      bool
-	Model       string
-	SessionID   string
-	Mounts      []Mount
-	NATSUrl     string
+	AgentID      string
+	Workspace    string
+	Model        string
+	Image        string
+	SessionID    string
+	Mounts       []Mount
+	NATSUrl      string
+	Env          map[string]string
+	Secrets      []string
+	AllowedTools []string
 }
 
-func NewManager(bus *natsbus.Bus, cfg config.AgentConfig) (*Manager, error) {
+func NewManager(bus *natsbus.Bus, cfg config.DefaultsConfig) (*Manager, error) {
 	docker, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, fmt.Errorf("docker client: %w", err)
@@ -90,7 +94,7 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if existing, ok := m.active[opts.GroupID]; ok {
+	if existing, ok := m.active[opts.AgentID]; ok {
 		return existing, nil
 	}
 
@@ -102,7 +106,7 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 		return nil, err
 	}
 
-	containerName := fmt.Sprintf("praktor-agent-%s", opts.GroupID)
+	containerName := fmt.Sprintf("praktor-agent-%s", opts.AgentID)
 
 	// Remove any stale container with the same name
 	timeout := 5
@@ -111,8 +115,7 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 
 	env := []string{
 		fmt.Sprintf("NATS_URL=%s", opts.NATSUrl),
-		fmt.Sprintf("GROUP_ID=%s", opts.GroupID),
-		fmt.Sprintf("IS_MAIN=%t", opts.IsMain),
+		fmt.Sprintf("AGENT_ID=%s", opts.AgentID),
 	}
 	if opts.SessionID != "" {
 		env = append(env, fmt.Sprintf("SESSION_ID=%s", opts.SessionID))
@@ -132,12 +135,34 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 		env = append(env, fmt.Sprintf("TZ=%s", tz))
 	}
 
+	// Per-agent env vars
+	for k, v := range opts.Env {
+		env = append(env, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	// Forward host secrets
+	for _, secretName := range opts.Secrets {
+		if v := os.Getenv(secretName); v != "" {
+			env = append(env, fmt.Sprintf("%s=%s", secretName, v))
+		}
+	}
+
+	// Allowed tools
+	if len(opts.AllowedTools) > 0 {
+		env = append(env, fmt.Sprintf("ALLOWED_TOOLS=%s", strings.Join(opts.AllowedTools, ",")))
+	}
+
 	mounts := buildMounts(opts)
 
+	image := opts.Image
+	if image == "" {
+		image = m.cfg.Image
+	}
+
 	containerCfg := &dockercontainer.Config{
-		Image:  m.cfg.Image,
+		Image:  image,
 		Env:    env,
-		Labels: map[string]string{labelPrefix + ".managed": "true", labelPrefix + ".group": opts.GroupID},
+		Labels: map[string]string{labelPrefix + ".managed": "true", labelPrefix + ".agent": opts.AgentID},
 	}
 
 	hostCfg := &dockercontainer.HostConfig{
@@ -158,23 +183,23 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 
 	info := &ContainerInfo{
 		ID:        resp.ID,
-		GroupID:   opts.GroupID,
+		AgentID:   opts.AgentID,
 		Name:      containerName,
 		Status:    "running",
 		StartedAt: time.Now(),
 		SessionID: opts.SessionID,
 	}
-	m.active[opts.GroupID] = info
+	m.active[opts.AgentID] = info
 
-	slog.Info("agent container started", "group", opts.GroupID, "container", resp.ID[:12])
+	slog.Info("agent container started", "agent", opts.AgentID, "container", resp.ID[:12])
 	return info, nil
 }
 
-func (m *Manager) StopAgent(ctx context.Context, groupID string) error {
+func (m *Manager) StopAgent(ctx context.Context, agentID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	info, ok := m.active[groupID]
+	info, ok := m.active[agentID]
 	if !ok {
 		return nil
 	}
@@ -188,20 +213,20 @@ func (m *Manager) StopAgent(ctx context.Context, groupID string) error {
 		slog.Warn("failed to remove container", "container", info.ID[:12], "error", err)
 	}
 
-	delete(m.active, groupID)
-	slog.Info("agent container stopped", "group", groupID)
+	delete(m.active, agentID)
+	slog.Info("agent container stopped", "agent", agentID)
 	return nil
 }
 
 func (m *Manager) StopAll(ctx context.Context) {
 	m.mu.RLock()
-	groupIDs := make([]string, 0, len(m.active))
+	agentIDs := make([]string, 0, len(m.active))
 	for id := range m.active {
-		groupIDs = append(groupIDs, id)
+		agentIDs = append(agentIDs, id)
 	}
 	m.mu.RUnlock()
 
-	for _, id := range groupIDs {
+	for _, id := range agentIDs {
 		_ = m.StopAgent(ctx, id)
 	}
 }
@@ -217,10 +242,10 @@ func (m *Manager) ListRunning(ctx context.Context) ([]ContainerInfo, error) {
 	return result, nil
 }
 
-func (m *Manager) GetRunning(groupID string) *ContainerInfo {
+func (m *Manager) GetRunning(agentID string) *ContainerInfo {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if info, ok := m.active[groupID]; ok {
+	if info, ok := m.active[agentID]; ok {
 		return info
 	}
 	return nil

@@ -36,7 +36,7 @@ COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=go-builder /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=go-builder /etc/passwd.scratch /etc/passwd
 COPY --from=go-builder /etc/group.scratch /etc/group
-RUN mkdir -p /data/groups/global && chown -R praktor:praktor /data
+RUN mkdir -p /data/agents/global && chown -R praktor:praktor /data
 RUN install -d -m 1777 /tmp && \
    rm -rf -- /bin
 

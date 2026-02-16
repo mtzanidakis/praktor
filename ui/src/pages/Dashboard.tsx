@@ -5,9 +5,9 @@ interface StatusData {
   version?: string;
   uptime?: string;
   active_agents?: number;
-  groups_count?: number;
+  agents_count?: number;
   pending_tasks?: number;
-  recent_messages?: { id: string; group: string; role: string; text: string; time: string }[];
+  recent_messages?: { id: string; agent: string; role: string; text: string; time: string }[];
 }
 
 const card: React.CSSProperties = {
@@ -68,7 +68,7 @@ function Dashboard() {
 
   const stats = [
     { label: 'Active Agents', value: status.active_agents ?? 0, color: 'var(--green)', bg: 'var(--green-muted)' },
-    { label: 'Groups', value: status.groups_count ?? 0, color: 'var(--accent)', bg: 'var(--accent-muted)' },
+    { label: 'Agents', value: status.agents_count ?? 0, color: 'var(--accent)', bg: 'var(--accent-muted)' },
     { label: 'Pending Tasks', value: status.pending_tasks ?? 0, color: 'var(--amber)', bg: 'var(--amber-muted)' },
   ];
 
@@ -137,7 +137,7 @@ function Dashboard() {
                   <span>
                     <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{msg.role}</span>
                     <span style={{ color: 'var(--text-muted)', margin: '0 6px' }}>in</span>
-                    <span style={{ color: 'var(--text-secondary)' }}>{msg.group}</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>{msg.agent}</span>
                   </span>
                   <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{msg.time}</span>
                 </div>

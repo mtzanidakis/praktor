@@ -4,19 +4,21 @@ Personal AI Agent Assistant.
 
 ## Quick Context
 
-Go 1.26 service (`github.com/mtzanidakis/praktor`) that connects to Telegram, routes messages to Claude Code (Agent SDK) running in isolated Docker containers, and provides a Mission Control Web UI. Single binary deployment via Docker Compose.
+Go 1.26 service (`github.com/mtzanidakis/praktor`) that connects to Telegram, routes messages to named agents running Claude Code (Agent SDK) in isolated Docker containers, and provides a Mission Control Web UI. Single binary deployment via Docker Compose.
 
 ## Architecture
 
 ```
-Telegram ←→ Go Gateway ←→ Embedded NATS ←→ Agent Containers (Docker)
-                ↕                                  ↕
-            SQLite DB                     Claude Code SDK
+Telegram ←→ Go Gateway ←→ Router ←→ Embedded NATS ←→ Agent Containers (Docker)
+                ↕                                          ↕
+            SQLite DB                             Claude Code SDK
                 ↕
          Web UI (React SPA)
 ```
 
-The gateway binary runs all core services: Telegram bot, NATS message bus, agent orchestrator, scheduler, swarm coordinator, and HTTP/WebSocket server. Agent containers are spawned on demand via the Docker API and communicate with the host over NATS pub/sub.
+The gateway binary runs all core services: Telegram bot, message router, NATS message bus, agent orchestrator, scheduler, swarm coordinator, and HTTP/WebSocket server. Agent containers are spawned on demand via the Docker API and communicate with the host over NATS pub/sub.
+
+**Named Agents:** Multiple agents are defined in YAML config, each with its own description, model, image, env vars, secrets, allowed tools, and workspace. Messages are routed to agents via `@agent_name` prefix or smart routing through the default agent's container.
 
 ## Project Structure
 
@@ -25,22 +27,23 @@ cmd/praktor/main.go              # CLI: `gateway` and `version` subcommands
 cmd/ptask/main.go                # Task management CLI (Go, runs inside agent containers)
 internal/
   config/                        # YAML config + env var overrides
-  store/                         # SQLite (modernc.org/sqlite, pure Go) - groups, messages, tasks, swarms
+  store/                         # SQLite (modernc.org/sqlite, pure Go) - agents, messages, tasks, swarms
   natsbus/                       # Embedded NATS server + client helpers + topic naming
   container/                     # Docker container lifecycle, image building, volume mounts
-  agent/                         # Message orchestrator, per-group queue, session tracking
+  agent/                         # Message orchestrator, per-agent queue, session tracking
+  registry/                      # Agent registry - syncs YAML config to DB, resolves agent config
+  router/                        # Message router - @prefix parsing, smart routing via default agent
   telegram/                      # Telegram bot (telego), long-polling, message chunking
   scheduler/                     # Cron/interval task polling (adhocore/gronx)
   swarm/                         # Multi-container swarm coordination
   web/                           # HTTP server, REST API, WebSocket hub, embedded SPA
-  groups/                        # Group registration, CLAUDE.md management
 Dockerfile                       # Gateway image (multi-stage: UI + Go + scratch)
 Dockerfile.agent                 # Agent image (multi-stage: Go + esbuild + alpine)
 agent-runner/src/                # TypeScript entrypoint: NATS bridge + Claude Code SDK (bundled with esbuild)
 ui/                              # React/Vite SPA (dark theme, indigo accent)
-  src/pages/                     # Dashboard, Groups, Conversations, Tasks, Swarms
+  src/pages/                     # Dashboard, Agents, Conversations, Tasks, Swarms
   src/hooks/useWebSocket.ts      # Real-time WebSocket event hook
-groups/global/CLAUDE.md          # Global agent instructions (seeded to praktor-global volume)
+agents/global/CLAUDE.md          # Global agent instructions (seeded to praktor-global volume)
 config/praktor.example.yaml      # Example configuration
 ```
 
@@ -50,6 +53,7 @@ config/praktor.example.yaml      # Example configuration
 go run ./cmd/praktor version           # Print version
 go run ./cmd/praktor gateway           # Start the gateway (needs config)
 CGO_ENABLED=0 go build ./cmd/praktor   # Build static binary
+CGO_ENABLED=0 go build ./cmd/ptask     # Build ptask CLI
 CGO_ENABLED=0 go test ./internal/...   # Run all tests
 make containers                        # Build both Docker images (gateway + agent)
 docker compose up                      # Run full stack
@@ -64,22 +68,36 @@ Loaded from YAML (default: `config/praktor.yaml`, override with `PRAKTOR_CONFIG`
 | Env Var | Config Key | Purpose |
 |---------|-----------|---------|
 | `PRAKTOR_TELEGRAM_TOKEN` | `telegram.token` | Telegram bot token |
-| `ANTHROPIC_API_KEY` | `agent.anthropic_api_key` | Anthropic API key for agents |
-| `CLAUDE_CODE_OAUTH_TOKEN` | `agent.oauth_token` | Claude Code OAuth token |
+| `ANTHROPIC_API_KEY` | `defaults.anthropic_api_key` | Anthropic API key for agents |
+| `CLAUDE_CODE_OAUTH_TOKEN` | `defaults.oauth_token` | Claude Code OAuth token |
 | `PRAKTOR_WEB_PASSWORD` | `web.auth` | Basic auth password for web UI |
 | `PRAKTOR_WEB_PORT` | `web.port` | Web UI port (default: 8080) |
 | `PRAKTOR_NATS_PORT` | `nats.port` | NATS port (default: 4222) |
 | `PRAKTOR_STORE_PATH` | `store.path` | SQLite DB path (default: `data/praktor.db`) |
-| `PRAKTOR_GROUPS_BASE` | `groups.base_path` | Groups directory (default: `data/groups`) |
-| `PRAKTOR_MAIN_CHAT_ID` | `groups.main_chat_id` | Telegram chat ID for admin channel |
+| `PRAKTOR_AGENTS_BASE` | `defaults.base_path` | Agents directory (default: `data/agents`) |
+
+### Agent Definitions
+
+Agents are defined in the `agents` map in YAML config. Each agent has:
+- `description` - Used for smart routing
+- `model` - Override default model
+- `image` - Override default container image
+- `workspace` - Volume suffix (defaults to agent name)
+- `env` - Per-agent environment variables
+- `secrets` - Host env var names to forward
+- `allowed_tools` - Restrict Claude tools
+- `claude_md` - Relative path to agent-specific CLAUDE.md
+
+The `router.default_agent` must reference an existing agent.
 
 ## NATS Topics
 
 ```
-agent.{groupID}.input      # Host → Container: user messages
-agent.{groupID}.output     # Container → Host: agent responses (text, result)
-agent.{groupID}.control    # Host → Container: shutdown, ping
-host.ipc.{groupID}         # Container → Host: IPC commands
+agent.{agentID}.input      # Host → Container: user messages
+agent.{agentID}.output     # Container → Host: agent responses (text, result)
+agent.{agentID}.control    # Host → Container: shutdown, ping
+agent.{agentID}.route      # Host → Container: routing classification queries
+host.ipc.{agentID}         # Container → Host: IPC commands
 swarm.{swarmID}.*          # Inter-agent swarm communication
 events.>                   # System events (broadcast to WebSocket clients)
 ```
@@ -87,17 +105,17 @@ events.>                   # System events (broadcast to WebSocket clients)
 ## REST API
 
 ```
-GET/POST       /api/groups              # List/create groups
-GET            /api/groups/{id}         # Group details
-GET            /api/groups/{id}/messages # Message history
-GET            /api/agents              # Active agent containers
-POST           /api/agents/{groupID}/stop # Stop an agent
-GET/POST       /api/tasks               # List/create scheduled tasks
-PUT/DELETE     /api/tasks/{id}          # Update/delete task
-GET/POST       /api/swarms              # List/create swarm runs
-GET            /api/swarms/{id}         # Swarm status
-GET            /api/status              # System health
-WS             /api/ws                  # WebSocket for real-time events
+GET            /api/agents/definitions              # List agent definitions
+GET            /api/agents/definitions/{id}          # Agent details
+GET            /api/agents/definitions/{id}/messages # Message history
+GET            /api/agents                           # Active agent containers
+POST           /api/agents/{agentID}/stop            # Stop an agent
+GET/POST       /api/tasks                            # List/create scheduled tasks
+PUT/DELETE     /api/tasks/{id}                       # Update/delete task
+GET/POST       /api/swarms                           # List/create swarm runs
+GET            /api/swarms/{id}                      # Swarm status
+GET            /api/status                           # System health
+WS             /api/ws                               # WebSocket for real-time events
 ```
 
 ## Container Mount Strategy
@@ -106,9 +124,9 @@ All containers use Docker named volumes (no host path dependencies):
 
 | Volume | Container Path | Mode | Purpose |
 |--------|---------------|------|---------|
-| `praktor-wk-{folder}` | `/workspace/group` | rw | Group workspace |
+| `praktor-wk-{workspace}` | `/workspace/agent` | rw | Agent workspace |
 | `praktor-global` | `/workspace/global` | ro | Global instructions |
-| `praktor-sess-{folder}` | `/home/praktor/.claude` | rw | Claude session data |
+| `praktor-sess-{workspace}` | `/home/praktor/.claude` | rw | Claude session data |
 
 The gateway uses `praktor-data` for SQLite/NATS and `praktor-global` for global instructions. Both gateway and agents run as non-root user `praktor` (uid 10321).
 
@@ -126,13 +144,14 @@ The gateway uses `praktor-data` for SQLite/NATS and `praktor-global` for global 
 
 ## SQLite Schema
 
-Tables: `groups`, `messages` (with group_id index), `scheduled_tasks` (with status+next_run index), `agent_sessions`, `swarm_runs`. Migrations run automatically on startup.
+Tables: `agents`, `messages` (with agent_id index), `scheduled_tasks` (with status+next_run index), `agent_sessions`, `swarm_runs`. Migrations run automatically on startup.
 
 ## What it supports
 
 - Telegram I/O - Message Claude from your phone
-- Isolated group context - Each group has its own CLAUDE.md memory, isolated filesystem, and runs in its own container sandbox
-- Main channel - Private channel for admin control; other groups are completely isolated
+- Named agents - Multiple agents with distinct roles, models, and configurations
+- Smart routing - `@agent_name` prefix or AI-powered routing via default agent
+- Isolated agent context - Each agent has its own CLAUDE.md memory, isolated filesystem, and runs in its own container sandbox
 - Scheduled tasks - Cron/interval/one-shot jobs that run Claude and deliver results
 - Web access - Agents can use WebSearch and WebFetch tools
 - Browser control - Chromium available in agent containers

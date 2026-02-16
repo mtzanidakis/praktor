@@ -16,19 +16,25 @@ console.warn = (...args: unknown[]) => origWarn(ts(), ...args);
 console.error = (...args: unknown[]) => origError(ts(), ...args);
 
 const NATS_URL = process.env.NATS_URL || "nats://localhost:4222";
-const GROUP_ID = process.env.GROUP_ID || "default";
-const IS_MAIN = process.env.IS_MAIN === "true";
+const AGENT_ID = process.env.AGENT_ID || process.env.GROUP_ID || "default";
 const SESSION_ID = process.env.SESSION_ID || undefined;
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || undefined;
+const ALLOWED_TOOLS_ENV = process.env.ALLOWED_TOOLS || "";
 
 let bridge: NatsBridge;
 let isProcessing = false;
+
+function parseAllowedTools(): string[] | undefined {
+  if (!ALLOWED_TOOLS_ENV) return undefined;
+  const tools = ALLOWED_TOOLS_ENV.split(",").map((t) => t.trim()).filter(Boolean);
+  return tools.length > 0 ? tools : undefined;
+}
 
 function installGlobalInstructions(cwd: string): void {
   // Write global instructions to multiple locations so Claude Code discovers
   // them through its native CLAUDE.md loading:
   //   1. ~/.claude/CLAUDE.md (user-level — always loaded)
-  //   2. {cwd}/CLAUDE.md (project-level — merged with existing group CLAUDE.md)
+  //   2. {cwd}/CLAUDE.md (project-level — merged with existing agent CLAUDE.md)
   try {
     const global = readFileSync("/workspace/global/CLAUDE.md", "utf-8");
 
@@ -38,13 +44,13 @@ function installGlobalInstructions(cwd: string): void {
     writeFileSync(`${userClaudeDir}/CLAUDE.md`, global);
     console.log(`[agent] installed global instructions to ${userClaudeDir}/CLAUDE.md`);
 
-    // Project-level: prepend global to existing group CLAUDE.md
+    // Project-level: prepend global to existing agent CLAUDE.md
     const projectClaude = `${cwd}/CLAUDE.md`;
     let existing = "";
     try {
       existing = readFileSync(projectClaude, "utf-8");
     } catch {
-      // No existing group CLAUDE.md
+      // No existing agent CLAUDE.md
     }
     // Only prepend if not already present
     if (!existing.includes("Scheduled Task Management")) {
@@ -83,13 +89,27 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
   }
 
   isProcessing = true;
-  console.log(`[agent] processing message for group ${GROUP_ID}: ${text.substring(0, 100)}...`);
+  console.log(`[agent] processing message for agent ${AGENT_ID}: ${text.substring(0, 100)}...`);
 
   try {
     const systemPrompt = loadSystemPrompt();
-    const cwd = "/workspace/group";
+    const cwd = "/workspace/agent";
 
     console.log(`[agent] starting claude query, cwd=${cwd}`);
+
+    const configuredTools = parseAllowedTools();
+    const allowedTools = configuredTools || [
+      "Bash",
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "WebSearch",
+      "WebFetch",
+      "Task",
+      "TaskOutput",
+    ];
 
     const result = query({
       prompt: text,
@@ -98,18 +118,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
         cwd,
         pathToClaudeCodeExecutable: "/usr/local/bin/claude",
         systemPrompt: systemPrompt || undefined,
-        allowedTools: [
-          "Bash",
-          "Read",
-          "Write",
-          "Edit",
-          "Glob",
-          "Grep",
-          "WebSearch",
-          "WebFetch",
-          "Task",
-          "TaskOutput",
-        ],
+        allowedTools,
         mcpServers: {
           "praktor-tasks": {
             type: "stdio",
@@ -117,7 +126,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
             args: ["/app/mcp-server.js"],
             env: {
               NATS_URL,
-              GROUP_ID,
+              AGENT_ID,
             },
           },
         },
@@ -161,13 +170,64 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
       await bridge.publishResult(fullResponse);
     }
 
-    console.log(`[agent] completed processing for group ${GROUP_ID}`);
+    console.log(`[agent] completed processing for agent ${AGENT_ID}`);
   } catch (err) {
     console.error(`[agent] error processing message:`, err);
     const errorMsg = err instanceof Error ? err.message : String(err);
     await bridge.publishResult(`Error: ${errorMsg}`);
   } finally {
     isProcessing = false;
+  }
+}
+
+async function handleRoute(
+  data: Record<string, unknown>,
+  msg: import("nats").Msg
+): Promise<void> {
+  const text = data.text as string;
+  if (!text) {
+    msg.respond(new TextEncoder().encode(JSON.stringify({ agent: AGENT_ID })));
+    return;
+  }
+
+  console.log(`[agent] routing query: ${text.substring(0, 100)}...`);
+
+  try {
+    const systemPrompt = loadSystemPrompt();
+    const cwd = "/workspace/agent";
+
+    // Build agent descriptions from environment if available
+    const agentDescsEnv = process.env.AGENT_DESCRIPTIONS || "";
+    let routingPrompt = `You are a message router. Given the user message below, respond with ONLY the name of the most appropriate agent to handle it. Do not include any other text.\n\n`;
+    if (agentDescsEnv) {
+      routingPrompt += `Available agents:\n${agentDescsEnv}\n\n`;
+    }
+    routingPrompt += `User message: ${text}`;
+
+    const result = query({
+      prompt: routingPrompt,
+      options: {
+        model: CLAUDE_MODEL,
+        cwd,
+        pathToClaudeCodeExecutable: "/usr/local/bin/claude",
+        systemPrompt: systemPrompt || undefined,
+        allowedTools: [],
+        permissionMode: "bypassPermissions",
+        allowDangerouslySkipPermissions: true,
+      },
+    });
+
+    let agentName = "";
+    for await (const event of result) {
+      if (event.type === "result" && event.subtype === "success") {
+        agentName = event.result.trim();
+      }
+    }
+
+    msg.respond(new TextEncoder().encode(JSON.stringify({ agent: agentName })));
+  } catch (err) {
+    console.error(`[agent] routing error:`, err);
+    msg.respond(new TextEncoder().encode(JSON.stringify({ agent: AGENT_ID })));
   }
 }
 
@@ -190,16 +250,17 @@ async function handleControl(
 }
 
 async function main(): Promise<void> {
-  console.log(`[agent] starting for group ${GROUP_ID} (main: ${IS_MAIN})`);
+  console.log(`[agent] starting for agent ${AGENT_ID}`);
   console.log(`[agent] NATS URL: ${NATS_URL}`);
 
-  installGlobalInstructions("/workspace/group");
+  installGlobalInstructions("/workspace/agent");
 
-  bridge = new NatsBridge(NATS_URL, GROUP_ID);
+  bridge = new NatsBridge(NATS_URL, AGENT_ID);
   await bridge.connect();
 
   bridge.subscribeInput(handleMessage);
   bridge.subscribeControl(handleControl);
+  bridge.subscribeRoute(handleRoute);
 
   // Flush to ensure subscriptions are registered with NATS server
   await bridge.flush();

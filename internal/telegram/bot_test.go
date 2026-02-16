@@ -43,9 +43,3 @@ func TestChunkMessage(t *testing.T) {
 		t.Errorf("expected first chunk length 3001, got %d", len(chunks[0]))
 	}
 }
-
-func TestSanitizeFolder(t *testing.T) {
-	if got := sanitizeFolder("12345"); got != "group-12345" {
-		t.Errorf("expected group-12345, got %s", got)
-	}
-}

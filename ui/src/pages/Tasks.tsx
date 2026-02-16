@@ -5,8 +5,8 @@ interface Task {
   name: string;
   schedule: string;
   schedule_display?: string;
-  group_id?: string;
-  group_name?: string;
+  agent_id?: string;
+  agent_name?: string;
   prompt?: string;
   enabled: boolean;
   last_run?: string;
@@ -16,17 +16,17 @@ interface Task {
 interface TaskForm {
   name: string;
   schedule: string;
-  group_id: string;
+  agent_id: string;
   prompt: string;
   enabled: boolean;
 }
 
-interface Group {
+interface Agent {
   id: string;
   name: string;
 }
 
-const emptyForm: TaskForm = { name: '', schedule: '', group_id: '', prompt: '', enabled: true };
+const emptyForm: TaskForm = { name: '', schedule: '', agent_id: '', prompt: '', enabled: true };
 
 const card: React.CSSProperties = {
   background: 'var(--bg-card)',
@@ -89,7 +89,7 @@ function parseCronFromSchedule(scheduleJSON: string): string {
 
 function Tasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [groups, setGroups] = useState<Group[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [form, setForm] = useState<TaskForm>(emptyForm);
   const [editing, setEditing] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -105,17 +105,17 @@ function Tasks() {
       .catch((err) => setError(err.message));
   }, []);
 
-  const fetchGroups = useCallback(() => {
-    fetch('/api/groups')
+  const fetchAgents = useCallback(() => {
+    fetch('/api/agents/definitions')
       .then((res) => res.json())
-      .then((data) => setGroups(Array.isArray(data) ? data : []))
+      .then((data) => setAgents(Array.isArray(data) ? data : []))
       .catch(() => {});
   }, []);
 
   useEffect(() => {
     fetchTasks();
-    fetchGroups();
-  }, [fetchTasks, fetchGroups]);
+    fetchAgents();
+  }, [fetchTasks, fetchAgents]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,7 +156,7 @@ function Tasks() {
     setForm({
       name: task.name,
       schedule: parseCronFromSchedule(task.schedule),
-      group_id: task.group_id ?? '',
+      agent_id: task.agent_id ?? '',
       prompt: task.prompt ?? '',
       enabled: task.enabled,
     });
@@ -223,15 +223,15 @@ function Tasks() {
               />
             </div>
             <div>
-              <label style={{ fontSize: 13, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Group</label>
+              <label style={{ fontSize: 13, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Agent</label>
               <select
                 style={inputStyle}
-                value={form.group_id}
-                onChange={(e) => setForm({ ...form, group_id: e.target.value })}
+                value={form.agent_id}
+                onChange={(e) => setForm({ ...form, agent_id: e.target.value })}
               >
-                <option value="">Select a group...</option>
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id}>{g.name}</option>
+                <option value="">Select an agent...</option>
+                {agents.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
                 ))}
               </select>
             </div>
@@ -284,9 +284,9 @@ function Tasks() {
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
                   <span>{task.schedule_display || task.schedule}</span>
-                  {task.group_id && (
+                  {task.agent_id && (
                     <span style={badge('var(--accent)', 'var(--accent-muted)')}>
-                      {task.group_name || task.group_id}
+                      {task.agent_name || task.agent_id}
                     </span>
                   )}
                 </div>

@@ -8,7 +8,7 @@ export class NatsBridge {
 
   constructor(
     private url: string,
-    private groupId: string
+    private agentId: string
   ) {}
 
   async connect(): Promise<void> {
@@ -27,22 +27,22 @@ export class NatsBridge {
   }
 
   async publishOutput(content: string, type: string = "text"): Promise<void> {
-    await this.publish(`agent.${this.groupId}.output`, { type, content });
+    await this.publish(`agent.${this.agentId}.output`, { type, content });
   }
 
   async publishResult(content: string): Promise<void> {
-    await this.publish(`agent.${this.groupId}.output`, {
+    await this.publish(`agent.${this.agentId}.output`, {
       type: "result",
       content,
     });
   }
 
   async publishReady(): Promise<void> {
-    await this.publish(`agent.${this.groupId}.ready`, { status: "ready" });
+    await this.publish(`agent.${this.agentId}.ready`, { status: "ready" });
   }
 
   async publishIPC(command: string, payload: unknown): Promise<void> {
-    await this.publish(`host.ipc.${this.groupId}`, {
+    await this.publish(`host.ipc.${this.agentId}`, {
       type: command,
       payload,
     });
@@ -70,13 +70,19 @@ export class NatsBridge {
   }
 
   subscribeInput(handler: (data: Record<string, unknown>) => void): void {
-    this.subscribe(`agent.${this.groupId}.input`, (data) => handler(data));
+    this.subscribe(`agent.${this.agentId}.input`, (data) => handler(data));
   }
 
   subscribeControl(
     handler: (data: Record<string, unknown>, msg: Msg) => void
   ): void {
-    this.subscribe(`agent.${this.groupId}.control`, handler);
+    this.subscribe(`agent.${this.agentId}.control`, handler);
+  }
+
+  subscribeRoute(
+    handler: (data: Record<string, unknown>, msg: Msg) => void
+  ): void {
+    this.subscribe(`agent.${this.agentId}.route`, handler);
   }
 
   async close(): Promise<void> {

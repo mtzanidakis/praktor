@@ -12,17 +12,17 @@ type Mount struct {
 }
 
 func buildMounts(opts AgentOpts) []string {
-	folder := sanitizeVolumeName(opts.GroupFolder)
+	workspace := sanitizeVolumeName(opts.Workspace)
 	var binds []string
 
-	// Group-specific workspace (named volume)
-	binds = append(binds, fmt.Sprintf("praktor-wk-%s:/workspace/group", folder))
+	// Agent-specific workspace (named volume)
+	binds = append(binds, fmt.Sprintf("praktor-wk-%s:/workspace/agent", workspace))
 
 	// Global shared instructions (named volume, read-only)
 	binds = append(binds, "praktor-global:/workspace/global:ro")
 
 	// Claude session data (named volume)
-	binds = append(binds, fmt.Sprintf("praktor-sess-%s:/home/praktor/.claude", folder))
+	binds = append(binds, fmt.Sprintf("praktor-sess-%s:/home/praktor/.claude", workspace))
 
 	// Extra mounts (user-configured, kept as-is)
 	for _, m := range opts.Mounts {

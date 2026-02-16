@@ -20,70 +20,84 @@ func newTestStore(t *testing.T) *Store {
 	return s
 }
 
-func TestGroupCRUD(t *testing.T) {
+func TestAgentCRUD(t *testing.T) {
 	s := newTestStore(t)
 
-	g := &Group{ID: "123", Name: "Test Group", Folder: "test-group"}
-	if err := s.SaveGroup(g); err != nil {
-		t.Fatalf("save group: %v", err)
+	a := &Agent{ID: "general", Name: "General", Workspace: "general", Description: "General assistant"}
+	if err := s.SaveAgent(a); err != nil {
+		t.Fatalf("save agent: %v", err)
 	}
 
-	got, err := s.GetGroup("123")
+	got, err := s.GetAgent("general")
 	if err != nil {
-		t.Fatalf("get group: %v", err)
+		t.Fatalf("get agent: %v", err)
 	}
 	if got == nil {
-		t.Fatal("expected group, got nil")
+		t.Fatal("expected agent, got nil")
 	}
-	if got.Name != "Test Group" {
-		t.Errorf("expected name 'Test Group', got '%s'", got.Name)
+	if got.Name != "General" {
+		t.Errorf("expected name 'General', got '%s'", got.Name)
+	}
+	if got.Description != "General assistant" {
+		t.Errorf("expected description 'General assistant', got '%s'", got.Description)
 	}
 
 	// List
-	groups, err := s.ListGroups()
+	agents, err := s.ListAgents()
 	if err != nil {
-		t.Fatalf("list groups: %v", err)
+		t.Fatalf("list agents: %v", err)
 	}
-	if len(groups) != 1 {
-		t.Errorf("expected 1 group, got %d", len(groups))
+	if len(agents) != 1 {
+		t.Errorf("expected 1 agent, got %d", len(agents))
 	}
 
 	// Update
-	g.Name = "Updated Group"
-	if err := s.SaveGroup(g); err != nil {
-		t.Fatalf("update group: %v", err)
+	a.Name = "Updated Agent"
+	if err := s.SaveAgent(a); err != nil {
+		t.Fatalf("update agent: %v", err)
 	}
-	got, _ = s.GetGroup("123")
-	if got.Name != "Updated Group" {
-		t.Errorf("expected 'Updated Group', got '%s'", got.Name)
+	got, _ = s.GetAgent("general")
+	if got.Name != "Updated Agent" {
+		t.Errorf("expected 'Updated Agent', got '%s'", got.Name)
 	}
 
 	// Not found
-	got, err = s.GetGroup("nonexistent")
+	got, err = s.GetAgent("nonexistent")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got != nil {
-		t.Error("expected nil for nonexistent group")
+		t.Error("expected nil for nonexistent agent")
+	}
+
+	// DeleteAgentsNotIn
+	_ = s.SaveAgent(&Agent{ID: "coder", Name: "Coder", Workspace: "coder"})
+	_ = s.SaveAgent(&Agent{ID: "researcher", Name: "Researcher", Workspace: "researcher"})
+	if err := s.DeleteAgentsNotIn([]string{"general", "coder"}); err != nil {
+		t.Fatalf("delete agents not in: %v", err)
+	}
+	agents, _ = s.ListAgents()
+	if len(agents) != 2 {
+		t.Errorf("expected 2 agents after delete, got %d", len(agents))
 	}
 }
 
 func TestMessageCRUD(t *testing.T) {
 	s := newTestStore(t)
 
-	// Create group first
-	_ = s.SaveGroup(&Group{ID: "g1", Name: "Group 1", Folder: "g1"})
+	// Create agent first
+	_ = s.SaveAgent(&Agent{ID: "a1", Name: "Agent 1", Workspace: "a1"})
 
 	// Save messages
 	for i := 0; i < 5; i++ {
 		_ = s.SaveMessage(&Message{
-			GroupID: "g1",
+			AgentID: "a1",
 			Sender:  "user:1",
 			Content: "message " + string(rune('A'+i)),
 		})
 	}
 
-	messages, err := s.GetMessages("g1", 10)
+	messages, err := s.GetMessages("a1", 10)
 	if err != nil {
 		t.Fatalf("get messages: %v", err)
 	}
@@ -96,7 +110,7 @@ func TestMessageCRUD(t *testing.T) {
 	}
 
 	// Limit
-	messages, err = s.GetMessages("g1", 2)
+	messages, err = s.GetMessages("a1", 2)
 	if err != nil {
 		t.Fatalf("get messages limited: %v", err)
 	}
@@ -107,13 +121,13 @@ func TestMessageCRUD(t *testing.T) {
 
 func TestScheduledTaskCRUD(t *testing.T) {
 	s := newTestStore(t)
-	_ = s.SaveGroup(&Group{ID: "g1", Name: "Group 1", Folder: "g1"})
+	_ = s.SaveAgent(&Agent{ID: "a1", Name: "Agent 1", Workspace: "a1"})
 
 	now := time.Now()
 	nextRun := now.Add(-1 * time.Minute) // Due now
 	task := &ScheduledTask{
 		ID:          "task-1",
-		GroupID:     "g1",
+		AgentID:     "a1",
 		Name:        "Test Task",
 		Schedule:    `{"kind":"interval","interval_ms":60000}`,
 		Prompt:      "do something",
@@ -153,12 +167,12 @@ func TestScheduledTaskCRUD(t *testing.T) {
 
 func TestSwarmRunCRUD(t *testing.T) {
 	s := newTestStore(t)
-	_ = s.SaveGroup(&Group{ID: "g1", Name: "Group 1", Folder: "g1"})
+	_ = s.SaveAgent(&Agent{ID: "a1", Name: "Agent 1", Workspace: "a1"})
 
 	agents, _ := json.Marshal([]map[string]string{{"role": "researcher"}})
 	run := &SwarmRun{
 		ID:      "swarm-1",
-		GroupID: "g1",
+		AgentID: "a1",
 		Task:    "research topic",
 		Status:  "running",
 		Agents:  agents,

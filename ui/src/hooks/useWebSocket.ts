@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 
 interface WsEvent {
   type: string;
-  group_id?: string;
+  agent_id?: string;
   data: unknown;
   timestamp: string;
 }

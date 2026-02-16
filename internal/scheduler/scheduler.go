@@ -59,14 +59,14 @@ func (s *Scheduler) poll(ctx context.Context) {
 }
 
 func (s *Scheduler) execute(ctx context.Context, task store.ScheduledTask) {
-	slog.Info("executing scheduled task", "id", task.ID, "name", task.Name, "group", task.GroupID)
+	slog.Info("executing scheduled task", "id", task.ID, "name", task.Name, "agent", task.AgentID)
 
 	meta := map[string]string{
 		"sender":  "scheduler",
 		"task_id": task.ID,
 	}
 
-	err := s.orch.HandleMessage(ctx, task.GroupID, task.Prompt, meta)
+	err := s.orch.HandleMessage(ctx, task.AgentID, task.Prompt, meta)
 
 	var lastStatus, lastError string
 	if err != nil {
