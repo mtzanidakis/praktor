@@ -91,6 +91,7 @@ telegram:
   main_chat_id: 0           # Your chat ID for scheduled task results
 
 defaults:
+  model: "claude-sonnet-4-5"
   max_running: 5            # Max concurrent agent containers
   idle_timeout: 10m         # Stop idle containers after this duration
 
