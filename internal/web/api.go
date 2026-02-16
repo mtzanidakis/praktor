@@ -14,15 +14,14 @@ import (
 )
 
 func (s *Server) registerAPI(mux *http.ServeMux) {
-	// Groups
-	mux.HandleFunc("GET /api/groups", s.listGroups)
-	mux.HandleFunc("POST /api/groups", s.createGroup)
-	mux.HandleFunc("GET /api/groups/{id}", s.getGroup)
-	mux.HandleFunc("GET /api/groups/{id}/messages", s.getGroupMessages)
+	// Agents (definitions from config, persisted in DB)
+	mux.HandleFunc("GET /api/agents/definitions", s.listAgentDefinitions)
+	mux.HandleFunc("GET /api/agents/definitions/{id}", s.getAgentDefinition)
+	mux.HandleFunc("GET /api/agents/definitions/{id}/messages", s.getAgentMessages)
 
-	// Agents
-	mux.HandleFunc("GET /api/agents", s.listAgents)
-	mux.HandleFunc("POST /api/agents/{groupID}/stop", s.stopAgent)
+	// Running agent containers
+	mux.HandleFunc("GET /api/agents", s.listRunningAgents)
+	mux.HandleFunc("POST /api/agents/{agentID}/stop", s.stopAgent)
 
 	// Tasks
 	mux.HandleFunc("GET /api/tasks", s.listTasks)
@@ -39,42 +38,40 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/status", s.getStatus)
 }
 
-func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
-	groups, err := s.store.ListGroups()
+func (s *Server) listAgentDefinitions(w http.ResponseWriter, r *http.Request) {
+	agents, err := s.store.ListAgents()
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Enrich with agent status, message count, and last active
+	// Enrich with container status, message count, and last active
 	running, _ := s.orch.ListRunning(r.Context())
 	runningSet := make(map[string]bool, len(running))
 	for _, c := range running {
-		runningSet[c.GroupID] = true
+		runningSet[c.AgentID] = true
 	}
 
-	msgStats, _ := s.store.GetGroupMessageStats()
+	msgStats, _ := s.store.GetAgentMessageStats()
 
-	out := make([]map[string]any, 0, len(groups))
-	for _, g := range groups {
-		groupType := "standard"
-		if g.IsMain {
-			groupType = "main"
-		}
-
+	out := make([]map[string]any, 0, len(agents))
+	for _, a := range agents {
 		agentStatus := "stopped"
-		if runningSet[g.ID] {
+		if runningSet[a.ID] {
 			agentStatus = "running"
 		}
 
 		entry := map[string]any{
-			"id":           g.ID,
-			"name":         g.Name,
-			"type":         groupType,
+			"id":           a.ID,
+			"name":         a.Name,
+			"description":  a.Description,
+			"model":        a.Model,
+			"image":        a.Image,
+			"workspace":    a.Workspace,
 			"agent_status": agentStatus,
 		}
 
-		if stats, ok := msgStats[g.ID]; ok {
+		if stats, ok := msgStats[a.ID]; ok {
 			entry["message_count"] = stats.MessageCount
 			entry["last_active"] = formatMessageTime(stats.LastActive)
 		} else {
@@ -86,38 +83,21 @@ func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, out)
 }
 
-func (s *Server) createGroup(w http.ResponseWriter, r *http.Request) {
-	var g store.Group
-	if err := json.NewDecoder(r.Body).Decode(&g); err != nil {
-		jsonError(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-	if g.ID == "" || g.Name == "" || g.Folder == "" {
-		jsonError(w, "id, name, and folder are required", http.StatusBadRequest)
-		return
-	}
-	if err := s.store.SaveGroup(&g); err != nil {
-		jsonError(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	jsonResponse(w, g)
-}
-
-func (s *Server) getGroup(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getAgentDefinition(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	g, err := s.store.GetGroup(id)
+	a, err := s.store.GetAgent(id)
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if g == nil {
-		jsonError(w, "group not found", http.StatusNotFound)
+	if a == nil {
+		jsonError(w, "agent not found", http.StatusNotFound)
 		return
 	}
-	jsonResponse(w, g)
+	jsonResponse(w, a)
 }
 
-func (s *Server) getGroupMessages(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getAgentMessages(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	messages, err := s.store.GetMessages(id, 100)
 	if err != nil {
@@ -138,7 +118,7 @@ func (s *Server) getGroupMessages(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, out)
 }
 
-func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
+func (s *Server) listRunningAgents(w http.ResponseWriter, r *http.Request) {
 	agents, err := s.orch.ListRunning(r.Context())
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
@@ -148,8 +128,8 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) stopAgent(w http.ResponseWriter, r *http.Request) {
-	groupID := r.PathValue("groupID")
-	if err := s.orch.StopAgent(r.Context(), groupID); err != nil {
+	agentID := r.PathValue("agentID")
+	if err := s.orch.StopAgent(r.Context(), agentID); err != nil {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -162,17 +142,17 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	groupNames := s.groupNameMap()
+	agentNames := s.agentNameMap()
 	out := make([]map[string]any, 0, len(tasks))
 	for _, t := range tasks {
-		out = append(out, taskToAPI(t, groupNames))
+		out = append(out, taskToAPI(t, agentNames))
 	}
 	jsonResponse(w, out)
 }
 
 func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		GroupID     string `json:"group_id"`
+		AgentID     string `json:"agent_id"`
 		Name        string `json:"name"`
 		Schedule    string `json:"schedule"`
 		Prompt      string `json:"prompt"`
@@ -183,8 +163,8 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	if body.GroupID == "" || body.Name == "" || body.Schedule == "" || body.Prompt == "" {
-		jsonError(w, "group_id, name, schedule, and prompt are required", http.StatusBadRequest)
+	if body.AgentID == "" || body.Name == "" || body.Schedule == "" || body.Prompt == "" {
+		jsonError(w, "agent_id, name, schedule, and prompt are required", http.StatusBadRequest)
 		return
 	}
 
@@ -202,7 +182,7 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 
 	t := store.ScheduledTask{
 		ID:          uuid.New().String(),
-		GroupID:     body.GroupID,
+		AgentID:     body.AgentID,
 		Name:        body.Name,
 		Schedule:    normalized,
 		Prompt:      body.Prompt,
@@ -222,7 +202,7 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	jsonResponse(w, taskToAPI(t, s.groupNameMap()))
+	jsonResponse(w, taskToAPI(t, s.agentNameMap()))
 }
 
 func (s *Server) updateTask(w http.ResponseWriter, r *http.Request) {
@@ -242,7 +222,7 @@ func (s *Server) updateTask(w http.ResponseWriter, r *http.Request) {
 		Name        *string `json:"name"`
 		Schedule    *string `json:"schedule"`
 		Prompt      *string `json:"prompt"`
-		GroupID     *string `json:"group_id"`
+		AgentID     *string `json:"agent_id"`
 		ContextMode *string `json:"context_mode"`
 		Enabled     *bool   `json:"enabled"`
 		Status      *string `json:"status"`
@@ -259,8 +239,8 @@ func (s *Server) updateTask(w http.ResponseWriter, r *http.Request) {
 	if body.Prompt != nil {
 		existing.Prompt = *body.Prompt
 	}
-	if body.GroupID != nil {
-		existing.GroupID = *body.GroupID
+	if body.AgentID != nil {
+		existing.AgentID = *body.AgentID
 	}
 	if body.ContextMode != nil {
 		existing.ContextMode = *body.ContextMode
@@ -298,7 +278,7 @@ func (s *Server) updateTask(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	jsonResponse(w, taskToAPI(*existing, s.groupNameMap()))
+	jsonResponse(w, taskToAPI(*existing, s.agentNameMap()))
 }
 
 func (s *Server) deleteTask(w http.ResponseWriter, r *http.Request) {
@@ -353,7 +333,7 @@ func (s *Server) getSwarm(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 	agents, _ := s.orch.ListRunning(r.Context())
-	groups, _ := s.store.ListGroups()
+	agentDefs, _ := s.store.ListAgents()
 	tasks, _ := s.store.ListTasks()
 
 	pendingTasks := 0
@@ -363,10 +343,10 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Build group ID → name lookup
-	groupNames := make(map[string]string, len(groups))
-	for _, g := range groups {
-		groupNames[g.ID] = g.Name
+	// Build agent ID → name lookup
+	agentNames := make(map[string]string, len(agentDefs))
+	for _, a := range agentDefs {
+		agentNames[a.ID] = a.Name
 	}
 
 	// Format uptime
@@ -376,13 +356,13 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 	recentMsgs, _ := s.store.GetRecentMessages(10)
 	recentOut := make([]map[string]string, 0, len(recentMsgs))
 	for _, m := range recentMsgs {
-		groupName := groupNames[m.GroupID]
-		if groupName == "" {
-			groupName = m.GroupID
+		agentName := agentNames[m.AgentID]
+		if agentName == "" {
+			agentName = m.AgentID
 		}
 		recentOut = append(recentOut, map[string]string{
 			"id":    fmt.Sprintf("%d", m.ID),
-			"group": groupName,
+			"agent": agentName,
 			"role":  mapSenderToRole(m.Sender),
 			"text":  m.Content,
 			"time":  formatMessageTime(m.CreatedAt),
@@ -392,7 +372,7 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 	status := map[string]any{
 		"status":          "ok",
 		"active_agents":   len(agents),
-		"groups_count":    len(groups),
+		"agents_count":    len(agentDefs),
 		"pending_tasks":   pendingTasks,
 		"uptime":          uptime,
 		"recent_messages": recentOut,
@@ -404,27 +384,27 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, status)
 }
 
-func (s *Server) groupNameMap() map[string]string {
-	groups, _ := s.store.ListGroups()
-	m := make(map[string]string, len(groups))
-	for _, g := range groups {
-		m[g.ID] = g.Name
+func (s *Server) agentNameMap() map[string]string {
+	agents, _ := s.store.ListAgents()
+	m := make(map[string]string, len(agents))
+	for _, a := range agents {
+		m[a.ID] = a.Name
 	}
 	return m
 }
 
-func taskToAPI(t store.ScheduledTask, groupNames map[string]string) map[string]any {
+func taskToAPI(t store.ScheduledTask, agentNames map[string]string) map[string]any {
 	m := map[string]any{
 		"id":               t.ID,
 		"name":             t.Name,
 		"schedule":         t.Schedule,
 		"schedule_display": schedule.FormatSchedule(t.Schedule),
-		"group_id":         t.GroupID,
+		"agent_id":         t.AgentID,
 		"prompt":           t.Prompt,
 		"enabled":          t.Status == "active",
 	}
-	if name, ok := groupNames[t.GroupID]; ok {
-		m["group_name"] = name
+	if name, ok := agentNames[t.AgentID]; ok {
+		m["agent_name"] = name
 	}
 	if t.LastRunAt != nil {
 		m["last_run"] = formatMessageTime(*t.LastRunAt)

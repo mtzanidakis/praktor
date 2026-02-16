@@ -8,7 +8,7 @@ import (
 
 type ScheduledTask struct {
 	ID          string     `json:"id"`
-	GroupID     string     `json:"group_id"`
+	AgentID     string     `json:"agent_id"`
 	Name        string     `json:"name"`
 	Schedule    string     `json:"schedule"`
 	Prompt      string     `json:"prompt"`
@@ -26,7 +26,7 @@ func scanTask(scanner interface {
 }) (*ScheduledTask, error) {
 	t := &ScheduledTask{}
 	var lastStatus, lastError *string
-	err := scanner.Scan(&t.ID, &t.GroupID, &t.Name, &t.Schedule, &t.Prompt, &t.ContextMode, &t.Status,
+	err := scanner.Scan(&t.ID, &t.AgentID, &t.Name, &t.Schedule, &t.Prompt, &t.ContextMode, &t.Status,
 		&t.NextRunAt, &t.LastRunAt, &lastStatus, &lastError, &t.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -42,7 +42,7 @@ func scanTask(scanner interface {
 
 func (s *Store) SaveTask(t *ScheduledTask) error {
 	_, err := s.db.Exec(`
-		INSERT INTO scheduled_tasks (id, group_id, name, schedule, prompt, context_mode, status, next_run_at)
+		INSERT INTO scheduled_tasks (id, agent_id, name, schedule, prompt, context_mode, status, next_run_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name = excluded.name,
@@ -51,7 +51,7 @@ func (s *Store) SaveTask(t *ScheduledTask) error {
 			context_mode = excluded.context_mode,
 			status = excluded.status,
 			next_run_at = excluded.next_run_at`,
-		t.ID, t.GroupID, t.Name, t.Schedule, t.Prompt, t.ContextMode, t.Status, t.NextRunAt)
+		t.ID, t.AgentID, t.Name, t.Schedule, t.Prompt, t.ContextMode, t.Status, t.NextRunAt)
 	if err != nil {
 		return fmt.Errorf("save task: %w", err)
 	}
@@ -60,7 +60,7 @@ func (s *Store) SaveTask(t *ScheduledTask) error {
 
 func (s *Store) GetTask(id string) (*ScheduledTask, error) {
 	row := s.db.QueryRow(`
-		SELECT id, group_id, name, schedule, prompt, context_mode, status,
+		SELECT id, agent_id, name, schedule, prompt, context_mode, status,
 		       next_run_at, last_run_at, last_status, last_error, created_at
 		FROM scheduled_tasks WHERE id = ?`, id)
 	t, err := scanTask(row)
@@ -75,7 +75,7 @@ func (s *Store) GetTask(id string) (*ScheduledTask, error) {
 
 func (s *Store) ListTasks() ([]ScheduledTask, error) {
 	rows, err := s.db.Query(`
-		SELECT id, group_id, name, schedule, prompt, context_mode, status,
+		SELECT id, agent_id, name, schedule, prompt, context_mode, status,
 		       next_run_at, last_run_at, last_status, last_error, created_at
 		FROM scheduled_tasks ORDER BY created_at`)
 	if err != nil {
@@ -94,13 +94,13 @@ func (s *Store) ListTasks() ([]ScheduledTask, error) {
 	return tasks, rows.Err()
 }
 
-func (s *Store) ListTasksForGroup(groupID string) ([]ScheduledTask, error) {
+func (s *Store) ListTasksForAgent(agentID string) ([]ScheduledTask, error) {
 	rows, err := s.db.Query(`
-		SELECT id, group_id, name, schedule, prompt, context_mode, status,
+		SELECT id, agent_id, name, schedule, prompt, context_mode, status,
 		       next_run_at, last_run_at, last_status, last_error, created_at
-		FROM scheduled_tasks WHERE group_id = ? ORDER BY created_at`, groupID)
+		FROM scheduled_tasks WHERE agent_id = ? ORDER BY created_at`, agentID)
 	if err != nil {
-		return nil, fmt.Errorf("list tasks for group: %w", err)
+		return nil, fmt.Errorf("list tasks for agent: %w", err)
 	}
 	defer rows.Close()
 
@@ -117,7 +117,7 @@ func (s *Store) ListTasksForGroup(groupID string) ([]ScheduledTask, error) {
 
 func (s *Store) GetDueTasks(now time.Time) ([]ScheduledTask, error) {
 	rows, err := s.db.Query(`
-		SELECT id, group_id, name, schedule, prompt, context_mode, status,
+		SELECT id, agent_id, name, schedule, prompt, context_mode, status,
 		       next_run_at, last_run_at, last_status, last_error, created_at
 		FROM scheduled_tasks
 		WHERE status = 'active' AND next_run_at <= ?

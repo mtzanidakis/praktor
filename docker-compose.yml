@@ -12,7 +12,7 @@ services:
       - ./config/praktor.yaml:/etc/praktor/praktor.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - praktor-data:/data
-      - praktor-global:/data/groups/global
+      - praktor-global:/data/agents/global
     environment:
       - TZ=Europe/Athens
       - PRAKTOR_CONFIG=/etc/praktor/praktor.yaml

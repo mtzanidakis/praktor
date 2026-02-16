@@ -2,13 +2,32 @@ telegram:
   token: "${PRAKTOR_TELEGRAM_TOKEN}"
   allow_from: []                    # Empty = allow all; list of Telegram user IDs
 
-agent:
+defaults:
   image: "praktor-agent:latest"
-  model: "claude-opus-4-6"            # Default Claude model for agents
+  model: "claude-sonnet-4-5-20250929"  # Default Claude model for agents
   max_containers: 5
-  idle_timeout: 30m
+  idle_timeout: 10m
+  base_path: "data/agents"
   anthropic_api_key: "${ANTHROPIC_API_KEY}"
   oauth_token: "${CLAUDE_CODE_OAUTH_TOKEN}"
+
+agents:
+  general:
+    description: "General-purpose assistant for everyday tasks"
+    workspace: general
+  coder:
+    description: "Software engineering specialist"
+    model: "claude-opus-4-6"
+    workspace: coder
+    env:
+      GITHUB_TOKEN: "${GITHUB_TOKEN}"
+  researcher:
+    description: "Web research and analysis"
+    workspace: researcher
+    allowed_tools: [WebSearch, WebFetch, Read, Write]
+
+router:
+  default_agent: general
 
 nats:
   port: 4222
@@ -23,7 +42,3 @@ web:
 
 scheduler:
   poll_interval: 30s
-
-groups:
-  base_path: "data/groups"
-  main_chat_id: ""                   # Your Telegram self-chat ID

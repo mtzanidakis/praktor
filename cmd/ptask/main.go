@@ -29,14 +29,14 @@ type task struct {
 	Status   string `json:"status"`
 }
 
-func sendIPC(natsURL, groupID, reqType string, payload map[string]any) (*ipcResponse, error) {
+func sendIPC(natsURL, agentID, reqType string, payload map[string]any) (*ipcResponse, error) {
 	conn, err := nats.Connect(natsURL)
 	if err != nil {
 		return nil, fmt.Errorf("connect to nats: %w", err)
 	}
 	defer conn.Close()
 
-	topic := fmt.Sprintf("host.ipc.%s", groupID)
+	topic := fmt.Sprintf("host.ipc.%s", agentID)
 	data, err := json.Marshal(ipcRequest{Type: reqType, Payload: payload})
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
@@ -83,9 +83,12 @@ func main() {
 	if natsURL == "" {
 		natsURL = "nats://localhost:4222"
 	}
-	groupID := os.Getenv("GROUP_ID")
-	if groupID == "" {
-		groupID = "default"
+	agentID := os.Getenv("AGENT_ID")
+	if agentID == "" {
+		agentID = os.Getenv("GROUP_ID")
+	}
+	if agentID == "" {
+		agentID = "default"
 	}
 
 	if len(os.Args) < 2 {
@@ -101,7 +104,7 @@ func main() {
 		if args["name"] == "" || args["schedule"] == "" || args["prompt"] == "" {
 			fatal("--name, --schedule, and --prompt are required")
 		}
-		resp, err := sendIPC(natsURL, groupID, "create_task", map[string]any{
+		resp, err := sendIPC(natsURL, agentID, "create_task", map[string]any{
 			"name":     args["name"],
 			"schedule": args["schedule"],
 			"prompt":   args["prompt"],
@@ -115,7 +118,7 @@ func main() {
 		fmt.Printf("Task created: %s\n", resp.ID)
 
 	case "list":
-		resp, err := sendIPC(natsURL, groupID, "list_tasks", map[string]any{})
+		resp, err := sendIPC(natsURL, agentID, "list_tasks", map[string]any{})
 		if err != nil {
 			fatal("%v", err)
 		}
@@ -135,7 +138,7 @@ func main() {
 		if args["id"] == "" {
 			fatal("--id is required")
 		}
-		resp, err := sendIPC(natsURL, groupID, "delete_task", map[string]any{
+		resp, err := sendIPC(natsURL, agentID, "delete_task", map[string]any{
 			"id": args["id"],
 		})
 		if err != nil {

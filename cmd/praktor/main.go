@@ -11,8 +11,9 @@ import (
 	"github.com/mtzanidakis/praktor/internal/agent"
 	"github.com/mtzanidakis/praktor/internal/config"
 	"github.com/mtzanidakis/praktor/internal/container"
-	"github.com/mtzanidakis/praktor/internal/groups"
 	"github.com/mtzanidakis/praktor/internal/natsbus"
+	"github.com/mtzanidakis/praktor/internal/registry"
+	"github.com/mtzanidakis/praktor/internal/router"
 	"github.com/mtzanidakis/praktor/internal/scheduler"
 	"github.com/mtzanidakis/praktor/internal/store"
 	"github.com/mtzanidakis/praktor/internal/swarm"
@@ -73,23 +74,24 @@ func runGateway() error {
 	defer bus.Close()
 	slog.Info("nats started", "port", cfg.NATS.Port)
 
-	// Groups manager
-	grpMgr := groups.NewManager(db, cfg.Groups)
-	if err := grpMgr.EnsureGlobalDirectory(); err != nil {
-		return fmt.Errorf("ensure global directory: %w", err)
-	}
-	if err := grpMgr.EnsureMainGroup(); err != nil {
-		return fmt.Errorf("ensure main group: %w", err)
+	// Agent registry (replaces groups manager)
+	reg := registry.New(db, cfg.Agents, cfg.Defaults, cfg.Defaults.BasePath)
+	if err := reg.Sync(); err != nil {
+		return fmt.Errorf("sync agent registry: %w", err)
 	}
 
 	// Container manager
-	ctrMgr, err := container.NewManager(bus, cfg.Agent)
+	ctrMgr, err := container.NewManager(bus, cfg.Defaults)
 	if err != nil {
 		return fmt.Errorf("init container manager: %w", err)
 	}
 
 	// Agent orchestrator
-	orch := agent.NewOrchestrator(bus, ctrMgr, db, grpMgr, cfg.Agent)
+	orch := agent.NewOrchestrator(bus, ctrMgr, db, reg, cfg.Defaults)
+
+	// Message router
+	rtr := router.New(reg, cfg.Router)
+	rtr.SetOrchestrator(orch)
 
 	// Idle reaper
 	go orch.StartIdleReaper(ctx)
@@ -104,7 +106,7 @@ func runGateway() error {
 
 	// Telegram bot
 	if cfg.Telegram.Token != "" {
-		bot, err := telegram.NewBot(cfg.Telegram, orch, db)
+		bot, err := telegram.NewBot(cfg.Telegram, orch, rtr)
 		if err != nil {
 			return fmt.Errorf("init telegram bot: %w", err)
 		}

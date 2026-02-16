@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, NavLink } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
-import Groups from './pages/Groups';
+import Agents from './pages/Agents';
 import Conversations from './pages/Conversations';
 import Tasks from './pages/Tasks';
 import Swarms from './pages/Swarms';
@@ -18,7 +18,7 @@ function IconDashboard() {
   );
 }
 
-function IconGroups() {
+function IconAgents() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="5.5" cy="5" r="2.5" />
@@ -88,7 +88,7 @@ function IconMoon() {
 
 const navItems = [
   { to: '/', label: 'Dashboard', Icon: IconDashboard },
-  { to: '/groups', label: 'Groups', Icon: IconGroups },
+  { to: '/agents', label: 'Agents', Icon: IconAgents },
   { to: '/conversations', label: 'Conversations', Icon: IconConversations },
   { to: '/tasks', label: 'Tasks', Icon: IconTasks },
   { to: '/swarms', label: 'Swarms', Icon: IconSwarms },
@@ -216,7 +216,7 @@ function App() {
       }}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/groups" element={<Groups />} />
+          <Route path="/agents" element={<Agents />} />
           <Route path="/conversations" element={<Conversations />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/swarms" element={<Swarms />} />

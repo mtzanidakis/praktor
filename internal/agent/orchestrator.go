@@ -5,14 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/mtzanidakis/praktor/internal/config"
 	"github.com/mtzanidakis/praktor/internal/container"
-	"github.com/mtzanidakis/praktor/internal/groups"
 	"github.com/mtzanidakis/praktor/internal/natsbus"
+	"github.com/mtzanidakis/praktor/internal/registry"
 	"github.com/mtzanidakis/praktor/internal/schedule"
 	"github.com/mtzanidakis/praktor/internal/store"
 	"github.com/nats-io/nats.go"
@@ -23,31 +24,31 @@ type Orchestrator struct {
 	client     *natsbus.Client
 	containers *container.Manager
 	store      *store.Store
-	groups     *groups.Manager
-	cfg        config.AgentConfig
+	registry   *registry.Registry
+	cfg        config.DefaultsConfig
 	sessions   *SessionTracker
-	queues     map[string]*GroupQueue
+	queues     map[string]*AgentQueue
 	mu         sync.RWMutex
 	listeners  []OutputListener
 	listenerMu sync.RWMutex
 }
 
-type OutputListener func(groupID, content string)
+type OutputListener func(agentID, content string, meta map[string]string)
 
 type IPCCommand struct {
 	Type    string          `json:"type"`
 	Payload json.RawMessage `json:"payload"`
 }
 
-func NewOrchestrator(bus *natsbus.Bus, ctr *container.Manager, s *store.Store, grp *groups.Manager, cfg config.AgentConfig) *Orchestrator {
+func NewOrchestrator(bus *natsbus.Bus, ctr *container.Manager, s *store.Store, reg *registry.Registry, cfg config.DefaultsConfig) *Orchestrator {
 	o := &Orchestrator{
 		bus:        bus,
 		containers: ctr,
 		store:      s,
-		groups:     grp,
+		registry:   reg,
 		cfg:        cfg,
 		sessions:   NewSessionTracker(),
-		queues:     make(map[string]*GroupQueue),
+		queues:     make(map[string]*AgentQueue),
 	}
 
 	client, err := natsbus.NewClient(bus)
@@ -76,14 +77,14 @@ func (o *Orchestrator) OnOutput(listener OutputListener) {
 	o.listeners = append(o.listeners, listener)
 }
 
-func (o *Orchestrator) HandleMessage(ctx context.Context, groupID, text string, meta map[string]string) error {
-	// Ensure group exists
-	grp, err := o.groups.Get(groupID)
+func (o *Orchestrator) HandleMessage(ctx context.Context, agentID, text string, meta map[string]string) error {
+	// Ensure agent exists
+	ag, err := o.registry.Get(agentID)
 	if err != nil {
-		return fmt.Errorf("get group: %w", err)
+		return fmt.Errorf("get agent: %w", err)
 	}
-	if grp == nil {
-		return fmt.Errorf("group not registered: %s", groupID)
+	if ag == nil {
+		return fmt.Errorf("agent not registered: %s", agentID)
 	}
 
 	// Save incoming message
@@ -92,7 +93,7 @@ func (o *Orchestrator) HandleMessage(ctx context.Context, groupID, text string, 
 		sender = s
 	}
 	msg := &store.Message{
-		GroupID: groupID,
+		AgentID: agentID,
 		Sender:  sender,
 		Content: text,
 	}
@@ -100,33 +101,33 @@ func (o *Orchestrator) HandleMessage(ctx context.Context, groupID, text string, 
 	o.publishMessageEvent(msg)
 
 	// Enqueue message
-	q := o.getQueue(groupID)
+	q := o.getQueue(agentID)
 	q.Enqueue(QueuedMessage{
-		GroupID: groupID,
+		AgentID: agentID,
 		Text:    text,
 		Meta:    meta,
 	})
 
 	// Process queue
-	go o.processQueue(ctx, groupID)
+	go o.processQueue(ctx, agentID)
 
 	return nil
 }
 
-func (o *Orchestrator) getQueue(groupID string) *GroupQueue {
+func (o *Orchestrator) getQueue(agentID string) *AgentQueue {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
-	q, ok := o.queues[groupID]
+	q, ok := o.queues[agentID]
 	if !ok {
-		q = NewGroupQueue(groupID)
-		o.queues[groupID] = q
+		q = NewAgentQueue(agentID)
+		o.queues[agentID] = q
 	}
 	return q
 }
 
-func (o *Orchestrator) processQueue(ctx context.Context, groupID string) {
-	q := o.getQueue(groupID)
+func (o *Orchestrator) processQueue(ctx context.Context, agentID string) {
+	q := o.getQueue(agentID)
 
 	if !q.TryLock() {
 		return // Already processing
@@ -139,32 +140,42 @@ func (o *Orchestrator) processQueue(ctx context.Context, groupID string) {
 			return
 		}
 
-		if err := o.executeMessage(ctx, groupID, msg); err != nil {
-			slog.Error("execute message failed", "group", groupID, "error", err)
+		if err := o.executeMessage(ctx, agentID, msg); err != nil {
+			slog.Error("execute message failed", "agent", agentID, "error", err)
 		}
 	}
 }
 
-func (o *Orchestrator) executeMessage(ctx context.Context, groupID string, msg QueuedMessage) error {
-	grp, err := o.groups.Get(groupID)
-	if err != nil || grp == nil {
-		return fmt.Errorf("get group: %w", err)
+func (o *Orchestrator) executeMessage(ctx context.Context, agentID string, msg QueuedMessage) error {
+	// Resolve agent config from registry
+	def, hasDef := o.registry.GetDefinition(agentID)
+
+	ag, err := o.registry.Get(agentID)
+	if err != nil || ag == nil {
+		return fmt.Errorf("get agent: %w", err)
 	}
 
 	// Ensure container is running
-	info := o.containers.GetRunning(groupID)
+	info := o.containers.GetRunning(agentID)
 	if info == nil {
 		// Capture NATS client count before starting so we can detect when agent connects
 		clientsBefore := o.bus.NumClients()
-		slog.Info("starting agent", "group", groupID, "nats_clients_before", clientsBefore)
+		slog.Info("starting agent", "agent", agentID, "nats_clients_before", clientsBefore)
 
-		info, err = o.containers.StartAgent(ctx, container.AgentOpts{
-			GroupID:     groupID,
-			GroupFolder: grp.Folder,
-			IsMain:      grp.IsMain,
-			Model:       grp.Model,
-			NATSUrl:     o.bus.AgentNATSURL(),
-		})
+		opts := container.AgentOpts{
+			AgentID:   agentID,
+			Workspace: ag.Workspace,
+			Model:     o.registry.ResolveModel(agentID),
+			Image:     o.registry.ResolveImage(agentID),
+			NATSUrl:   o.bus.AgentNATSURL(),
+		}
+		if hasDef {
+			opts.Env = def.Env
+			opts.Secrets = def.Secrets
+			opts.AllowedTools = def.AllowedTools
+		}
+
+		info, err = o.containers.StartAgent(ctx, opts)
 		if err != nil {
 			return fmt.Errorf("start agent: %w", err)
 		}
@@ -178,7 +189,7 @@ func (o *Orchestrator) executeMessage(ctx context.Context, groupID string, msg Q
 		for {
 			select {
 			case <-deadline:
-				slog.Warn("agent ready timeout, sending anyway", "group", groupID, "nats_clients", o.bus.NumClients())
+				slog.Warn("agent ready timeout, sending anyway", "agent", agentID, "nats_clients", o.bus.NumClients())
 				break waitLoop
 			case <-ctx.Done():
 				return ctx.Err()
@@ -187,16 +198,16 @@ func (o *Orchestrator) executeMessage(ctx context.Context, groupID string, msg Q
 				if current > clientsBefore {
 					// Give the agent a moment to set up subscriptions after connecting
 					time.Sleep(500 * time.Millisecond)
-					slog.Info("agent container ready", "group", groupID, "nats_clients", current)
+					slog.Info("agent container ready", "agent", agentID, "nats_clients", current)
 					break waitLoop
 				}
 			}
 		}
 
 		now := time.Now()
-		o.sessions.Set(groupID, &Session{
+		o.sessions.Set(agentID, &Session{
 			ID:          info.ID,
-			GroupID:     groupID,
+			AgentID:     agentID,
 			ContainerID: info.ID,
 			Status:      "running",
 			StartedAt:   now,
@@ -207,32 +218,97 @@ func (o *Orchestrator) executeMessage(ctx context.Context, groupID string, msg Q
 	// Send message to container via NATS
 	payload := map[string]string{
 		"text":    msg.Text,
-		"groupID": groupID,
+		"agentID": agentID,
 	}
 	for k, v := range msg.Meta {
 		payload[k] = v
 	}
 
 	data, _ := json.Marshal(payload)
-	topic := natsbus.TopicAgentInput(groupID)
-	slog.Info("publishing message to agent", "group", groupID, "topic", topic)
+	topic := natsbus.TopicAgentInput(agentID)
+	slog.Info("publishing message to agent", "agent", agentID, "topic", topic)
 	if err := o.client.Publish(topic, data); err != nil {
 		return fmt.Errorf("publish message: %w", err)
 	}
-	o.sessions.Touch(groupID)
+	o.sessions.Touch(agentID)
 	return o.client.Flush()
 }
 
+func (o *Orchestrator) RouteQuery(ctx context.Context, agentID string, message string) (string, error) {
+	// Ensure the agent container is running
+	info := o.containers.GetRunning(agentID)
+	if info == nil {
+		ag, err := o.registry.Get(agentID)
+		if err != nil || ag == nil {
+			return "", fmt.Errorf("agent not found: %s", agentID)
+		}
+
+		clientsBefore := o.bus.NumClients()
+		opts := container.AgentOpts{
+			AgentID:   agentID,
+			Workspace: ag.Workspace,
+			Model:     o.registry.ResolveModel(agentID),
+			Image:     o.registry.ResolveImage(agentID),
+			NATSUrl:   o.bus.AgentNATSURL(),
+		}
+		if def, ok := o.registry.GetDefinition(agentID); ok {
+			opts.Env = def.Env
+			opts.Secrets = def.Secrets
+		}
+
+		_, err = o.containers.StartAgent(ctx, opts)
+		if err != nil {
+			return "", fmt.Errorf("start agent for routing: %w", err)
+		}
+
+		// Wait for NATS connection
+		deadline := time.After(30 * time.Second)
+		ticker := time.NewTicker(250 * time.Millisecond)
+		defer ticker.Stop()
+	waitLoop:
+		for {
+			select {
+			case <-deadline:
+				break waitLoop
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-ticker.C:
+				if o.bus.NumClients() > clientsBefore {
+					time.Sleep(500 * time.Millisecond)
+					break waitLoop
+				}
+			}
+		}
+	}
+
+	// Send routing query via NATS request-reply
+	topic := natsbus.TopicAgentRoute(agentID)
+	data, _ := json.Marshal(map[string]string{"text": message})
+	resp, err := o.client.Request(topic, data, 15*time.Second)
+	if err != nil {
+		return "", fmt.Errorf("route query: %w", err)
+	}
+
+	var result struct {
+		Agent string `json:"agent"`
+	}
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		// Try plain text response
+		return strings.TrimSpace(string(resp.Data)), nil
+	}
+	return strings.TrimSpace(result.Agent), nil
+}
+
 func (o *Orchestrator) handleAgentOutput(msg *nats.Msg) {
-	// Extract groupID from topic: agent.{groupID}.output
+	// Extract agentID from topic: agent.{agentID}.output
 	topic := msg.Subject
-	var groupID string
-	if _, err := fmt.Sscanf(topic, "agent.%s", &groupID); err != nil {
+	var agentID string
+	if _, err := fmt.Sscanf(topic, "agent.%s", &agentID); err != nil {
 		return
 	}
 	// Remove trailing ".output"
-	if len(groupID) > 7 && groupID[len(groupID)-7:] == ".output" {
-		groupID = groupID[:len(groupID)-7]
+	if len(agentID) > 7 && agentID[len(agentID)-7:] == ".output" {
+		agentID = agentID[:len(agentID)-7]
 	}
 
 	var output struct {
@@ -243,25 +319,33 @@ func (o *Orchestrator) handleAgentOutput(msg *nats.Msg) {
 		return
 	}
 
-	o.sessions.Touch(groupID)
+	o.sessions.Touch(agentID)
 
 	if output.Type == "result" {
-		// Only forward the final result to Telegram; "text" events are
-		// intermediate streaming chunks that are part of the same response.
 		agentMsg := &store.Message{
-			GroupID: groupID,
+			AgentID: agentID,
 			Sender:  "agent",
 			Content: output.Content,
 		}
 		_ = o.store.SaveMessage(agentMsg)
 		o.publishMessageEvent(agentMsg)
 
+		// Get metadata from the latest queued message for this agent
+		meta := o.getLastMeta(agentID)
+
 		o.listenerMu.RLock()
 		for _, l := range o.listeners {
-			l(groupID, output.Content)
+			l(agentID, output.Content, meta)
 		}
 		o.listenerMu.RUnlock()
 	}
+}
+
+func (o *Orchestrator) getLastMeta(agentID string) map[string]string {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	// Return empty meta - chat_id is stored via message metadata
+	return nil
 }
 
 func (o *Orchestrator) handleIPC(msg *nats.Msg) {
@@ -272,19 +356,19 @@ func (o *Orchestrator) handleIPC(msg *nats.Msg) {
 		return
 	}
 
-	// Extract groupID from subject: host.ipc.{groupID}
-	groupID := msg.Subject
-	if idx := len("host.ipc."); idx < len(groupID) {
-		groupID = groupID[idx:]
+	// Extract agentID from subject: host.ipc.{agentID}
+	agentID := msg.Subject
+	if idx := len("host.ipc."); idx < len(agentID) {
+		agentID = agentID[idx:]
 	}
 
-	slog.Info("IPC command received", "type", cmd.Type, "group", groupID)
+	slog.Info("IPC command received", "type", cmd.Type, "agent", agentID)
 
 	switch cmd.Type {
 	case "create_task":
-		o.ipcCreateTask(msg, groupID, cmd.Payload)
+		o.ipcCreateTask(msg, agentID, cmd.Payload)
 	case "list_tasks":
-		o.ipcListTasks(msg, groupID)
+		o.ipcListTasks(msg, agentID)
 	case "delete_task":
 		o.ipcDeleteTask(msg, cmd.Payload)
 	default:
@@ -304,7 +388,7 @@ func (o *Orchestrator) respondIPC(msg *nats.Msg, data any) {
 	}
 }
 
-func (o *Orchestrator) ipcCreateTask(msg *nats.Msg, groupID string, payload json.RawMessage) {
+func (o *Orchestrator) ipcCreateTask(msg *nats.Msg, agentID string, payload json.RawMessage) {
 	var req struct {
 		Name     string `json:"name"`
 		Schedule string `json:"schedule"`
@@ -327,7 +411,7 @@ func (o *Orchestrator) ipcCreateTask(msg *nats.Msg, groupID string, payload json
 
 	t := &store.ScheduledTask{
 		ID:          uuid.New().String(),
-		GroupID:     groupID,
+		AgentID:     agentID,
 		Name:        req.Name,
 		Schedule:    normalized,
 		Prompt:      req.Prompt,
@@ -341,12 +425,12 @@ func (o *Orchestrator) ipcCreateTask(msg *nats.Msg, groupID string, payload json
 		return
 	}
 
-	slog.Info("task created via IPC", "id", t.ID, "name", t.Name, "group", groupID)
+	slog.Info("task created via IPC", "id", t.ID, "name", t.Name, "agent", agentID)
 	o.respondIPC(msg, map[string]any{"ok": true, "id": t.ID})
 }
 
-func (o *Orchestrator) ipcListTasks(msg *nats.Msg, groupID string) {
-	tasks, err := o.store.ListTasksForGroup(groupID)
+func (o *Orchestrator) ipcListTasks(msg *nats.Msg, agentID string) {
+	tasks, err := o.store.ListTasksForAgent(agentID)
 	if err != nil {
 		o.respondIPC(msg, map[string]any{"error": fmt.Sprintf("list failed: %v", err)})
 		return
@@ -406,7 +490,7 @@ func (o *Orchestrator) publishMessageEvent(msg *store.Message) {
 
 	event := map[string]any{
 		"type":      "message",
-		"group_id":  msg.GroupID,
+		"agent_id":  msg.AgentID,
 		"timestamp": now.UTC().Format(time.RFC3339),
 		"data": map[string]any{
 			"id":   msg.ID,
@@ -421,13 +505,13 @@ func (o *Orchestrator) publishMessageEvent(msg *store.Message) {
 		return
 	}
 
-	topic := natsbus.TopicEventsAgent(msg.GroupID)
+	topic := natsbus.TopicEventsAgent(msg.AgentID)
 	_ = o.client.Publish(topic, data)
 }
 
-func (o *Orchestrator) StopAgent(ctx context.Context, groupID string) error {
-	o.sessions.Remove(groupID)
-	return o.containers.StopAgent(ctx, groupID)
+func (o *Orchestrator) StopAgent(ctx context.Context, agentID string) error {
+	o.sessions.Remove(agentID)
+	return o.containers.StopAgent(ctx, agentID)
 }
 
 func (o *Orchestrator) StartIdleReaper(ctx context.Context) {
@@ -444,26 +528,26 @@ func (o *Orchestrator) StartIdleReaper(ctx context.Context) {
 			return
 		case <-ticker.C:
 			idle := o.sessions.ListIdle(o.cfg.IdleTimeout)
-			for _, groupID := range idle {
-				slog.Info("stopping idle agent", "group", groupID, "timeout", o.cfg.IdleTimeout)
-				if err := o.StopAgent(ctx, groupID); err != nil {
-					slog.Error("failed to stop idle agent", "group", groupID, "error", err)
+			for _, agentID := range idle {
+				slog.Info("stopping idle agent", "agent", agentID, "timeout", o.cfg.IdleTimeout)
+				if err := o.StopAgent(ctx, agentID); err != nil {
+					slog.Error("failed to stop idle agent", "agent", agentID, "error", err)
 					continue
 				}
-				o.publishIdleStopEvent(groupID)
+				o.publishIdleStopEvent(agentID)
 			}
 		}
 	}
 }
 
-func (o *Orchestrator) publishIdleStopEvent(groupID string) {
+func (o *Orchestrator) publishIdleStopEvent(agentID string) {
 	if o.client == nil {
 		return
 	}
 
 	event := map[string]any{
 		"type":      "agent_stopped",
-		"group_id":  groupID,
+		"agent_id":  agentID,
 		"reason":    "idle_timeout",
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	}
@@ -473,7 +557,7 @@ func (o *Orchestrator) publishIdleStopEvent(groupID string) {
 		return
 	}
 
-	_ = o.client.Publish(natsbus.TopicEventsAgent(groupID), data)
+	_ = o.client.Publish(natsbus.TopicEventsAgent(agentID), data)
 }
 
 func (o *Orchestrator) ListRunning(ctx context.Context) ([]container.ContainerInfo, error) {

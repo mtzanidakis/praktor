@@ -7,7 +7,7 @@ import (
 
 type Session struct {
 	ID          string    `json:"id"`
-	GroupID     string    `json:"group_id"`
+	AgentID     string    `json:"agent_id"`
 	ContainerID string    `json:"container_id"`
 	Status      string    `json:"status"`
 	StartedAt   time.Time `json:"started_at"`
@@ -15,7 +15,7 @@ type Session struct {
 }
 
 type SessionTracker struct {
-	sessions map[string]*Session // groupID → session
+	sessions map[string]*Session // agentID → session
 	mu       sync.RWMutex
 }
 
@@ -25,28 +25,28 @@ func NewSessionTracker() *SessionTracker {
 	}
 }
 
-func (t *SessionTracker) Set(groupID string, session *Session) {
+func (t *SessionTracker) Set(agentID string, session *Session) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.sessions[groupID] = session
+	t.sessions[agentID] = session
 }
 
-func (t *SessionTracker) Get(groupID string) *Session {
+func (t *SessionTracker) Get(agentID string) *Session {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	return t.sessions[groupID]
+	return t.sessions[agentID]
 }
 
-func (t *SessionTracker) Remove(groupID string) {
+func (t *SessionTracker) Remove(agentID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	delete(t.sessions, groupID)
+	delete(t.sessions, agentID)
 }
 
-func (t *SessionTracker) Touch(groupID string) {
+func (t *SessionTracker) Touch(agentID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if s, ok := t.sessions[groupID]; ok {
+	if s, ok := t.sessions[agentID]; ok {
 		s.LastActive = time.Now()
 	}
 }
@@ -57,9 +57,9 @@ func (t *SessionTracker) ListIdle(timeout time.Duration) []string {
 
 	var idle []string
 	now := time.Now()
-	for groupID, s := range t.sessions {
+	for agentID, s := range t.sessions {
 		if now.Sub(s.LastActive) > timeout {
-			idle = append(idle, groupID)
+			idle = append(idle, agentID)
 		}
 	}
 	return idle

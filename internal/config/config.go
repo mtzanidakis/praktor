@@ -10,13 +10,14 @@ import (
 )
 
 type Config struct {
-	Telegram  TelegramConfig  `yaml:"telegram"`
-	Agent     AgentConfig     `yaml:"agent"`
-	NATS      NATSConfig      `yaml:"nats"`
-	Store     StoreConfig     `yaml:"store"`
-	Web       WebConfig       `yaml:"web"`
-	Scheduler SchedulerConfig `yaml:"scheduler"`
-	Groups    GroupsConfig    `yaml:"groups"`
+	Telegram  TelegramConfig                `yaml:"telegram"`
+	Defaults  DefaultsConfig                `yaml:"defaults"`
+	Agents    map[string]AgentDefinition    `yaml:"agents"`
+	Router    RouterConfig                  `yaml:"router"`
+	NATS      NATSConfig                    `yaml:"nats"`
+	Store     StoreConfig                   `yaml:"store"`
+	Web       WebConfig                     `yaml:"web"`
+	Scheduler SchedulerConfig               `yaml:"scheduler"`
 }
 
 type TelegramConfig struct {
@@ -24,13 +25,29 @@ type TelegramConfig struct {
 	AllowFrom []int64 `yaml:"allow_from"`
 }
 
-type AgentConfig struct {
+type DefaultsConfig struct {
 	Image           string        `yaml:"image"`
 	Model           string        `yaml:"model"`
 	MaxContainers   int           `yaml:"max_containers"`
 	IdleTimeout     time.Duration `yaml:"idle_timeout"`
 	AnthropicAPIKey string        `yaml:"anthropic_api_key"`
 	OAuthToken      string        `yaml:"oauth_token"`
+	BasePath        string        `yaml:"base_path"`
+}
+
+type AgentDefinition struct {
+	Description  string            `yaml:"description"`
+	Model        string            `yaml:"model"`
+	Image        string            `yaml:"image"`
+	ClaudeMD     string            `yaml:"claude_md"`
+	Workspace    string            `yaml:"workspace"`
+	Env          map[string]string `yaml:"env"`
+	Secrets      []string          `yaml:"secrets"`
+	AllowedTools []string          `yaml:"allowed_tools"`
+}
+
+type RouterConfig struct {
+	DefaultAgent string `yaml:"default_agent"`
 }
 
 type NATSConfig struct {
@@ -52,18 +69,14 @@ type SchedulerConfig struct {
 	PollInterval time.Duration `yaml:"poll_interval"`
 }
 
-type GroupsConfig struct {
-	BasePath   string `yaml:"base_path"`
-	MainChatID string `yaml:"main_chat_id"`
-}
-
 func defaults() Config {
 	return Config{
-		Agent: AgentConfig{
+		Defaults: DefaultsConfig{
 			Image:         "praktor-agent:latest",
 			Model:         "claude-opus-4-6",
 			MaxContainers: 5,
 			IdleTimeout:   10 * time.Minute,
+			BasePath:      "data/agents",
 		},
 		NATS: NATSConfig{
 			Port:    4222,
@@ -78,9 +91,6 @@ func defaults() Config {
 		},
 		Scheduler: SchedulerConfig{
 			PollInterval: 30 * time.Second,
-		},
-		Groups: GroupsConfig{
-			BasePath: "data/groups",
 		},
 	}
 }
@@ -110,7 +120,32 @@ func Load() (*Config, error) {
 	// Environment variable overrides
 	applyEnv(&cfg)
 
+	// Apply defaults for agent definitions
+	for name, def := range cfg.Agents {
+		if def.Workspace == "" {
+			def.Workspace = name
+			cfg.Agents[name] = def
+		}
+	}
+
+	// Validation
+	if err := validate(&cfg); err != nil {
+		return nil, err
+	}
+
 	return &cfg, nil
+}
+
+func validate(cfg *Config) error {
+	if len(cfg.Agents) > 0 && cfg.Router.DefaultAgent == "" {
+		return fmt.Errorf("router.default_agent is required when agents are defined")
+	}
+	if cfg.Router.DefaultAgent != "" {
+		if _, ok := cfg.Agents[cfg.Router.DefaultAgent]; !ok {
+			return fmt.Errorf("router.default_agent %q not found in agents map", cfg.Router.DefaultAgent)
+		}
+	}
+	return nil
 }
 
 func applyEnv(cfg *Config) {
@@ -118,10 +153,10 @@ func applyEnv(cfg *Config) {
 		cfg.Telegram.Token = v
 	}
 	if v := os.Getenv("ANTHROPIC_API_KEY"); v != "" {
-		cfg.Agent.AnthropicAPIKey = v
+		cfg.Defaults.AnthropicAPIKey = v
 	}
 	if v := os.Getenv("CLAUDE_CODE_OAUTH_TOKEN"); v != "" {
-		cfg.Agent.OAuthToken = v
+		cfg.Defaults.OAuthToken = v
 	}
 	if v := os.Getenv("PRAKTOR_WEB_PASSWORD"); v != "" {
 		cfg.Web.Auth = v
@@ -139,13 +174,10 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("PRAKTOR_STORE_PATH"); v != "" {
 		cfg.Store.Path = v
 	}
-	if v := os.Getenv("PRAKTOR_GROUPS_BASE"); v != "" {
-		cfg.Groups.BasePath = v
-	}
-	if v := os.Getenv("PRAKTOR_MAIN_CHAT_ID"); v != "" {
-		cfg.Groups.MainChatID = v
-	}
 	if v := os.Getenv("PRAKTOR_AGENT_MODEL"); v != "" {
-		cfg.Agent.Model = v
+		cfg.Defaults.Model = v
+	}
+	if v := os.Getenv("PRAKTOR_AGENTS_BASE"); v != "" {
+		cfg.Defaults.BasePath = v
 	}
 }
