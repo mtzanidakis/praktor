@@ -242,12 +242,60 @@ func (o *Orchestrator) executeMessage(ctx context.Context, agentID string, msg Q
 }
 
 func (o *Orchestrator) RouteQuery(ctx context.Context, agentID string, message string) (string, error) {
-	// Only attempt routing if the agent container is already running.
-	// On cold start, the first Claude SDK call takes too long for a
-	// synchronous route query; skip routing and use the default agent.
+	// Ensure the agent container is running
 	info := o.containers.GetRunning(agentID)
 	if info == nil {
-		return "", fmt.Errorf("agent container not running, skipping route query")
+		ag, err := o.registry.Get(agentID)
+		if err != nil || ag == nil {
+			return "", fmt.Errorf("agent not found: %s", agentID)
+		}
+
+		clientsBefore := o.bus.NumClients()
+		opts := container.AgentOpts{
+			AgentID:   agentID,
+			Workspace: ag.Workspace,
+			Model:     o.registry.ResolveModel(agentID),
+			Image:     o.registry.ResolveImage(agentID),
+			NATSUrl:   o.bus.AgentNATSURL(),
+		}
+		if def, ok := o.registry.GetDefinition(agentID); ok {
+			opts.Env = def.Env
+			opts.Secrets = def.Secrets
+		}
+
+		info, err = o.containers.StartAgent(ctx, opts)
+		if err != nil {
+			return "", fmt.Errorf("start agent for routing: %w", err)
+		}
+
+		// Wait for NATS connection
+		deadline := time.After(30 * time.Second)
+		ticker := time.NewTicker(250 * time.Millisecond)
+		defer ticker.Stop()
+	waitLoop:
+		for {
+			select {
+			case <-deadline:
+				break waitLoop
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-ticker.C:
+				if o.bus.NumClients() > clientsBefore {
+					time.Sleep(500 * time.Millisecond)
+					break waitLoop
+				}
+			}
+		}
+
+		now := time.Now()
+		o.sessions.Set(agentID, &Session{
+			ID:          info.ID,
+			AgentID:     agentID,
+			ContainerID: info.ID,
+			Status:      "running",
+			StartedAt:   now,
+			LastActive:  now,
+		})
 	}
 
 	o.sessions.Touch(agentID)
@@ -255,7 +303,7 @@ func (o *Orchestrator) RouteQuery(ctx context.Context, agentID string, message s
 	// Send routing query via NATS request-reply
 	topic := natsbus.TopicAgentRoute(agentID)
 	data, _ := json.Marshal(map[string]string{"text": message})
-	resp, err := o.client.Request(topic, data, 15*time.Second)
+	resp, err := o.client.Request(topic, data, 30*time.Second)
 	if err != nil {
 		return "", fmt.Errorf("route query: %w", err)
 	}
