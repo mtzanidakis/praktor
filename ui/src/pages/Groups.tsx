@@ -22,7 +22,7 @@ const badge = (color: string, bg: string): React.CSSProperties => ({
   display: 'inline-block',
   padding: '2px 10px',
   borderRadius: 999,
-  fontSize: 11,
+  fontSize: 12,
   fontWeight: 600,
   background: bg,
   color,
@@ -45,7 +45,7 @@ function Groups() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 28, color: 'var(--text-primary)' }}>Groups</h1>
+      <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 28, color: 'var(--text-primary)' }}>Groups</h1>
 
       {error && (
         <div style={{ ...card, color: 'var(--red-light)', marginBottom: 16, cursor: 'default' }}>
@@ -64,7 +64,7 @@ function Groups() {
             onClick={() => setSelected(selected?.id === group.id ? null : group)}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>{group.name}</span>
+              <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>{group.name}</span>
               {group.agent_status && (
                 <span style={badge(
                   group.agent_status === 'running' ? 'var(--green)' : 'var(--text-secondary)',
@@ -75,9 +75,9 @@ function Groups() {
               )}
             </div>
             {group.type && (
-              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 4 }}>Type: {group.type}</div>
+              <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginBottom: 4 }}>Type: {group.type}</div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-tertiary)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-tertiary)' }}>
               <span>{group.message_count ?? 0} messages</span>
               {group.last_active && <span>{group.last_active}</span>}
             </div>
@@ -86,16 +86,16 @@ function Groups() {
       </div>
 
       {groups.length === 0 && !error && (
-        <div style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>No groups found</div>
+        <div style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>No groups found</div>
       )}
 
       {selected && (
         <div style={{ marginTop: 28 }}>
           <div style={{ ...card, cursor: 'default' }}>
-            <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, color: 'var(--accent)' }}>
+            <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16, color: 'var(--accent)' }}>
               {selected.name}
             </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 13 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 14 }}>
               <div>
                 <span style={{ color: 'var(--text-tertiary)' }}>ID: </span>
                 <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{selected.id}</span>

@@ -148,10 +148,10 @@ function App() {
             </svg>
           </div>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
               Mission Control
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 1 }}>Praktor</div>
+            <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 1 }}>Praktor</div>
           </div>
         </div>
 
@@ -169,7 +169,7 @@ function App() {
                 padding: '8px 12px',
                 borderRadius: 7,
                 textDecoration: 'none',
-                fontSize: 13,
+                fontSize: 14,
                 fontWeight: isActive ? 600 : 500,
                 color: isActive ? '#fff' : 'var(--text-secondary)',
                 background: isActive ? 'var(--accent)' : 'transparent',
@@ -195,7 +195,7 @@ function App() {
               border: 'none',
               background: 'transparent',
               color: 'var(--text-secondary)',
-              fontSize: 13,
+              fontSize: 14,
               fontWeight: 500,
               cursor: 'pointer',
             }}
