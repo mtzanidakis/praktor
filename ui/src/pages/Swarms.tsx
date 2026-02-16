@@ -38,7 +38,7 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid var(--border)',
   background: 'var(--bg-input)',
   color: 'var(--text-primary)',
-  fontSize: 13,
+  fontSize: 14,
   outline: 'none',
 };
 
@@ -48,7 +48,7 @@ const btnPrimary: React.CSSProperties = {
   border: 'none',
   background: 'var(--accent)',
   color: '#fff',
-  fontSize: 13,
+  fontSize: 14,
   fontWeight: 600,
   cursor: 'pointer',
 };
@@ -109,7 +109,7 @@ function Swarms() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)' }}>Swarms</h1>
+        <h1 style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary)' }}>Swarms</h1>
         <button
           style={btnPrimary}
           onClick={() => { setForm(emptyForm); setShowForm(!showForm); }}
@@ -126,10 +126,10 @@ function Swarms() {
 
       {showForm && (
         <form onSubmit={handleCreate} style={{ ...card, marginBottom: 20 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, color: 'var(--text-primary)' }}>Launch New Swarm</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: 'var(--text-primary)' }}>Launch New Swarm</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div>
-              <label style={{ fontSize: 12, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Name</label>
+              <label style={{ fontSize: 13, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Name</label>
               <input
                 style={inputStyle}
                 value={form.name}
@@ -139,7 +139,7 @@ function Swarms() {
               />
             </div>
             <div>
-              <label style={{ fontSize: 12, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Objective</label>
+              <label style={{ fontSize: 13, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Objective</label>
               <textarea
                 style={{ ...inputStyle, minHeight: 80, resize: 'vertical' }}
                 value={form.objective}
@@ -149,7 +149,7 @@ function Swarms() {
               />
             </div>
             <div>
-              <label style={{ fontSize: 12, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>
+              <label style={{ fontSize: 13, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>
                 Agent Roles (comma-separated)
               </label>
               <input
@@ -178,10 +178,10 @@ function Swarms() {
               >
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                    <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>{swarm.name}</span>
+                    <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>{swarm.name}</span>
                     <span
                       style={{
-                        fontSize: 11,
+                        fontSize: 12,
                         padding: '2px 8px',
                         borderRadius: 999,
                         background: sc.bg,
@@ -193,11 +193,11 @@ function Swarms() {
                     </span>
                   </div>
                   {swarm.objective && (
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', maxWidth: 600 }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', maxWidth: 600 }}>
                       {swarm.objective.length > 120 ? swarm.objective.slice(0, 120) + '...' : swarm.objective}
                     </div>
                   )}
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, display: 'flex', gap: 16 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6, display: 'flex', gap: 16 }}>
                     {swarm.created_at && <span>Created: {swarm.created_at}</span>}
                     {swarm.completed_at && <span>Completed: {swarm.completed_at}</span>}
                     {swarm.agents && <span>{swarm.agents.length} agent(s)</span>}
@@ -205,7 +205,7 @@ function Swarms() {
                 </div>
                 <span style={{
                   color: 'var(--text-tertiary)',
-                  fontSize: 14,
+                  fontSize: 15,
                   transform: isExpanded ? 'rotate(90deg)' : 'none',
                   transition: 'transform 0.15s',
                 }}>
@@ -215,7 +215,7 @@ function Swarms() {
 
               {isExpanded && swarm.agents && swarm.agents.length > 0 && (
                 <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
-                  <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 10 }}>Agents</h4>
+                  <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 10 }}>Agents</h4>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
                     {swarm.agents.map((agent, i) => {
                       const ac = statusColors[agent.status] ?? { color: 'var(--text-tertiary)', bg: 'var(--accent-muted)' };
@@ -226,7 +226,7 @@ function Swarms() {
                             padding: '10px 14px',
                             background: 'var(--bg-elevated)',
                             borderRadius: 8,
-                            fontSize: 12,
+                            fontSize: 13,
                             display: 'flex',
                             justifyContent: 'space-between',
                             alignItems: 'center',
@@ -235,7 +235,7 @@ function Swarms() {
                           <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{agent.role}</span>
                           <span
                             style={{
-                              fontSize: 11,
+                              fontSize: 12,
                               padding: '1px 6px',
                               borderRadius: 999,
                               background: ac.bg,
@@ -254,7 +254,7 @@ function Swarms() {
           );
         })}
         {swarms.length === 0 && !error && (
-          <div style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>No swarm runs yet</div>
+          <div style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>No swarm runs yet</div>
         )}
       </div>
     </div>
