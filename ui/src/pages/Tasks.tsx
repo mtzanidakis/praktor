@@ -29,30 +29,31 @@ interface Group {
 const emptyForm: TaskForm = { name: '', schedule: '', group_id: '', prompt: '', enabled: true };
 
 const card: React.CSSProperties = {
-  background: '#141414',
-  border: '1px solid #1e1e1e',
-  borderRadius: 12,
+  background: 'var(--bg-card)',
+  border: '1px solid var(--border)',
+  borderRadius: 10,
   padding: 20,
+  boxShadow: 'var(--shadow)',
 };
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '8px 12px',
-  borderRadius: 8,
-  border: '1px solid #2a2a2a',
-  background: '#0a0a0a',
-  color: '#e0e0e0',
-  fontSize: 14,
+  borderRadius: 7,
+  border: '1px solid var(--border)',
+  background: 'var(--bg-input)',
+  color: 'var(--text-primary)',
+  fontSize: 13,
   outline: 'none',
 };
 
 const btnPrimary: React.CSSProperties = {
   padding: '8px 20px',
-  borderRadius: 8,
+  borderRadius: 7,
   border: 'none',
-  background: '#6366f1',
+  background: 'var(--accent)',
   color: '#fff',
-  fontSize: 14,
+  fontSize: 13,
   fontWeight: 600,
   cursor: 'pointer',
 };
@@ -60,20 +61,20 @@ const btnPrimary: React.CSSProperties = {
 const btnDanger: React.CSSProperties = {
   padding: '6px 14px',
   borderRadius: 6,
-  border: '1px solid #7f1d1d',
+  border: '1px solid var(--border)',
   background: 'transparent',
-  color: '#f87171',
-  fontSize: 13,
+  color: 'var(--red-light)',
+  fontSize: 12,
   cursor: 'pointer',
 };
 
-const badge = (color: string): React.CSSProperties => ({
+const badge = (color: string, bg: string): React.CSSProperties => ({
   display: 'inline-block',
   padding: '2px 10px',
   borderRadius: 999,
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 600,
-  background: `${color}22`,
+  background: bg,
   color,
 });
 
@@ -179,8 +180,8 @@ function Tasks() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 700 }}>Scheduled Tasks</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)' }}>Scheduled Tasks</h1>
         <button
           style={btnPrimary}
           onClick={() => { setForm(emptyForm); setEditing(null); setShowForm(!showForm); }}
@@ -190,19 +191,19 @@ function Tasks() {
       </div>
 
       {error && (
-        <div style={{ ...card, color: '#f87171', marginBottom: 16 }}>
+        <div style={{ ...card, color: 'var(--red-light)', marginBottom: 16 }}>
           {error}
         </div>
       )}
 
       {showForm && (
-        <form onSubmit={handleSubmit} style={{ ...card, marginBottom: 24 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
+        <form onSubmit={handleSubmit} style={{ ...card, marginBottom: 20 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, color: 'var(--text-primary)' }}>
             {editing ? 'Edit Task' : 'Create Task'}
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div>
-              <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>Name</label>
+              <label style={{ fontSize: 12, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Name</label>
               <input
                 style={inputStyle}
                 value={form.name}
@@ -212,7 +213,7 @@ function Tasks() {
               />
             </div>
             <div>
-              <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>Schedule (cron)</label>
+              <label style={{ fontSize: 12, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Schedule (cron)</label>
               <input
                 style={inputStyle}
                 value={form.schedule}
@@ -222,7 +223,7 @@ function Tasks() {
               />
             </div>
             <div>
-              <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>Group</label>
+              <label style={{ fontSize: 12, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Group</label>
               <select
                 style={inputStyle}
                 value={form.group_id}
@@ -235,7 +236,7 @@ function Tasks() {
               </select>
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#aaa', cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
                   checked={form.enabled}
@@ -246,7 +247,7 @@ function Tasks() {
             </div>
           </div>
           <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>Prompt</label>
+            <label style={{ fontSize: 12, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Prompt</label>
             <textarea
               style={{ ...inputStyle, minHeight: 80, resize: 'vertical' }}
               value={form.prompt}
@@ -260,51 +261,51 @@ function Tasks() {
         </form>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {tasks.map((task) => (
           <div key={task.id} style={card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                {/* Row 1: Name + status badge */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                  <span style={{ fontSize: 16, fontWeight: 600 }}>{task.name}</span>
+                  <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>{task.name}</span>
                   <span
-                    style={{ ...badge(task.enabled ? '#22c55e' : '#888'), cursor: 'pointer' }}
+                    style={{
+                      ...badge(
+                        task.enabled ? 'var(--green)' : 'var(--text-secondary)',
+                        task.enabled ? 'var(--green-muted)' : 'var(--accent-muted)',
+                      ),
+                      cursor: 'pointer',
+                    }}
                     onClick={() => handleToggle(task)}
                   >
                     {task.enabled ? 'active' : 'paused'}
                   </span>
                 </div>
 
-                {/* Row 2: Schedule + group */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 8, fontSize: 13, color: '#888' }}>
-                  <span>
-                    {task.schedule_display || task.schedule}
-                  </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+                  <span>{task.schedule_display || task.schedule}</span>
                   {task.group_id && (
-                    <span style={badge('#6366f1')}>
+                    <span style={badge('var(--accent)', 'var(--accent-muted)')}>
                       {task.group_name || task.group_id}
                     </span>
                   )}
                 </div>
 
-                {/* Row 3: Prompt preview */}
                 {task.prompt && (
-                  <div style={{ fontSize: 13, color: '#555', marginBottom: 8, maxWidth: 600 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 8, maxWidth: 600 }}>
                     {task.prompt.length > 120 ? task.prompt.slice(0, 120) + '...' : task.prompt}
                   </div>
                 )}
 
-                {/* Row 4: Timestamps */}
-                <div style={{ fontSize: 12, color: '#444', display: 'flex', gap: 16 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', gap: 16 }}>
                   {task.last_run && <span>Last run: {task.last_run}</span>}
                   {task.next_run && <span>Next run: {task.next_run}</span>}
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: 16 }}>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginLeft: 16 }}>
                 <button
-                  style={{ ...btnDanger, color: '#888', borderColor: '#333' }}
+                  style={{ ...btnDanger, color: 'var(--text-secondary)' }}
                   onClick={() => handleEdit(task)}
                 >
                   Edit
@@ -317,7 +318,7 @@ function Tasks() {
           </div>
         ))}
         {tasks.length === 0 && !error && (
-          <div style={{ color: '#555', fontSize: 14 }}>No scheduled tasks</div>
+          <div style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>No scheduled tasks</div>
         )}
       </div>
     </div>

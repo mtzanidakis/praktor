@@ -14,9 +14,10 @@ interface Message {
 }
 
 const card: React.CSSProperties = {
-  background: '#141414',
-  border: '1px solid #1e1e1e',
-  borderRadius: 12,
+  background: 'var(--bg-card)',
+  border: '1px solid var(--border)',
+  borderRadius: 10,
+  boxShadow: 'var(--shadow)',
 };
 
 function Conversations() {
@@ -50,7 +51,6 @@ function Conversations() {
       .finally(() => setLoadingMessages(false));
   }, [selectedGroupId]);
 
-  // Append live WebSocket events for the selected group
   useEffect(() => {
     if (!selectedGroupId) return;
     const relevant = events.filter(
@@ -73,59 +73,65 @@ function Conversations() {
 
   const selectedGroup = groups.find((g) => g.id === selectedGroupId);
 
-  const wsIndicator: React.CSSProperties = {
-    width: 8,
-    height: 8,
-    borderRadius: '50%',
-    background: wsStatus === 'connected' ? '#22c55e' : wsStatus === 'connecting' ? '#eab308' : '#ef4444',
-    display: 'inline-block',
-    marginRight: 6,
-  };
+  const wsColor = wsStatus === 'connected' ? 'var(--green)' : wsStatus === 'connecting' ? 'var(--amber)' : 'var(--red)';
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 700 }}>Conversations</h1>
-        <div style={{ display: 'flex', alignItems: 'center', fontSize: 12, color: '#666' }}>
-          <span style={wsIndicator} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)' }}>Conversations</h1>
+        <div style={{ display: 'flex', alignItems: 'center', fontSize: 12, color: 'var(--text-tertiary)', gap: 6 }}>
+          <span style={{
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            background: wsColor,
+            display: 'inline-block',
+          }} />
           {wsStatus}
         </div>
       </div>
 
       <div style={{ display: 'flex', gap: 16, height: 'calc(100vh - 140px)' }}>
         {/* Group list */}
-        <div style={{ ...card, width: 220, padding: 8, overflowY: 'auto', flexShrink: 0 }}>
+        <div style={{ ...card, width: 200, padding: 6, overflowY: 'auto', flexShrink: 0 }}>
           {groups.map((group) => (
             <div
               key={group.id}
               onClick={() => setSelectedGroupId(group.id)}
               style={{
-                padding: '10px 14px',
-                borderRadius: 8,
+                padding: '8px 12px',
+                borderRadius: 7,
                 cursor: 'pointer',
-                fontSize: 14,
-                background: selectedGroupId === group.id ? '#6366f1' : 'transparent',
-                color: selectedGroupId === group.id ? '#fff' : '#888',
-                marginBottom: 2,
+                fontSize: 13,
+                fontWeight: selectedGroupId === group.id ? 600 : 400,
+                background: selectedGroupId === group.id ? 'var(--accent)' : 'transparent',
+                color: selectedGroupId === group.id ? '#fff' : 'var(--text-secondary)',
+                marginBottom: 1,
               }}
             >
               {group.name}
             </div>
           ))}
           {groups.length === 0 && (
-            <div style={{ padding: 14, color: '#555', fontSize: 13 }}>No groups</div>
+            <div style={{ padding: 12, color: 'var(--text-tertiary)', fontSize: 12 }}>No groups</div>
           )}
         </div>
 
         {/* Messages */}
         <div style={{ ...card, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid #1e1e1e', fontWeight: 600 }}>
+          <div style={{
+            padding: '14px 20px',
+            borderBottom: '1px solid var(--border)',
+            fontWeight: 600,
+            fontSize: 14,
+            color: 'var(--text-primary)',
+          }}>
             {selectedGroup?.name ?? 'Select a group'}
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {loadingMessages && <div style={{ color: '#666', fontSize: 14 }}>Loading...</div>}
+            {loadingMessages && <div style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>Loading...</div>}
             {!loadingMessages && messages.length === 0 && (
-              <div style={{ color: '#555', fontSize: 14 }}>No messages yet</div>
+              <div style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>No messages yet</div>
             )}
             {messages.map((msg) => {
               const isAssistant = msg.role === 'assistant';
@@ -136,17 +142,17 @@ function Conversations() {
                     alignSelf: isAssistant ? 'flex-start' : 'flex-end',
                     maxWidth: '75%',
                     padding: '10px 14px',
-                    borderRadius: 12,
-                    background: isAssistant ? '#1a1a2e' : '#1e1e1e',
-                    borderLeft: isAssistant ? '3px solid #6366f1' : 'none',
-                    fontSize: 14,
+                    borderRadius: 10,
+                    background: isAssistant ? 'var(--accent-muted)' : 'var(--bg-elevated)',
+                    borderLeft: isAssistant ? '3px solid var(--accent)' : 'none',
+                    fontSize: 13,
                   }}
                 >
-                  <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>
-                    <span style={{ color: isAssistant ? '#6366f1' : '#888', fontWeight: 600 }}>{msg.role}</span>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 4 }}>
+                    <span style={{ color: isAssistant ? 'var(--accent)' : 'var(--text-secondary)', fontWeight: 600 }}>{msg.role}</span>
                     {msg.time && <span style={{ marginLeft: 8 }}>{msg.time}</span>}
                   </div>
-                  <div style={{ color: '#ddd', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.text}</div>
+                  <div style={{ color: 'var(--text-primary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.text}</div>
                 </div>
               );
             })}
