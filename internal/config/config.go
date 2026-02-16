@@ -37,6 +37,7 @@ type DefaultsConfig struct {
 const (
 	AgentsBasePath = "data/agents"
 	StorePath      = "data/praktor.db"
+	NATSPort       = 4222
 )
 
 type AgentDefinition struct {
@@ -55,7 +56,6 @@ type RouterConfig struct {
 }
 
 type NATSConfig struct {
-	Port    int    `yaml:"port"`
 	DataDir string `yaml:"data_dir"`
 }
 
@@ -79,7 +79,6 @@ func defaults() Config {
 			IdleTimeout: 10 * time.Minute,
 		},
 		NATS: NATSConfig{
-			Port:    4222,
 			DataDir: "data/nats",
 		},
 		Web: WebConfig{
@@ -161,11 +160,6 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("PRAKTOR_WEB_PORT"); v != "" {
 		if port, err := strconv.Atoi(v); err == nil {
 			cfg.Web.Port = port
-		}
-	}
-	if v := os.Getenv("PRAKTOR_NATS_PORT"); v != "" {
-		if port, err := strconv.Atoi(v); err == nil {
-			cfg.NATS.Port = port
 		}
 	}
 	if v := os.Getenv("PRAKTOR_AGENT_MODEL"); v != "" {

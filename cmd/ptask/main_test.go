@@ -64,8 +64,7 @@ func TestParseArgs(t *testing.T) {
 
 func startTestNATS(t *testing.T) *natsbus.Bus {
 	t.Helper()
-	bus, err := natsbus.New(config.NATSConfig{
-		Port:    0,
+	bus, err := natsbus.NewForTest(config.NATSConfig{
 		DataDir: t.TempDir(),
 	})
 	if err != nil {

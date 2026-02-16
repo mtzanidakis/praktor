@@ -29,9 +29,6 @@ agents:
 router:
   default_agent: general
 
-nats:
-  port: 4222
-
 web:
   enabled: true
   port: 8080
