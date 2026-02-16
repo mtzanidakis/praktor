@@ -65,8 +65,8 @@ func (s *Server) listAgentDefinitions(w http.ResponseWriter, r *http.Request) {
 			"id":           a.ID,
 			"name":         a.Name,
 			"description":  a.Description,
-			"model":        a.Model,
-			"image":        a.Image,
+			"model":        s.registry.ResolveModel(a.ID),
+			"image":        s.registry.ResolveImage(a.ID),
 			"workspace":    a.Workspace,
 			"agent_status": agentStatus,
 		}
