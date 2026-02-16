@@ -1,6 +1,9 @@
 package telegram
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // chunkMessage splits a message into chunks that fit within Telegram's message size limit.
 func chunkMessage(text string, maxLen int) []string {
@@ -26,4 +29,12 @@ func chunkMessage(text string, maxLen int) []string {
 	}
 
 	return chunks
+}
+
+var reBold = regexp.MustCompile(`\*\*(.+?)\*\*`)
+
+// toTelegramMarkdown converts standard Markdown bold (**text**) to
+// Telegram Markdown v1 bold (*text*).
+func toTelegramMarkdown(text string) string {
+	return reBold.ReplaceAllString(text, "*$1*")
 }

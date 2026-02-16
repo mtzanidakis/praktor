@@ -43,3 +43,21 @@ func TestChunkMessage(t *testing.T) {
 		t.Errorf("expected first chunk length 3001, got %d", len(chunks[0]))
 	}
 }
+
+func TestToTelegramMarkdown(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"**bold**", "*bold*"},
+		{"hello **world**!", "hello *world*!"},
+		{"**a** and **b**", "*a* and *b*"},
+		{"no bold here", "no bold here"},
+		{"*already single*", "*already single*"},
+	}
+	for _, tt := range tests {
+		got := toTelegramMarkdown(tt.in)
+		if got != tt.want {
+			t.Errorf("toTelegramMarkdown(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}

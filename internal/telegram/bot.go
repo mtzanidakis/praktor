@@ -185,10 +185,18 @@ func (b *Bot) handleMessage(ctx context.Context, msg telego.Message) {
 }
 
 func (b *Bot) SendMessage(ctx context.Context, chatID int64, text string) error {
+	text = toTelegramMarkdown(text)
 	chunks := chunkMessage(text, 4096)
 	for _, chunk := range chunks {
 		msg := tu.Message(tu.ID(chatID), chunk)
+		msg.ParseMode = telego.ModeMarkdown
 		_, err := b.bot.SendMessage(ctx, msg)
+		if err != nil {
+			// Markdown parsing can fail on unescaped characters;
+			// retry as plain text so the message still gets delivered.
+			msg.ParseMode = ""
+			_, err = b.bot.SendMessage(ctx, msg)
+		}
 		if err != nil {
 			return fmt.Errorf("send message: %w", err)
 		}
