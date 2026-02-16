@@ -13,8 +13,8 @@ func TestDefaults(t *testing.T) {
 	if cfg.Defaults.Image != "praktor-agent:latest" {
 		t.Errorf("expected default image praktor-agent:latest, got %s", cfg.Defaults.Image)
 	}
-	if cfg.Defaults.MaxContainers != 5 {
-		t.Errorf("expected max_containers 5, got %d", cfg.Defaults.MaxContainers)
+	if cfg.Defaults.MaxRunning != 5 {
+		t.Errorf("expected max_running 5, got %d", cfg.Defaults.MaxRunning)
 	}
 	if cfg.Defaults.IdleTimeout != 10*time.Minute {
 		t.Errorf("expected idle_timeout 10m, got %v", cfg.Defaults.IdleTimeout)
@@ -73,7 +73,7 @@ telegram:
   allow_from: [123, 456]
 defaults:
   image: "custom-agent:v1"
-  max_containers: 10
+  max_running: 10
   base_path: "/custom/agents"
 web:
   port: 3000
@@ -101,8 +101,8 @@ web:
 	if cfg.Defaults.Image != "custom-agent:v1" {
 		t.Errorf("expected custom-agent:v1, got %s", cfg.Defaults.Image)
 	}
-	if cfg.Defaults.MaxContainers != 10 {
-		t.Errorf("expected max_containers 10, got %d", cfg.Defaults.MaxContainers)
+	if cfg.Defaults.MaxRunning != 10 {
+		t.Errorf("expected max_running 10, got %d", cfg.Defaults.MaxRunning)
 	}
 	if cfg.Defaults.BasePath != "/custom/agents" {
 		t.Errorf("expected base_path /custom/agents, got %s", cfg.Defaults.BasePath)

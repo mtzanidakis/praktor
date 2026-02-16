@@ -98,8 +98,8 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 		return existing, nil
 	}
 
-	if len(m.active) >= m.cfg.MaxContainers {
-		return nil, fmt.Errorf("max containers (%d) reached", m.cfg.MaxContainers)
+	if len(m.active) >= m.cfg.MaxRunning {
+		return nil, fmt.Errorf("max containers (%d) reached", m.cfg.MaxRunning)
 	}
 
 	if err := m.ensureNetwork(ctx); err != nil {

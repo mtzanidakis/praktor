@@ -28,7 +28,7 @@ type TelegramConfig struct {
 type DefaultsConfig struct {
 	Image           string        `yaml:"image"`
 	Model           string        `yaml:"model"`
-	MaxContainers   int           `yaml:"max_containers"`
+	MaxRunning   int           `yaml:"max_running"`
 	IdleTimeout     time.Duration `yaml:"idle_timeout"`
 	AnthropicAPIKey string        `yaml:"anthropic_api_key"`
 	OAuthToken      string        `yaml:"oauth_token"`
@@ -74,7 +74,7 @@ func defaults() Config {
 		Defaults: DefaultsConfig{
 			Image:         "praktor-agent:latest",
 			Model:         "claude-opus-4-6",
-			MaxContainers: 5,
+			MaxRunning: 5,
 			IdleTimeout:   10 * time.Minute,
 			BasePath:      "data/agents",
 		},
