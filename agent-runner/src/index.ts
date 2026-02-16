@@ -229,7 +229,7 @@ async function handleRoute(
     return;
   }
 
-  console.log(`[agent] routing query: ${text.substring(0, 100)}...`);
+  console.log("[agent] routing query");
 
   try {
     const systemPrompt = loadSystemPrompt(false);

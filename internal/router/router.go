@@ -52,7 +52,7 @@ func (r *Router) Route(ctx context.Context, message string) (agentID string, cle
 		if len(descs) > 1 {
 			routedAgent, routeErr := r.orch.RouteQuery(ctx, r.defaultAgent, buildRoutingPrompt(descs, message))
 			if routeErr != nil {
-				slog.Warn("route query failed, using default agent", "error", routeErr)
+				slog.Debug("route query failed, using default agent", "error", routeErr)
 			} else {
 				// Validate the routed agent exists
 				routedAgent = strings.TrimSpace(routedAgent)
