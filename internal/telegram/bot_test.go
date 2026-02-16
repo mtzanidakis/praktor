@@ -1,6 +1,10 @@
 package telegram
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"unicode/utf8"
+)
 
 func TestChunkMessage(t *testing.T) {
 	// Short message
@@ -61,3 +65,58 @@ func TestToTelegramMarkdown(t *testing.T) {
 		}
 	}
 }
+
+func TestConvertMarkdownTables(t *testing.T) {
+	input := "Here is a table:\n| Name | Value |\n|---|---|\n| BTC | $67,671 |\n| ETH | $3,052 |\n\nEnd."
+	got := convertMarkdownTables(input)
+
+	// Should contain pre-formatted block
+	if !strings.Contains(got, "```") {
+		t.Errorf("expected pre-formatted block, got:\n%s", got)
+	}
+	// Should preserve surrounding text
+	if !strings.Contains(got,"Here is a table:") || !strings.Contains(got,"End.") {
+		t.Errorf("surrounding text lost, got:\n%s", got)
+	}
+	// Should not contain raw pipe table syntax
+	if strings.Contains(got,"|---|") {
+		t.Errorf("separator row not removed, got:\n%s", got)
+	}
+	// Should contain box-drawing separator
+	if !strings.Contains(got,"─┼─") {
+		t.Errorf("expected box-drawing separator, got:\n%s", got)
+	}
+}
+
+func TestConvertMarkdownTablesUnicodeAndBold(t *testing.T) {
+	input := "| Ζεύγος | Τιμή |\n|---|---|\n| **BTC** | $68,500 |\n| **ETH** | $2,055 |"
+	got := convertMarkdownTables(input)
+
+	// Bold markers should be stripped inside pre block
+	if strings.Contains(got, "**") || strings.Contains(got, "*BTC*") {
+		t.Errorf("bold markers not stripped, got:\n%s", got)
+	}
+	// Check alignment: all data rows should have the same rune width
+	lines := strings.Split(got, "\n")
+	var dataWidths []int
+	for _, line := range lines {
+		if strings.Contains(line, "│") && !strings.Contains(line, "┼") {
+			dataWidths = append(dataWidths, utf8.RuneCountInString(line))
+		}
+	}
+	for i := 1; i < len(dataWidths); i++ {
+		if dataWidths[i] != dataWidths[0] {
+			t.Errorf("misaligned rows: line 0 has %d runes, line %d has %d runes\n%s",
+				dataWidths[0], i, dataWidths[i], got)
+		}
+	}
+}
+
+func TestConvertMarkdownTablesNoTable(t *testing.T) {
+	input := "No tables here.\nJust text."
+	got := convertMarkdownTables(input)
+	if got != input {
+		t.Errorf("expected unchanged text, got:\n%s", got)
+	}
+}
+
