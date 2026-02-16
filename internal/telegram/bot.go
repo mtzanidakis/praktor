@@ -74,7 +74,7 @@ func NewBot(cfg config.TelegramConfig, orch *agent.Orchestrator, rtr *router.Rou
 		// Prefix with agent name for attribution (skip for default agent)
 		attributed := content
 		if agentID != rtr.DefaultAgent() {
-			attributed = fmt.Sprintf("[%s] %s", agentID, content)
+			attributed = fmt.Sprintf("_%s:_ %s", agentID, content)
 		}
 		if err := b.SendMessage(context.Background(), chatID, attributed); err != nil {
 			slog.Error("failed to send telegram message", "chat", chatID, "error", err)
