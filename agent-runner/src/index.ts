@@ -1,6 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { NatsBridge } from "./nats-bridge.js";
-import { readFileSync, mkdirSync, writeFileSync } from "fs";
+import { readFileSync, mkdirSync, writeFileSync, rmSync } from "fs";
 
 // Patch console to prepend timestamps matching gateway format (YYYY/MM/DD HH:MM:SS)
 const origLog = console.log;
@@ -23,6 +23,7 @@ const ALLOWED_TOOLS_ENV = process.env.ALLOWED_TOOLS || "";
 
 let bridge: NatsBridge;
 let isProcessing = false;
+let hasSession = false;
 
 function parseAllowedTools(): string[] | undefined {
   if (!ALLOWED_TOOLS_ENV) return undefined;
@@ -30,36 +31,17 @@ function parseAllowedTools(): string[] | undefined {
   return tools.length > 0 ? tools : undefined;
 }
 
-function installGlobalInstructions(cwd: string): void {
-  // Write global instructions to multiple locations so Claude Code discovers
-  // them through its native CLAUDE.md loading:
-  //   1. ~/.claude/CLAUDE.md (user-level — always loaded)
-  //   2. {cwd}/CLAUDE.md (project-level — merged with existing agent CLAUDE.md)
+function installGlobalInstructions(): void {
+  // Write global instructions to ~/.claude/CLAUDE.md (user-level).
+  // Claude Code automatically loads both user-level and project-level CLAUDE.md,
+  // so we only need to write the global one here. The per-agent CLAUDE.md in
+  // /workspace/agent/ is loaded automatically as the project-level file.
   try {
     const global = readFileSync("/workspace/global/CLAUDE.md", "utf-8");
-
-    // User-level instructions (always read by Claude Code)
     const userClaudeDir = "/home/praktor/.claude";
     mkdirSync(userClaudeDir, { recursive: true });
     writeFileSync(`${userClaudeDir}/CLAUDE.md`, global);
     console.log(`[agent] installed global instructions to ${userClaudeDir}/CLAUDE.md`);
-
-    // Project-level: prepend global to existing agent CLAUDE.md
-    const projectClaude = `${cwd}/CLAUDE.md`;
-    let existing = "";
-    try {
-      existing = readFileSync(projectClaude, "utf-8");
-    } catch {
-      // No existing agent CLAUDE.md
-    }
-    // Only prepend if not already present
-    if (!existing.includes("Scheduled Task Management")) {
-      const merged = existing
-        ? `${global}\n\n---\n\n${existing}`
-        : global;
-      writeFileSync(projectClaude, merged);
-      console.log(`[agent] merged global instructions into ${projectClaude}`);
-    }
   } catch (err) {
     console.warn("[agent] could not install global instructions:", err);
   }
@@ -118,6 +100,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
         cwd,
         pathToClaudeCodeExecutable: "/usr/local/bin/claude",
         systemPrompt: systemPrompt || undefined,
+        continue: hasSession,
         allowedTools,
         mcpServers: {
           "praktor-tasks": {
@@ -170,6 +153,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
       await bridge.publishResult(fullResponse);
     }
 
+    hasSession = true;
     console.log(`[agent] completed processing for agent ${AGENT_ID}`);
   } catch (err) {
     console.error(`[agent] error processing message:`, err);
@@ -253,7 +237,12 @@ async function main(): Promise<void> {
   console.log(`[agent] starting for agent ${AGENT_ID}`);
   console.log(`[agent] NATS URL: ${NATS_URL}`);
 
-  installGlobalInstructions("/workspace/agent");
+  installGlobalInstructions();
+
+  // Clean up Claude Code internal files that accumulate over time
+  for (const dir of ["/home/praktor/.claude/debug", "/home/praktor/.claude/todos"]) {
+    try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
 
   bridge = new NatsBridge(NATS_URL, AGENT_ID);
   await bridge.connect();
