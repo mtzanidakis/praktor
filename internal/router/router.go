@@ -59,7 +59,7 @@ func (r *Router) Route(ctx context.Context, message string) (agentID string, cle
 				if _, ok := r.registry.GetDefinition(routedAgent); ok {
 					return routedAgent, message, nil
 				}
-				slog.Warn("route query returned unknown agent", "agent", routedAgent)
+				slog.Debug("route query returned unknown agent, using default", "agent", routedAgent)
 			}
 		}
 	}
