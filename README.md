@@ -1,29 +1,29 @@
 # Praktor
 
-Personal AI agent assistant. Define named agents with distinct roles and models, message them from Telegram with smart routing, and monitor everything from a web dashboard.
+Personal AI agent assistant. Define named agents with distinct roles and models, message them from Telegram with smart routing, and monitor everything from Mission Control.
 
 ```
 Telegram ──> Go Gateway ──> Router ──> Embedded NATS ──> Agent Containers (Docker)
                  |                                            |
              SQLite DB                                Claude Code SDK
                  |
-          Web UI (React SPA)
+       Mission Control (React SPA)
 ```
 
 Praktor is a single Go binary that orchestrates the full loop: it receives messages from a Telegram bot, routes them to the right agent, spins up isolated Docker containers running Claude Code, streams responses back, and serves a Mission Control web UI for monitoring. Each agent gets its own sandboxed container with persistent memory via per-agent `CLAUDE.md` files.
 
 ## Features
 
+- **Telegram I/O** - Chat with your agents from your phone
 - **Named agents** - Define multiple agents with distinct roles, models, and configurations
 - **Smart routing** - `@agent_name` prefix or AI-powered routing via the default agent
-- **Telegram I/O** - Chat with your agents from your phone
 - **Per-agent isolation** - Each agent runs in its own Docker container with its own filesystem and memory (Docker named volumes)
+- **Agent identity** - Each agent has an `AGENT.md` file with personality, vibe, and expertise — editable from Mission Control or by agents themselves
+- **User profile** - Agents know who you are via `USER.md` — editable from Mission Control or by agents themselves
 - **Scheduled tasks** - Cron, interval, or one-shot jobs that run agents and deliver results via Telegram
 - **Agent swarms** - Spin up teams of specialized agents that collaborate on complex tasks
-- **Agent identity** - Each agent has an `AGENT.md` file with personality, vibe, and expertise — editable from Mission Control or by agents themselves
-- **User profile** - Agents know who you are via `USER.md` — editable from the web UI or by agents themselves
-- **Mission Control** - Real-time web dashboard with WebSocket updates
 - **Web & browser access** - Agents can search the web and control Chromium
+- **Mission Control** - Real-time dashboard with WebSocket updates
 
 ## Prerequisites
 
@@ -79,7 +79,7 @@ ANTHROPIC_API_KEY=sk-ant-your-api-key
 # OR
 CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token
 
-# Web dashboard password (optional)
+# Mission Control password (optional)
 PRAKTOR_WEB_PASSWORD=your-secret-password
 ```
 
@@ -122,7 +122,7 @@ make containers
 docker compose up -d
 ```
 
-The web dashboard is available at `http://localhost:8080`.
+Mission Control is available at `http://localhost:8080`.
 
 Data is stored in Docker named volumes (`praktor-data`, `praktor-global`) — no host directory bind mounts needed. Both gateway and agent containers run as non-root user `praktor` (uid 10321).
 
@@ -155,7 +155,7 @@ make dev
 make test
 ```
 
-The web UI can be developed separately with hot reload:
+Mission Control can be developed separately with hot reload:
 
 ```sh
 cd ui
