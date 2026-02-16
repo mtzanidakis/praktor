@@ -303,7 +303,7 @@ func (o *Orchestrator) RouteQuery(ctx context.Context, agentID string, message s
 	// Send routing query via NATS request-reply
 	topic := natsbus.TopicAgentRoute(agentID)
 	data, _ := json.Marshal(map[string]string{"text": message})
-	resp, err := o.client.Request(topic, data, 15*time.Second)
+	resp, err := o.client.Request(topic, data, 30*time.Second)
 	if err != nil {
 		return "", fmt.Errorf("route query: %w", err)
 	}
