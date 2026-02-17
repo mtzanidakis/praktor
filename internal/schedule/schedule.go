@@ -68,7 +68,11 @@ func FormatSchedule(scheduleJSON string) string {
 		if strings.HasPrefix(s.CronExpr, "@") {
 			return s.CronExpr
 		}
-		if fields := strings.Fields(s.CronExpr); len(fields) == 6 {
+		fields := strings.Fields(s.CronExpr)
+		if len(fields) == 7 {
+			return "Every tick: " + s.CronExpr
+		}
+		if len(fields) == 6 {
 			return "Once: " + s.CronExpr
 		}
 		return s.CronExpr

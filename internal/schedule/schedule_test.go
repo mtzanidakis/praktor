@@ -162,7 +162,7 @@ func TestNormalizeScheduleUnknownKind(t *testing.T) {
 }
 
 func TestNormalizeScheduleTag(t *testing.T) {
-	tags := []string{"@daily", "@hourly", "@weekly", "@monthly", "@yearly", "@5minutes", "@10minutes", "@15minutes", "@30minutes"}
+	tags := []string{"@daily", "@hourly", "@weekly", "@monthly", "@yearly", "@annually", "@5minutes", "@10minutes", "@15minutes", "@30minutes", "@always", "@everysecond"}
 	for _, tag := range tags {
 		t.Run(tag, func(t *testing.T) {
 			result, err := NormalizeSchedule(tag)
@@ -234,6 +234,28 @@ func TestFormatScheduleTag(t *testing.T) {
 	result := FormatSchedule(raw)
 	if result != "@daily" {
 		t.Errorf("expected '@daily', got '%s'", result)
+	}
+}
+
+func TestNormalizeScheduleWithSeconds(t *testing.T) {
+	result, err := NormalizeSchedule("30 0 9 * * * *")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	s, err := ParseSchedule(result)
+	if err != nil {
+		t.Fatalf("result not valid JSON: %v", err)
+	}
+	if s.Kind != "cron" || s.CronExpr != "30 0 9 * * * *" {
+		t.Errorf("expected 7-field cron, got %+v", s)
+	}
+}
+
+func TestFormatScheduleWithSeconds(t *testing.T) {
+	raw := `{"kind":"cron","cron_expr":"30 0 9 * * * *"}`
+	result := FormatSchedule(raw)
+	if result != "Every tick: 30 0 9 * * * *" {
+		t.Errorf("expected 'Every tick: 30 0 9 * * * *', got '%s'", result)
 	}
 }
 
