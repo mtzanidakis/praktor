@@ -41,7 +41,8 @@ func TopicEventsAgent(agentID string) string {
 }
 
 const (
-	TopicEventsAll   = "events.>"
-	TopicEventsTask  = "events.task.*"
-	TopicEventsSwarm = "events.swarm.*"
+	TopicEventsAll           = "events.>"
+	TopicEventsTask          = "events.task.*"
+	TopicEventsTaskExecuted  = "events.task.executed"
+	TopicEventsSwarm         = "events.swarm.*"
 )

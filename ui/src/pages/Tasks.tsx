@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useWebSocket } from '../hooks/useWebSocket';
 
 interface Task {
   id: string;
@@ -95,6 +96,8 @@ function Tasks() {
   const [editing, setEditing] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { events } = useWebSocket();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const fetchTasks = useCallback(() => {
     fetch('/api/tasks')
@@ -117,6 +120,13 @@ function Tasks() {
     fetchTasks();
     fetchAgents();
   }, [fetchTasks, fetchAgents]);
+
+  // Re-fetch on relevant WebSocket events (debounced)
+  useEffect(() => {
+    if (events.length === 0) return;
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(fetchTasks, 500);
+  }, [events.length, fetchTasks]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -2,12 +2,14 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"strconv"
 	"time"
 
 	"github.com/mtzanidakis/praktor/internal/agent"
 	"github.com/mtzanidakis/praktor/internal/config"
+	"github.com/mtzanidakis/praktor/internal/natsbus"
 	"github.com/mtzanidakis/praktor/internal/schedule"
 	"github.com/mtzanidakis/praktor/internal/store"
 )
@@ -15,19 +17,33 @@ import (
 type Scheduler struct {
 	store        *store.Store
 	orch         *agent.Orchestrator
+	bus          *natsbus.Bus
+	natsClient   *natsbus.Client
 	pollInterval time.Duration
 	mainChatID   int64
 	reloadCh     chan struct{}
 }
 
-func New(s *store.Store, orch *agent.Orchestrator, cfg config.SchedulerConfig, mainChatID int64) *Scheduler {
-	return &Scheduler{
+func New(s *store.Store, orch *agent.Orchestrator, bus *natsbus.Bus, cfg config.SchedulerConfig, mainChatID int64) *Scheduler {
+	sched := &Scheduler{
 		store:        s,
 		orch:         orch,
+		bus:          bus,
 		pollInterval: cfg.PollInterval,
 		mainChatID:   mainChatID,
 		reloadCh:     make(chan struct{}, 1),
 	}
+
+	if bus != nil {
+		client, err := natsbus.NewClient(bus)
+		if err != nil {
+			slog.Error("scheduler nats client failed", "error", err)
+		} else {
+			sched.natsClient = client
+		}
+	}
+
+	return sched
 }
 
 // UpdateConfig updates the scheduler's poll interval and main chat ID,
@@ -106,6 +122,8 @@ func (s *Scheduler) execute(ctx context.Context, task store.ScheduledTask) {
 		slog.Error("failed to update task run", "id", task.ID, "error", err)
 	}
 
+	s.publishTaskExecutedEvent(task, lastStatus)
+
 	// Mark one-off tasks as completed when they have no next run
 	if nextRun == nil {
 		slog.Info("no next run, marking one-off task as completed", "id", task.ID, "name", task.Name)
@@ -113,4 +131,27 @@ func (s *Scheduler) execute(ctx context.Context, task store.ScheduledTask) {
 			slog.Error("failed to complete task", "id", task.ID, "error", err)
 		}
 	}
+}
+
+func (s *Scheduler) publishTaskExecutedEvent(task store.ScheduledTask, status string) {
+	if s.natsClient == nil {
+		return
+	}
+
+	event := map[string]any{
+		"type":      "task_executed",
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"data": map[string]any{
+			"id":     task.ID,
+			"name":   task.Name,
+			"status": status,
+		},
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		return
+	}
+
+	_ = s.natsClient.Publish(natsbus.TopicEventsTaskExecuted, data)
 }

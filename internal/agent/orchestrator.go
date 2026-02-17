@@ -226,6 +226,8 @@ func (o *Orchestrator) executeMessage(ctx context.Context, agentID string, msg Q
 			StartedAt:   now,
 			LastActive:  now,
 		})
+
+		o.publishAgentStartEvent(agentID)
 	}
 
 	// Send message to container via NATS
@@ -309,6 +311,8 @@ func (o *Orchestrator) RouteQuery(ctx context.Context, agentID string, message s
 			StartedAt:   now,
 			LastActive:  now,
 		})
+
+		o.publishAgentStartEvent(agentID)
 	}
 
 	o.sessions.Touch(agentID)
@@ -573,7 +577,11 @@ func (o *Orchestrator) publishMessageEvent(msg *store.Message) {
 
 func (o *Orchestrator) StopAgent(ctx context.Context, agentID string) error {
 	o.sessions.Remove(agentID)
-	return o.containers.StopAgent(ctx, agentID)
+	err := o.containers.StopAgent(ctx, agentID)
+	if err == nil {
+		o.publishAgentStopEvent(agentID, "manual")
+	}
+	return err
 }
 
 func (o *Orchestrator) StartIdleReaper(ctx context.Context) {
@@ -602,15 +610,14 @@ func (o *Orchestrator) StartIdleReaper(ctx context.Context) {
 	}
 }
 
-func (o *Orchestrator) publishIdleStopEvent(agentID string) {
+func (o *Orchestrator) publishAgentStartEvent(agentID string) {
 	if o.client == nil {
 		return
 	}
 
 	event := map[string]any{
-		"type":      "agent_stopped",
+		"type":      "agent_started",
 		"agent_id":  agentID,
-		"reason":    "idle_timeout",
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	}
 
@@ -620,6 +627,30 @@ func (o *Orchestrator) publishIdleStopEvent(agentID string) {
 	}
 
 	_ = o.client.Publish(natsbus.TopicEventsAgent(agentID), data)
+}
+
+func (o *Orchestrator) publishAgentStopEvent(agentID, reason string) {
+	if o.client == nil {
+		return
+	}
+
+	event := map[string]any{
+		"type":      "agent_stopped",
+		"agent_id":  agentID,
+		"reason":    reason,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		return
+	}
+
+	_ = o.client.Publish(natsbus.TopicEventsAgent(agentID), data)
+}
+
+func (o *Orchestrator) publishIdleStopEvent(agentID string) {
+	o.publishAgentStopEvent(agentID, "idle_timeout")
 }
 
 func (o *Orchestrator) ListRunning(ctx context.Context) ([]container.ContainerInfo, error) {
