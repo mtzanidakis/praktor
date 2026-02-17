@@ -52,7 +52,8 @@ server.tool(
 Supported formats:
 - 5-field cron: "minute hour day month weekday" (e.g. "0 9 * * *" for daily at 9am, "*/5 * * * *" for every 5 min)
 - 6-field cron with year (one-off): "minute hour day month weekday year" (e.g. "20 10 17 2 * 2026" for Feb 17 2026 at 10:20)
-- Preset tags: @yearly, @monthly, @weekly, @daily, @hourly, @5minutes, @10minutes, @15minutes, @30minutes
+- 7-field cron with seconds: "second minute hour day month weekday year" (e.g. "30 0 9 * * * *" for daily at 9:00:30)
+- Preset tags: @yearly, @annually, @monthly, @weekly, @daily, @hourly, @5minutes, @10minutes, @15minutes, @30minutes, @always (every minute), @everysecond
 - Month names: JAN, FEB, MAR, APR, MAY, JUN, JUL, AUG, SEP, OCT, NOV, DEC
 - Weekday names: SUN, MON, TUE, WED, THU, FRI, SAT
 - Modifiers: L (last day), W (nearest weekday), # (nth weekday, e.g. 1#2 = second Monday)
