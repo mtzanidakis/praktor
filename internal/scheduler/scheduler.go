@@ -17,6 +17,7 @@ type Scheduler struct {
 	orch         *agent.Orchestrator
 	pollInterval time.Duration
 	mainChatID   int64
+	reloadCh     chan struct{}
 }
 
 func New(s *store.Store, orch *agent.Orchestrator, cfg config.SchedulerConfig, mainChatID int64) *Scheduler {
@@ -25,6 +26,18 @@ func New(s *store.Store, orch *agent.Orchestrator, cfg config.SchedulerConfig, m
 		orch:         orch,
 		pollInterval: cfg.PollInterval,
 		mainChatID:   mainChatID,
+		reloadCh:     make(chan struct{}, 1),
+	}
+}
+
+// UpdateConfig updates the scheduler's poll interval and main chat ID,
+// then signals the run loop to reset its ticker.
+func (s *Scheduler) UpdateConfig(pollInterval time.Duration, mainChatID int64) {
+	s.pollInterval = pollInterval
+	s.mainChatID = mainChatID
+	select {
+	case s.reloadCh <- struct{}{}:
+	default:
 	}
 }
 
@@ -43,6 +56,9 @@ func (s *Scheduler) Start(ctx context.Context) {
 		case <-ctx.Done():
 			slog.Info("scheduler stopped")
 			return
+		case <-s.reloadCh:
+			ticker.Reset(s.pollInterval)
+			slog.Info("scheduler config reloaded", "poll_interval", s.pollInterval)
 		case <-ticker.C:
 			s.poll(ctx)
 		}

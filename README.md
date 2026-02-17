@@ -22,6 +22,7 @@ Praktor is a single Go binary that orchestrates the full loop: it receives messa
 - **User profile** - Agents know who you are via `USER.md` — editable from Mission Control or by agents themselves
 - **Scheduled tasks** - Cron, interval, or one-shot jobs that run agents and deliver results via Telegram
 - **Secure vault** - AES-256-GCM encrypted secrets, injected as env vars or files at container start (never exposed to LLM)
+- **Hot config reload** - Edit `praktor.yaml` and changes apply automatically — no restart needed
 - **Agent swarms** - Spin up teams of specialized agents that collaborate on complex tasks
 - **Web & browser access** - Agents can search the web and control Chromium
 - **Mission Control** - Real-time dashboard with WebSocket updates
@@ -143,6 +144,22 @@ curl http://localhost:8080/api/status
 
 # View logs
 docker compose logs -f praktor
+```
+
+## Hot Config Reload
+
+The gateway watches `praktor.yaml` for changes (mtime polled every 3s, SHA-256 verified on change) and automatically applies them — no restart required. Edit your config file and save; changes take effect within a few seconds.
+
+**What reloads live:** agent definitions, default model/image/max_running/idle_timeout, default router agent, scheduler poll interval, telegram main_chat_id.
+
+**What requires a restart:** telegram token, web port, NATS config, vault passphrase (a warning is logged if these change).
+
+When an agent's config changes (model, env, image, etc.), its running container is stopped. The next message to that agent starts a fresh container with the new configuration. New agents become routable immediately; removed agents are stopped.
+
+You can also trigger a reload manually with SIGHUP:
+
+```sh
+docker compose kill -s HUP praktor
 ```
 
 ## Vault (Encrypted Secrets)

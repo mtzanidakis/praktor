@@ -9,7 +9,7 @@ services:
     group_add:
       - "${DOCKER_GID:-131}"
     volumes:
-      - ./config/praktor.yaml:/etc/praktor/praktor.yaml:ro
+      - ./config:/etc/praktor:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - praktor-data:/data
       - praktor-global:/data/agents/global

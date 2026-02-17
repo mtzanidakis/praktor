@@ -76,6 +76,13 @@ func NewOrchestrator(bus *natsbus.Bus, ctr *container.Manager, s *store.Store, r
 	return o
 }
 
+// UpdateDefaults replaces the defaults config used for new containers.
+func (o *Orchestrator) UpdateDefaults(cfg config.DefaultsConfig) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.cfg = cfg
+}
+
 func (o *Orchestrator) OnOutput(listener OutputListener) {
 	o.listenerMu.Lock()
 	defer o.listenerMu.Unlock()

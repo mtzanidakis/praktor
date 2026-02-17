@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/mtzanidakis/praktor/internal/config"
 	"github.com/mtzanidakis/praktor/internal/store"
 )
 
 type Registry struct {
+	mu       sync.RWMutex
 	store    *store.Store
 	agents   map[string]config.AgentDefinition
 	cfg      config.DefaultsConfig
@@ -23,6 +25,16 @@ func New(s *store.Store, agents map[string]config.AgentDefinition, cfg config.De
 		cfg:      cfg,
 		basePath: basePath,
 	}
+}
+
+// Update replaces the agent definitions and defaults, then syncs to the store.
+func (r *Registry) Update(agents map[string]config.AgentDefinition, defaults config.DefaultsConfig) error {
+	r.mu.Lock()
+	r.agents = agents
+	r.cfg = defaults
+	r.mu.Unlock()
+
+	return r.Sync()
 }
 
 func (r *Registry) Sync() error {
@@ -68,11 +80,15 @@ func (r *Registry) List() ([]store.Agent, error) {
 }
 
 func (r *Registry) GetDefinition(agentID string) (config.AgentDefinition, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	def, ok := r.agents[agentID]
 	return def, ok
 }
 
 func (r *Registry) ResolveModel(agentID string) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	if def, ok := r.agents[agentID]; ok && def.Model != "" {
 		return def.Model
 	}
@@ -80,6 +96,8 @@ func (r *Registry) ResolveModel(agentID string) string {
 }
 
 func (r *Registry) ResolveImage(agentID string) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	if def, ok := r.agents[agentID]; ok && def.Image != "" {
 		return def.Image
 	}
@@ -87,8 +105,12 @@ func (r *Registry) ResolveImage(agentID string) string {
 }
 
 func (r *Registry) GetClaudeMD(agentID string) (string, error) {
+	r.mu.RLock()
+	def, hasDef := r.agents[agentID]
+	r.mu.RUnlock()
+
 	// Check config-specified path first
-	if def, ok := r.agents[agentID]; ok && def.ClaudeMD != "" {
+	if hasDef && def.ClaudeMD != "" {
 		path := filepath.Join(r.basePath, def.ClaudeMD)
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -102,7 +124,7 @@ func (r *Registry) GetClaudeMD(agentID string) (string, error) {
 
 	// Default: look in agent workspace dir
 	workspace := agentID
-	if def, ok := r.agents[agentID]; ok && def.Workspace != "" {
+	if hasDef && def.Workspace != "" {
 		workspace = def.Workspace
 	}
 	path := filepath.Join(r.basePath, workspace, "CLAUDE.md")
@@ -129,6 +151,8 @@ func (r *Registry) GetGlobalClaudeMD() (string, error) {
 }
 
 func (r *Registry) AgentDescriptions() map[string]string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	descs := make(map[string]string, len(r.agents))
 	for name, def := range r.agents {
 		descs[name] = def.Description
@@ -167,8 +191,12 @@ func (r *Registry) ensureDirectories(workspace string) error {
 }
 
 func (r *Registry) GetAgentMD(agentID string) (string, error) {
+	r.mu.RLock()
+	def, hasDef := r.agents[agentID]
+	r.mu.RUnlock()
+
 	workspace := agentID
-	if def, ok := r.agents[agentID]; ok && def.Workspace != "" {
+	if hasDef && def.Workspace != "" {
 		workspace = def.Workspace
 	}
 	path := filepath.Join(r.basePath, workspace, "AGENT.md")
@@ -183,8 +211,12 @@ func (r *Registry) GetAgentMD(agentID string) (string, error) {
 }
 
 func (r *Registry) SaveAgentMD(agentID, content string) error {
+	r.mu.RLock()
+	def, hasDef := r.agents[agentID]
+	r.mu.RUnlock()
+
 	workspace := agentID
-	if def, ok := r.agents[agentID]; ok && def.Workspace != "" {
+	if hasDef && def.Workspace != "" {
 		workspace = def.Workspace
 	}
 	path := filepath.Join(r.basePath, workspace, "AGENT.md")
