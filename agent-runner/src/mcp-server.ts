@@ -47,18 +47,20 @@ server.tool(
     schedule: z
       .string()
       .describe(
-        `Cron expression or preset tag.
+        `Schedule expression.
 
-CRITICAL: All times use LOCAL timezone. The system handles timezone via TZ env var. Use the user's local time EXACTLY as stated — NEVER convert to UTC. If user says "9:30" use hour=9 minute=30.
+CRITICAL: All times use LOCAL timezone. NEVER convert to UTC. If user says "9:30" use hour=9 minute=30.
 
 Supported formats:
+- Relative delay: "+30s", "+5m", "+2h" (ALWAYS use this for "in X seconds/minutes/hours" requests)
 - 5-field cron: "minute hour day month weekday" (e.g. "0 9 * * *" for daily at 9am local)
 - 6-field cron with year (one-off): "minute hour day month weekday year" (e.g. "20 10 17 2 * 2026" for Feb 17 2026 at 10:20 local)
-- 7-field cron with seconds (one-off): "second minute hour day month weekday year" (e.g. "0 30 9 17 2 * 2026" for Feb 17 2026 at 9:30:00 local)
-- Preset tags: @yearly, @annually, @monthly, @weekly, @daily, @hourly, @5minutes, @10minutes, @15minutes, @30minutes, @always (every minute), @everysecond
+- 7-field cron with seconds: "second minute hour day month weekday year" (e.g. "0 30 9 17 2 * 2026" for Feb 17 2026 at 9:30:00 local)
+- Preset tags: @yearly, @annually, @monthly, @weekly, @daily, @hourly, @5minutes, @10minutes, @15minutes, @30minutes, @always, @everysecond
 - Month names: JAN-DEC, Weekday names: SUN-SAT
 - Modifiers: L (last day), W (nearest weekday), # (nth weekday, e.g. 1#2 = second Monday)
-- JSON schedule: {"kind":"interval","interval_ms":60000} or {"kind":"once","at_ms":1739793600000}`
+
+IMPORTANT: For relative delays ("in 30 seconds", "in 5 minutes") ALWAYS use the +Ns/+Nm/+Nh format. Use cron only for absolute times and recurring schedules.`
       ),
     prompt: z
       .string()

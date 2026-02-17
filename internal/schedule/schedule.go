@@ -3,6 +3,7 @@ package schedule
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -97,17 +98,52 @@ func FormatSchedule(scheduleJSON string) string {
 		}
 	case "once":
 		t := time.UnixMilli(s.AtMs)
-		return "Once at " + t.Format("Jan 2 15:04")
+		return "Once at " + t.Format("Jan 2 15:04:05")
 	default:
 		return scheduleJSON
 	}
 }
 
+// parseRelativeDuration parses relative duration strings like "+30s", "+5m", "+2h"
+// and returns the duration. Returns 0 and false if not a relative format.
+func parseRelativeDuration(s string) (time.Duration, bool) {
+	if len(s) < 3 || s[0] != '+' {
+		return 0, false
+	}
+	unit := s[len(s)-1]
+	numStr := s[1 : len(s)-1]
+	n, err := strconv.Atoi(numStr)
+	if err != nil || n <= 0 {
+		return 0, false
+	}
+	switch unit {
+	case 's':
+		return time.Duration(n) * time.Second, true
+	case 'm':
+		return time.Duration(n) * time.Minute, true
+	case 'h':
+		return time.Duration(n) * time.Hour, true
+	default:
+		return 0, false
+	}
+}
+
 // NormalizeSchedule detects plain cron strings and wraps them in JSON format.
 // If the input is already valid JSON with a "kind" field, it is passed through.
+// Relative durations like "+30s", "+5m", "+2h" are converted to a once schedule.
 // Otherwise, it validates as a cron expression and wraps it.
 func NormalizeSchedule(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
+
+	// Try relative duration first (e.g. "+30s", "+5m", "+2h")
+	if d, ok := parseRelativeDuration(raw); ok {
+		s := Schedule{
+			Kind: "once",
+			AtMs: time.Now().Add(d).UnixMilli(),
+		}
+		data, _ := json.Marshal(s)
+		return string(data), nil
+	}
 
 	// Try parsing as JSON first
 	var s Schedule
