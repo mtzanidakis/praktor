@@ -81,6 +81,25 @@
       body, aside, main, div, span, h1, h2, h3, h4, p, a, button, input, textarea, select, form, label {
         transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
       }
+
+      /* Button & link hover effects */
+      button, a, [data-hover] {
+        transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, filter 0.15s ease;
+      }
+      button:hover:not(:disabled) {
+        filter: brightness(1.15);
+        border-color: var(--text-muted) !important;
+      }
+      /* Sidebar nav links */
+      nav a:not(.active):hover {
+        background: var(--bg-card-hover) !important;
+        color: var(--text-primary) !important;
+      }
+      /* Clickable cards & list items */
+      [data-hover]:hover {
+        background: var(--bg-card-hover) !important;
+        border-color: var(--text-muted) !important;
+      }
     </style>
   </head>
   <body>

@@ -85,6 +85,7 @@ function Agents() {
         {agents.map((agent) => (
           <div
             key={agent.id}
+            data-hover
             style={{
               ...card,
               borderColor: selected?.id === agent.id ? 'var(--accent)' : 'var(--border)',

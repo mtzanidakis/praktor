@@ -97,6 +97,7 @@ function Conversations() {
           {agents.map((agent) => (
             <div
               key={agent.id}
+              data-hover={selectedAgentId !== agent.id ? '' : undefined}
               onClick={() => setSelectedAgentId(agent.id)}
               style={{
                 padding: '8px 12px',
