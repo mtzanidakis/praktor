@@ -34,7 +34,7 @@ internal/
   registry/                      # Agent registry - syncs YAML config to DB, resolves agent config
   router/                        # Message router - @prefix parsing, smart routing via default agent
   telegram/                      # Telegram bot (telego), long-polling, message chunking
-  scheduler/                     # Cron/interval task polling (adhocore/gronx)
+  scheduler/                     # Cron/interval/relative delay task polling (adhocore/gronx)
   swarm/                         # Multi-container swarm coordination
   web/                           # HTTP server, REST API, WebSocket hub, embedded SPA
 Dockerfile                       # Gateway image (multi-stage: UI + Go + scratch)
@@ -113,6 +113,7 @@ GET            /api/agents                           # Active agent containers
 POST           /api/agents/{agentID}/stop            # Stop an agent
 GET/POST       /api/tasks                            # List/create scheduled tasks
 PUT/DELETE     /api/tasks/{id}                       # Update/delete task
+DELETE         /api/tasks/completed                  # Delete all completed tasks
 GET/POST       /api/swarms                           # List/create swarm runs
 GET            /api/swarms/{id}                      # Swarm status
 GET/PUT        /api/agents/definitions/{id}/agent-md   # Read/update per-agent AGENT.md
@@ -155,7 +156,7 @@ Tables: `agents`, `messages` (with agent_id index), `scheduled_tasks` (with stat
 - Named agents - Multiple agents with distinct roles, models, and configurations
 - Smart routing - `@agent_name` prefix or AI-powered routing via default agent
 - Isolated agent context - Each agent has its own CLAUDE.md memory, isolated filesystem, and runs in its own container sandbox
-- Scheduled tasks - Cron/interval/one-shot jobs that run Claude and deliver results
+- Scheduled tasks - Cron/interval/relative delay (+30s, +5m, +2h)/one-shot jobs that run Claude and deliver results
 - Web access - Agents can use WebSearch and WebFetch tools
 - Browser control - Chromium available in agent containers
 - Container isolation - Agents sandboxed in Docker containers with NATS communication
