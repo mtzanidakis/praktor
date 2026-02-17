@@ -70,6 +70,11 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `  ptask create --name "..." --schedule "..." --prompt "..."`)
 	fmt.Fprintln(os.Stderr, "  ptask list")
 	fmt.Fprintln(os.Stderr, `  ptask delete --id "..."`)
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "Schedule examples:")
+	fmt.Fprintln(os.Stderr, `  ptask create --name "Daily standup" --schedule "0 9 * * MON-FRI" --prompt "..."`)
+	fmt.Fprintln(os.Stderr, `  ptask create --name "Hourly check" --schedule "@hourly" --prompt "..."`)
+	fmt.Fprintln(os.Stderr, `  ptask create --name "One-off reminder" --schedule "20 10 17 2 * 2026" --prompt "..."`)
 	os.Exit(1)
 }
 

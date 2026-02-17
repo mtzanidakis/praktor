@@ -41,13 +41,22 @@ const server = new McpServer({
 
 server.tool(
   "scheduled_task_create",
-  "Create a recurring scheduled task. The prompt is sent verbatim to an agent each time the task fires — write it as an instruction (e.g. 'Reply with: Hello!').",
+  "Create a scheduled task (recurring or one-off). The prompt is sent verbatim to an agent each time the task fires — write it as an instruction (e.g. 'Reply with: Hello!'). One-off tasks are automatically paused after execution.",
   {
     name: z.string().describe("Task name"),
     schedule: z
       .string()
       .describe(
-        'Cron expression (e.g. "* * * * *" for every minute, "0 9 * * *" for daily at 9am) or JSON schedule'
+        `Cron expression or preset tag. All times are in the system's LOCAL timezone (set via TZ env var) — do NOT convert to UTC.
+
+Supported formats:
+- 5-field cron: "minute hour day month weekday" (e.g. "0 9 * * *" for daily at 9am, "*/5 * * * *" for every 5 min)
+- 6-field cron with year (one-off): "minute hour day month weekday year" (e.g. "20 10 17 2 * 2026" for Feb 17 2026 at 10:20)
+- Preset tags: @yearly, @monthly, @weekly, @daily, @hourly, @5minutes, @10minutes, @15minutes, @30minutes
+- Month names: JAN, FEB, MAR, APR, MAY, JUN, JUL, AUG, SEP, OCT, NOV, DEC
+- Weekday names: SUN, MON, TUE, WED, THU, FRI, SAT
+- Modifiers: L (last day), W (nearest weekday), # (nth weekday, e.g. 1#2 = second Monday)
+- JSON schedule: {"kind":"interval","interval_ms":60000} or {"kind":"once","at_ms":1739793600000}`
       ),
     prompt: z
       .string()
