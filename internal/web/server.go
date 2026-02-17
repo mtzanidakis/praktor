@@ -27,6 +27,7 @@ var staticFiles embed.FS
 type Server struct {
 	store      *store.Store
 	bus        *natsbus.Bus
+	nats       *natsbus.Client
 	orch       *agent.Orchestrator
 	registry   *registry.Registry
 	swarmCoord *swarm.Coordinator
@@ -128,6 +129,7 @@ func (s *Server) subscribeEvents() {
 		slog.Error("web server nats client failed", "error", err)
 		return
 	}
+	s.nats = client
 
 	// Forward all event topics to WebSocket as raw JSON
 	_, _ = client.Subscribe(natsbus.TopicEventsAll, func(msg *nats.Msg) {

@@ -3,7 +3,9 @@ package web
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
+	"github.com/mtzanidakis/praktor/internal/natsbus"
 	"github.com/mtzanidakis/praktor/internal/store"
 )
 
@@ -88,6 +90,8 @@ func (s *Server) createSecret(w http.ResponseWriter, r *http.Request) {
 
 	// Set agent assignments
 	_ = s.store.SetSecretAgents(body.Name, body.AgentIDs)
+
+	s.publishSecretEvent(natsbus.TopicEventsSecretCreated, sec.ID, sec.Name)
 
 	jsonResponse(w, map[string]any{
 		"id":          sec.ID,
@@ -190,6 +194,8 @@ func (s *Server) updateSecret(w http.ResponseWriter, r *http.Request) {
 		_ = s.store.SetSecretAgents(id, body.AgentIDs)
 	}
 
+	s.publishSecretEvent(natsbus.TopicEventsSecretUpdated, existing.ID, existing.Name)
+
 	jsonResponse(w, map[string]any{
 		"id":          existing.ID,
 		"name":        existing.Name,
@@ -205,6 +211,7 @@ func (s *Server) deleteSecret(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.publishSecretEvent(natsbus.TopicEventsSecretDeleted, id, id)
 	jsonResponse(w, map[string]string{"status": "deleted"})
 }
 
@@ -255,5 +262,24 @@ func (s *Server) removeAgentSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResponse(w, map[string]string{"status": "removed"})
+}
+
+func (s *Server) publishSecretEvent(topic, secretID, name string) {
+	if s.nats == nil {
+		return
+	}
+	event := map[string]any{
+		"type":      topic,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"data": map[string]any{
+			"id":   secretID,
+			"name": name,
+		},
+	}
+	data, err := json.Marshal(event)
+	if err != nil {
+		return
+	}
+	_ = s.nats.Publish(topic, data)
 }
 

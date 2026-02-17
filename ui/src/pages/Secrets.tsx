@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useWebSocket } from '../hooks/useWebSocket';
 
 interface Secret {
   id: string;
@@ -86,6 +87,8 @@ function Secrets() {
   const [editing, setEditing] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { events } = useWebSocket();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const fetchSecrets = useCallback(() => {
     fetch('/api/secrets')
@@ -107,7 +110,20 @@ function Secrets() {
   useEffect(() => {
     fetchSecrets();
     fetchAgents();
+    // Poll for changes from external sources (CLI, etc.)
+    const interval = setInterval(fetchSecrets, 5000);
+    return () => clearInterval(interval);
   }, [fetchSecrets, fetchAgents]);
+
+  // Re-fetch immediately on WebSocket secret events (debounced)
+  useEffect(() => {
+    if (events.length === 0) return;
+    const last = events[events.length - 1];
+    if (typeof last.type === 'string' && last.type.startsWith('events.secret.')) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(fetchSecrets, 500);
+    }
+  }, [events.length, fetchSecrets]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
