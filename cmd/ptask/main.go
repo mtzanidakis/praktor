@@ -69,6 +69,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "Usage:")
 	fmt.Fprintln(os.Stderr, `  ptask create --name "..." --schedule "..." --prompt "..."`)
 	fmt.Fprintln(os.Stderr, "  ptask list")
+	fmt.Fprintln(os.Stderr, `  ptask update --id "..." [--name "..."] [--schedule "..."] [--prompt "..."]`)
 	fmt.Fprintln(os.Stderr, `  ptask delete --id "..."`)
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Schedule examples:")
@@ -139,6 +140,30 @@ func main() {
 				fmt.Printf("  %s  %s  %s  [%s]\n", t.ID, t.Status, t.Name, t.Schedule)
 			}
 		}
+
+	case "update":
+		args := parseArgs(rest)
+		if args["id"] == "" {
+			fatal("--id is required")
+		}
+		payload := map[string]any{"id": args["id"]}
+		if args["name"] != "" {
+			payload["name"] = args["name"]
+		}
+		if args["schedule"] != "" {
+			payload["schedule"] = args["schedule"]
+		}
+		if args["prompt"] != "" {
+			payload["prompt"] = args["prompt"]
+		}
+		resp, err := sendIPC(natsURL, agentID, "update_task", payload)
+		if err != nil {
+			fatal("%v", err)
+		}
+		if resp.Error != "" {
+			fatal("%s", resp.Error)
+		}
+		fmt.Printf("Task updated: %s\n", resp.ID)
 
 	case "delete":
 		args := parseArgs(rest)

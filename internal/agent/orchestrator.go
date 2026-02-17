@@ -406,6 +406,8 @@ func (o *Orchestrator) handleIPC(msg *nats.Msg) {
 		o.ipcCreateTask(msg, agentID, cmd.Payload)
 	case "list_tasks":
 		o.ipcListTasks(msg, agentID)
+	case "update_task":
+		o.ipcUpdateTask(msg, cmd.Payload)
 	case "delete_task":
 		o.ipcDeleteTask(msg, cmd.Payload)
 	case "read_user_md":
@@ -495,6 +497,49 @@ func (o *Orchestrator) ipcListTasks(msg *nats.Msg, agentID string) {
 		})
 	}
 	o.respondIPC(msg, map[string]any{"ok": true, "tasks": out})
+}
+
+func (o *Orchestrator) ipcUpdateTask(msg *nats.Msg, payload json.RawMessage) {
+	var req struct {
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		Schedule string `json:"schedule"`
+		Prompt   string `json:"prompt"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil || req.ID == "" {
+		o.respondIPC(msg, map[string]any{"error": "id is required"})
+		return
+	}
+
+	t, err := o.store.GetTask(req.ID)
+	if err != nil {
+		o.respondIPC(msg, map[string]any{"error": fmt.Sprintf("task not found: %v", err)})
+		return
+	}
+
+	if req.Name != "" {
+		t.Name = req.Name
+	}
+	if req.Prompt != "" {
+		t.Prompt = req.Prompt
+	}
+	if req.Schedule != "" {
+		normalized, err := schedule.NormalizeSchedule(req.Schedule)
+		if err != nil {
+			o.respondIPC(msg, map[string]any{"error": fmt.Sprintf("invalid schedule: %v", err)})
+			return
+		}
+		t.Schedule = normalized
+		t.NextRunAt = schedule.CalculateNextRun(normalized)
+	}
+
+	if err := o.store.SaveTask(t); err != nil {
+		o.respondIPC(msg, map[string]any{"error": fmt.Sprintf("save failed: %v", err)})
+		return
+	}
+
+	slog.Info("task updated via IPC", "id", t.ID, "name", t.Name)
+	o.respondIPC(msg, map[string]any{"ok": true, "id": t.ID})
 }
 
 func (o *Orchestrator) ipcDeleteTask(msg *nats.Msg, payload json.RawMessage) {
