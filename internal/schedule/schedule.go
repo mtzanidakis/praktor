@@ -65,6 +65,12 @@ func FormatSchedule(scheduleJSON string) string {
 
 	switch s.Kind {
 	case "cron":
+		if strings.HasPrefix(s.CronExpr, "@") {
+			return s.CronExpr
+		}
+		if fields := strings.Fields(s.CronExpr); len(fields) == 6 {
+			return "Once: " + s.CronExpr
+		}
 		return s.CronExpr
 	case "interval":
 		d := time.Duration(s.IntervalMs) * time.Millisecond

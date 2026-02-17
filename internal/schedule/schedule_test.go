@@ -161,6 +161,90 @@ func TestNormalizeScheduleUnknownKind(t *testing.T) {
 	}
 }
 
+func TestNormalizeScheduleTag(t *testing.T) {
+	tags := []string{"@daily", "@hourly", "@weekly", "@monthly", "@yearly", "@5minutes", "@10minutes", "@15minutes", "@30minutes"}
+	for _, tag := range tags {
+		t.Run(tag, func(t *testing.T) {
+			result, err := NormalizeSchedule(tag)
+			if err != nil {
+				t.Fatalf("unexpected error for %s: %v", tag, err)
+			}
+			s, err := ParseSchedule(result)
+			if err != nil {
+				t.Fatalf("result not valid JSON: %v", err)
+			}
+			if s.Kind != "cron" || s.CronExpr != tag {
+				t.Errorf("expected cron with expr %s, got %+v", tag, s)
+			}
+		})
+	}
+}
+
+func TestNormalizeScheduleWithYear(t *testing.T) {
+	result, err := NormalizeSchedule("20 10 17 2 * 2026")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	s, err := ParseSchedule(result)
+	if err != nil {
+		t.Fatalf("result not valid JSON: %v", err)
+	}
+	if s.Kind != "cron" || s.CronExpr != "20 10 17 2 * 2026" {
+		t.Errorf("expected 6-field cron, got %+v", s)
+	}
+}
+
+func TestNormalizeScheduleWithAbbreviations(t *testing.T) {
+	cases := []string{"0 9 * JAN MON", "0 9 * * MON-FRI", "0 0 1 JAN *"}
+	for _, expr := range cases {
+		t.Run(expr, func(t *testing.T) {
+			result, err := NormalizeSchedule(expr)
+			if err != nil {
+				t.Fatalf("unexpected error for %s: %v", expr, err)
+			}
+			s, err := ParseSchedule(result)
+			if err != nil {
+				t.Fatalf("result not valid JSON: %v", err)
+			}
+			if s.Kind != "cron" || s.CronExpr != expr {
+				t.Errorf("expected cron with expr %s, got %+v", expr, s)
+			}
+		})
+	}
+}
+
+func TestCalculateNextRunWithYear(t *testing.T) {
+	// Far future year — should have a next run
+	futureExpr := fmt.Sprintf(`{"kind":"cron","cron_expr":"0 0 1 1 * %d"}`, time.Now().Year()+2)
+	next := CalculateNextRun(futureExpr)
+	if next == nil {
+		t.Error("expected next run for future year expression, got nil")
+	}
+
+	// Past year — should return nil
+	pastExpr := fmt.Sprintf(`{"kind":"cron","cron_expr":"0 0 1 1 * %d"}`, time.Now().Year()-1)
+	next = CalculateNextRun(pastExpr)
+	if next != nil {
+		t.Error("expected nil for past year expression")
+	}
+}
+
+func TestFormatScheduleTag(t *testing.T) {
+	raw := `{"kind":"cron","cron_expr":"@daily"}`
+	result := FormatSchedule(raw)
+	if result != "@daily" {
+		t.Errorf("expected '@daily', got '%s'", result)
+	}
+}
+
+func TestFormatScheduleWithYear(t *testing.T) {
+	raw := `{"kind":"cron","cron_expr":"20 10 17 2 * 2026"}`
+	result := FormatSchedule(raw)
+	if result != "Once: 20 10 17 2 * 2026" {
+		t.Errorf("expected 'Once: 20 10 17 2 * 2026', got '%s'", result)
+	}
+}
+
 func TestNormalizeScheduleWithWhitespace(t *testing.T) {
 	result, err := NormalizeSchedule("  */5 * * * *  ")
 	if err != nil {

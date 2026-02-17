@@ -89,4 +89,12 @@ func (s *Scheduler) execute(ctx context.Context, task store.ScheduledTask) {
 	if err := s.store.UpdateTaskRun(task.ID, lastStatus, lastError, nextRun); err != nil {
 		slog.Error("failed to update task run", "id", task.ID, "error", err)
 	}
+
+	// Auto-pause one-off tasks that have no next run
+	if nextRun == nil {
+		slog.Info("no next run, pausing one-off task", "id", task.ID, "name", task.Name)
+		if err := s.store.UpdateTaskStatus(task.ID, "paused"); err != nil {
+			slog.Error("failed to pause completed task", "id", task.ID, "error", err)
+		}
+	}
 }
