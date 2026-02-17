@@ -347,10 +347,12 @@ func (o *Orchestrator) handleAgentOutput(msg *nats.Msg) {
 	o.sessions.Touch(agentID)
 
 	if output.Type == "result" {
+		content := o.redactSecrets(agentID, output.Content)
+
 		agentMsg := &store.Message{
 			AgentID: agentID,
 			Sender:  "agent",
-			Content: output.Content,
+			Content: content,
 		}
 		_ = o.store.SaveMessage(agentMsg)
 		o.publishMessageEvent(agentMsg)
@@ -360,7 +362,7 @@ func (o *Orchestrator) handleAgentOutput(msg *nats.Msg) {
 
 		o.listenerMu.RLock()
 		for _, l := range o.listeners {
-			l(agentID, output.Content, meta)
+			l(agentID, content, meta)
 		}
 		o.listenerMu.RUnlock()
 	}

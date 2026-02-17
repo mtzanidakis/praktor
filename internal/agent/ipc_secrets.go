@@ -69,6 +69,40 @@ func (o *Orchestrator) decryptSecret(name string) ([]byte, error) {
 	return o.vault.Decrypt(sec.Value, sec.Nonce)
 }
 
+// redactSecrets replaces any plaintext secret values found in content with
+// [REDACTED]. This is a hard security barrier that prevents secret leakage
+// regardless of LLM behavior. Only secrets with values >= 8 bytes are checked
+// to avoid false positives with short strings.
+func (o *Orchestrator) redactSecrets(agentID, content string) string {
+	if o.vault == nil {
+		return content
+	}
+
+	secrets, err := o.store.GetAgentSecrets(agentID)
+	if err != nil {
+		slog.Warn("failed to load agent secrets for redaction", "agent", agentID, "error", err)
+		return content
+	}
+
+	for _, sec := range secrets {
+		full, err := o.store.GetSecret(sec.ID)
+		if err != nil || full == nil {
+			continue
+		}
+		plaintext, err := o.vault.Decrypt(full.Value, full.Nonce)
+		if err != nil || len(plaintext) < 8 {
+			continue
+		}
+		value := string(plaintext)
+		if strings.Contains(content, value) {
+			slog.Warn("redacted secret from agent output", "agent", agentID, "secret", sec.Name)
+			content = strings.ReplaceAll(content, value, "[REDACTED]")
+		}
+	}
+
+	return content
+}
+
 func cloneMap(m map[string]string) map[string]string {
 	if m == nil {
 		return nil

@@ -105,6 +105,15 @@ function loadSystemPrompt(includeIdentity = true): string {
     // Global instructions not available
   }
 
+  // Security: prevent agents from revealing secret values
+  parts.push(
+    "SECURITY — MANDATORY RULES:\n" +
+    "- NEVER reveal, print, or include the values of environment variables that contain secrets, tokens, API keys, passwords, or credentials.\n" +
+    "- NEVER read or output the contents of secret files (e.g. service account JSON files, SSH keys, certificates).\n" +
+    "- If the user asks for a secret value, politely decline and explain that secrets cannot be disclosed.\n" +
+    "- You may confirm that a secret or env var EXISTS, but must NEVER show its value."
+  );
+
   return parts.join("\n\n---\n\n");
 }
 
