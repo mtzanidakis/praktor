@@ -155,3 +155,11 @@ func (s *Store) DeleteTask(id string) error {
 	_, err := s.db.Exec(`DELETE FROM scheduled_tasks WHERE id = ?`, id)
 	return err
 }
+
+func (s *Store) DeleteCompletedTasks() (int64, error) {
+	res, err := s.db.Exec(`DELETE FROM scheduled_tasks WHERE status = 'completed'`)
+	if err != nil {
+		return 0, fmt.Errorf("delete completed tasks: %w", err)
+	}
+	return res.RowsAffected()
+}

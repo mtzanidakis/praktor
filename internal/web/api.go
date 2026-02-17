@@ -41,6 +41,7 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/tasks", s.listTasks)
 	mux.HandleFunc("POST /api/tasks", s.createTask)
 	mux.HandleFunc("PUT /api/tasks/{id}", s.updateTask)
+	mux.HandleFunc("DELETE /api/tasks/completed", s.deleteCompletedTasks)
 	mux.HandleFunc("DELETE /api/tasks/{id}", s.deleteTask)
 
 	// Swarms
@@ -268,7 +269,7 @@ func (s *Server) updateTask(w http.ResponseWriter, r *http.Request) {
 	if body.Enabled != nil {
 		if *body.Enabled {
 			existing.Status = "active"
-		} else {
+		} else if existing.Status != "completed" {
 			existing.Status = "paused"
 		}
 	} else if body.Status != nil {
@@ -306,6 +307,15 @@ func (s *Server) deleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResponse(w, map[string]string{"status": "deleted"})
+}
+
+func (s *Server) deleteCompletedTasks(w http.ResponseWriter, r *http.Request) {
+	count, err := s.store.DeleteCompletedTasks()
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonResponse(w, map[string]any{"status": "deleted", "count": count})
 }
 
 func (s *Server) listSwarms(w http.ResponseWriter, r *http.Request) {
@@ -498,6 +508,7 @@ func taskToAPI(t store.ScheduledTask, agentNames map[string]string) map[string]a
 		"agent_id":         t.AgentID,
 		"prompt":           t.Prompt,
 		"enabled":          t.Status == "active",
+		"status":           t.Status,
 	}
 	if name, ok := agentNames[t.AgentID]; ok {
 		m["agent_name"] = name

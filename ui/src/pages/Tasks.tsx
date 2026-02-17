@@ -9,6 +9,7 @@ interface Task {
   agent_name?: string;
   prompt?: string;
   enabled: boolean;
+  status: string;
   last_run?: string;
   next_run?: string;
 }
@@ -165,6 +166,7 @@ function Tasks() {
   };
 
   const handleToggle = async (task: Task) => {
+    if (task.status === 'completed') return;
     try {
       const res = await fetch(`/api/tasks/${task.id}`, {
         method: 'PUT',
@@ -178,16 +180,34 @@ function Tasks() {
     }
   };
 
+  const handleDeleteCompleted = async () => {
+    if (!confirm('Delete all completed tasks?')) return;
+    try {
+      const res = await fetch('/api/tasks/completed', { method: 'DELETE' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      fetchTasks();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    }
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
         <h1 style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary)' }}>Scheduled Tasks</h1>
-        <button
-          style={btnPrimary}
-          onClick={() => { setForm(emptyForm); setEditing(null); setShowForm(!showForm); }}
-        >
-          {showForm ? 'Cancel' : '+ New Task'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {tasks.some((t) => t.status === 'completed') && (
+            <button style={btnDanger} onClick={handleDeleteCompleted}>
+              Delete completed
+            </button>
+          )}
+          <button
+            style={btnPrimary}
+            onClick={() => { setForm(emptyForm); setEditing(null); setShowForm(!showForm); }}
+          >
+            {showForm ? 'Cancel' : '+ New Task'}
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -271,14 +291,14 @@ function Tasks() {
                   <span
                     style={{
                       ...badge(
-                        task.enabled ? 'var(--green)' : 'var(--text-secondary)',
-                        task.enabled ? 'var(--green-muted)' : 'var(--accent-muted)',
+                        task.status === 'active' ? 'var(--green)' : 'var(--text-secondary)',
+                        task.status === 'active' ? 'var(--green-muted)' : 'var(--accent-muted)',
                       ),
-                      cursor: 'pointer',
+                      cursor: task.status === 'completed' ? 'default' : 'pointer',
                     }}
                     onClick={() => handleToggle(task)}
                   >
-                    {task.enabled ? 'active' : 'paused'}
+                    {task.status}
                   </span>
                 </div>
 
