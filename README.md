@@ -176,10 +176,10 @@ Set the `PRAKTOR_VAULT_PASSPHRASE` environment variable (or `vault.passphrase` i
 
 ```sh
 # Store a string secret
-praktor vault set github-token --value "ghp_xxxxxxxxxxxx"
+praktor vault set github-token --value "ghp_xxxxxxxxxxxx" --description "GitHub PAT"
 
 # Store a file secret
-praktor vault set ssh-key --file ~/.ssh/id_rsa
+praktor vault set ssh-key --file ~/.ssh/id_rsa --description "Deploy key"
 
 # List all secrets (metadata only)
 praktor vault list

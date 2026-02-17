@@ -56,8 +56,8 @@ func printVaultUsage() {
 
 Commands:
   list                              List all secrets (metadata only)
-  set <name> --value <string>       Store a string secret
-  set <name> --file <path>          Store a file secret
+  set <name> --value <str> [--description <text>]   Store a string secret
+  set <name> --file <path> [--description <text>]  Store a file secret
   get <name>                        Retrieve and decrypt a secret
   delete <name>                     Delete a secret
   assign <name> --agent <id>        Assign a secret to an agent
@@ -101,7 +101,7 @@ func vaultList(db *store.Store) error {
 
 func vaultSet(db *store.Store, v *vault.Vault, args []string) error {
 	if len(args) < 3 {
-		return fmt.Errorf("usage: praktor vault set <name> --value <string> | --file <path>")
+		return fmt.Errorf("usage: praktor vault set <name> --value <string> | --file <path> [--description <text>]")
 	}
 
 	name := args[0]
