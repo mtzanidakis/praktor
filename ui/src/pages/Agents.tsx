@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useWebSocket } from '../hooks/useWebSocket';
 
 interface Agent {
   id: string;
@@ -38,8 +39,10 @@ function Agents() {
   const [agentMd, setAgentMd] = useState('');
   const [agentMdSaved, setAgentMdSaved] = useState(false);
   const [agentMdLoading, setAgentMdLoading] = useState(false);
+  const { events } = useWebSocket();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
-  useEffect(() => {
+  const fetchAgents = useCallback(() => {
     fetch('/api/agents/definitions')
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -48,6 +51,17 @@ function Agents() {
       .then((data) => setAgents(Array.isArray(data) ? data : []))
       .catch((err) => setError(err.message));
   }, []);
+
+  useEffect(() => {
+    fetchAgents();
+  }, [fetchAgents]);
+
+  // Re-fetch on relevant WebSocket events (debounced)
+  useEffect(() => {
+    if (events.length === 0) return;
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(fetchAgents, 500);
+  }, [events.length, fetchAgents]);
 
   useEffect(() => {
     if (!selected) return;
