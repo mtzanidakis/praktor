@@ -80,11 +80,21 @@ const badge = (color: string, bg: string): React.CSSProperties => ({
   color,
 });
 
-/** Extract the cron expression from schedule JSON for editing. */
-function parseCronFromSchedule(scheduleJSON: string): string {
+/** Extract user-friendly schedule string from schedule JSON for editing. */
+function parseScheduleForEdit(scheduleJSON: string): string {
   try {
     const s = JSON.parse(scheduleJSON);
     if (s.kind === 'cron' && s.cron_expr) return s.cron_expr;
+    if (s.kind === 'interval' && s.interval_ms > 0) {
+      const ms = s.interval_ms;
+      if (ms % 3600000 === 0) return `+${ms / 3600000}h`;
+      if (ms % 60000 === 0) return `+${ms / 60000}m`;
+      return `+${ms / 1000}s`;
+    }
+    if (s.kind === 'once' && s.at_ms) {
+      const d = new Date(s.at_ms);
+      return d.toLocaleString();
+    }
   } catch { /* not JSON */ }
   return scheduleJSON;
 }
@@ -166,7 +176,7 @@ function Tasks() {
   const handleEdit = (task: Task) => {
     setForm({
       name: task.name,
-      schedule: parseCronFromSchedule(task.schedule),
+      schedule: parseScheduleForEdit(task.schedule),
       agent_id: task.agent_id ?? '',
       prompt: task.prompt ?? '',
       enabled: task.enabled,
@@ -243,7 +253,7 @@ function Tasks() {
               />
             </div>
             <div>
-              <label style={{ fontSize: 13, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Schedule (cron)</label>
+              <label style={{ fontSize: 13, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Schedule (cron, +5m, +2h)</label>
               <input
                 style={inputStyle}
                 value={form.schedule}
