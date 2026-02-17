@@ -5,7 +5,7 @@ telegram:
 
 defaults:
   image: "praktor-agent:latest"
-  model: "claude-sonnet-4-5-20250929"  # Default Claude model for agents
+  model: "claude-sonnet-4-6"           # Default Claude model for agents
   max_running: 5
   idle_timeout: 10m
   anthropic_api_key: "${ANTHROPIC_API_KEY}"
