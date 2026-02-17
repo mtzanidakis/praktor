@@ -93,6 +93,18 @@ Agents are defined in the `agents` map in YAML config. Each agent has:
 
 The `router.default_agent` must reference an existing agent.
 
+### Hot Config Reload
+
+The gateway watches the config file for changes (mtime polled every 3s, SHA-256 hash verified on mtime change). When a change is detected, it automatically reloads without restarting the gateway process. SIGHUP also triggers a reload.
+
+**Reloadable:** Agent definitions (all fields), defaults (model, image, max_running, idle_timeout), router.default_agent, scheduler poll_interval, telegram main_chat_id.
+
+**Not reloadable** (warning logged): telegram.token, web.port, nats.data_dir, vault.passphrase.
+
+Running agents whose config changed are stopped and lazily restarted on the next message. Added agents become routable immediately. Removed agents are stopped.
+
+Key implementation files: `internal/config/diff.go` (config diffing), `cmd/praktor/main.go` (`watchConfigFile`, `reloadConfig`).
+
 ## NATS Topics
 
 ```
@@ -168,4 +180,5 @@ Tables: `agents`, `messages` (with agent_id index), `scheduled_tasks` (with stat
 - Container isolation - Agents sandboxed in Docker containers with NATS communication
 - Agent swarms - Spin up teams of specialized agents that collaborate via NATS
 - Secure vault - AES-256-GCM encrypted secrets, injected as env vars or files at container start (never exposed to LLM)
+- Hot config reload - Config file changes are detected automatically (file polling every 3s) or via SIGHUP; only affected agents are restarted
 - Mission Control UI - Real-time dashboard with WebSocket updates

@@ -102,6 +102,14 @@ func defaults() Config {
 	}
 }
 
+// Path returns the resolved config file path.
+func Path() string {
+	if v := os.Getenv("PRAKTOR_CONFIG"); v != "" {
+		return v
+	}
+	return "config/praktor.yaml"
+}
+
 func Load() (*Config, error) {
 	cfg := defaults()
 

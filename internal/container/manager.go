@@ -77,6 +77,13 @@ func NewManager(bus *natsbus.Bus, cfg config.DefaultsConfig) (*Manager, error) {
 	}, nil
 }
 
+// UpdateDefaults replaces the defaults config used for new containers.
+func (m *Manager) UpdateDefaults(cfg config.DefaultsConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.cfg = cfg
+}
+
 func (m *Manager) ensureNetwork(ctx context.Context) error {
 	if m.networkName != "" {
 		return nil

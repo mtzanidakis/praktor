@@ -75,6 +75,11 @@ func (r *Router) DefaultAgent() string {
 	return r.defaultAgent
 }
 
+// SetDefaultAgent updates the default agent used for routing.
+func (r *Router) SetDefaultAgent(agent string) {
+	r.defaultAgent = agent
+}
+
 func buildRoutingPrompt(descs map[string]string, message string) string {
 	var sb strings.Builder
 	sb.WriteString("You are a message router. Given the user's message, determine which agent should handle it.\n\n")
