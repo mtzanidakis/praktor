@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard';
 import Agents from './pages/Agents';
 import Conversations from './pages/Conversations';
 import Tasks from './pages/Tasks';
+import Secrets from './pages/Secrets';
 import Swarms from './pages/Swarms';
 import UserProfile from './pages/UserProfile';
 
@@ -63,6 +64,15 @@ function IconSwarms() {
   );
 }
 
+function IconSecrets() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="7" width="10" height="7" rx="1.5" />
+      <path d="M5 7V5a3 3 0 016 0v2" />
+    </svg>
+  );
+}
+
 function IconUser() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -101,6 +111,7 @@ const navItems = [
   { to: '/agents', label: 'Agents', Icon: IconAgents },
   { to: '/conversations', label: 'Conversations', Icon: IconConversations },
   { to: '/tasks', label: 'Tasks', Icon: IconTasks },
+  { to: '/secrets', label: 'Secrets', Icon: IconSecrets },
   { to: '/swarms', label: 'Swarms', Icon: IconSwarms },
   { to: '/user', label: 'User', Icon: IconUser },
 ];
@@ -231,6 +242,7 @@ function App() {
           <Route path="/agents" element={<Agents />} />
           <Route path="/conversations" element={<Conversations />} />
           <Route path="/tasks" element={<Tasks />} />
+          <Route path="/secrets" element={<Secrets />} />
           <Route path="/swarms" element={<Swarms />} />
         </Routes>
       </main>

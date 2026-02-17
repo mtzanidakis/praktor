@@ -11,6 +11,7 @@ require (
 	github.com/mymmrac/telego v1.6.0
 	github.com/nats-io/nats-server/v2 v2.12.4
 	github.com/nats-io/nats.go v1.48.0
+	golang.org/x/crypto v0.48.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.45.0
 )
@@ -68,7 +69,6 @@ require (
 	go.opentelemetry.io/otel/metric v1.40.0 // indirect
 	go.opentelemetry.io/otel/trace v1.40.0 // indirect
 	golang.org/x/arch v0.24.0 // indirect
-	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/exp v0.0.0-20260212183809-81e46e3db34a // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/time v0.14.0 // indirect

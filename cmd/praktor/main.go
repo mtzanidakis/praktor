@@ -18,6 +18,7 @@ import (
 	"github.com/mtzanidakis/praktor/internal/store"
 	"github.com/mtzanidakis/praktor/internal/swarm"
 	"github.com/mtzanidakis/praktor/internal/telegram"
+	"github.com/mtzanidakis/praktor/internal/vault"
 	"github.com/mtzanidakis/praktor/internal/web"
 )
 
@@ -37,6 +38,11 @@ func main() {
 			slog.Error("gateway failed", "error", err)
 			os.Exit(1)
 		}
+	case "vault":
+		if err := runVault(os.Args[2:]); err != nil {
+			slog.Error("vault command failed", "error", err)
+			os.Exit(1)
+		}
 	default:
 		printUsage()
 		os.Exit(1)
@@ -44,7 +50,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, "Usage: praktor <command>\n\nCommands:\n  gateway    Start the Praktor gateway service\n  version    Print version\n")
+	fmt.Fprintf(os.Stderr, "Usage: praktor <command>\n\nCommands:\n  gateway    Start the Praktor gateway service\n  vault      Manage encrypted secrets\n  version    Print version\n")
 }
 
 func runGateway() error {
@@ -86,8 +92,15 @@ func runGateway() error {
 		return fmt.Errorf("init container manager: %w", err)
 	}
 
+	// Vault
+	if cfg.Vault.Passphrase == "" {
+		return fmt.Errorf("vault passphrase is required (set PRAKTOR_VAULT_PASSPHRASE or vault.passphrase in config)")
+	}
+	v := vault.New(cfg.Vault.Passphrase)
+	slog.Info("vault initialized")
+
 	// Agent orchestrator
-	orch := agent.NewOrchestrator(bus, ctrMgr, db, reg, cfg.Defaults)
+	orch := agent.NewOrchestrator(bus, ctrMgr, db, reg, cfg.Defaults, v)
 
 	// Message router
 	rtr := router.New(reg, cfg.Router)
@@ -118,7 +131,7 @@ func runGateway() error {
 
 	// Web UI
 	if cfg.Web.Enabled {
-		srv := web.NewServer(db, bus, orch, reg, swarmCoord, cfg.Web)
+		srv := web.NewServer(db, bus, orch, reg, swarmCoord, cfg.Web, v)
 		go func() {
 			if err := srv.Start(ctx); err != nil {
 				slog.Error("web server error", "error", err)

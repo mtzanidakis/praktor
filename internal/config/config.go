@@ -17,6 +17,11 @@ type Config struct {
 	NATS      NATSConfig                    `yaml:"nats"`
 	Web       WebConfig                     `yaml:"web"`
 	Scheduler SchedulerConfig               `yaml:"scheduler"`
+	Vault     VaultConfig                   `yaml:"vault"`
+}
+
+type VaultConfig struct {
+	Passphrase string `yaml:"passphrase"`
 }
 
 type TelegramConfig struct {
@@ -47,8 +52,14 @@ type AgentDefinition struct {
 	ClaudeMD     string            `yaml:"claude_md"`
 	Workspace    string            `yaml:"workspace"`
 	Env          map[string]string `yaml:"env"`
-	Secrets      []string          `yaml:"secrets"`
+	Files        []FileMount       `yaml:"files"`
 	AllowedTools []string          `yaml:"allowed_tools"`
+}
+
+type FileMount struct {
+	Secret string `yaml:"secret"`
+	Target string `yaml:"target"`
+	Mode   string `yaml:"mode"`
 }
 
 type RouterConfig struct {
@@ -164,5 +175,8 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("PRAKTOR_AGENT_MODEL"); v != "" {
 		cfg.Defaults.Model = v
+	}
+	if v := os.Getenv("PRAKTOR_VAULT_PASSPHRASE"); v != "" {
+		cfg.Vault.Passphrase = v
 	}
 }

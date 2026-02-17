@@ -17,6 +17,7 @@ import (
 	"github.com/mtzanidakis/praktor/internal/registry"
 	"github.com/mtzanidakis/praktor/internal/store"
 	"github.com/mtzanidakis/praktor/internal/swarm"
+	"github.com/mtzanidakis/praktor/internal/vault"
 	"github.com/nats-io/nats.go"
 )
 
@@ -29,18 +30,20 @@ type Server struct {
 	orch       *agent.Orchestrator
 	registry   *registry.Registry
 	swarmCoord *swarm.Coordinator
+	vault      *vault.Vault
 	hub        *Hub
 	cfg        config.WebConfig
 	startedAt  time.Time
 }
 
-func NewServer(s *store.Store, bus *natsbus.Bus, orch *agent.Orchestrator, reg *registry.Registry, swarmCoord *swarm.Coordinator, cfg config.WebConfig) *Server {
+func NewServer(s *store.Store, bus *natsbus.Bus, orch *agent.Orchestrator, reg *registry.Registry, swarmCoord *swarm.Coordinator, cfg config.WebConfig, v *vault.Vault) *Server {
 	return &Server{
 		store:      s,
 		bus:        bus,
 		orch:       orch,
 		registry:   reg,
 		swarmCoord: swarmCoord,
+		vault:      v,
 		hub:        NewHub(),
 		cfg:        cfg,
 		startedAt:  time.Now(),

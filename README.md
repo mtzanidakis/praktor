@@ -21,6 +21,7 @@ Praktor is a single Go binary that orchestrates the full loop: it receives messa
 - **Agent identity** - Each agent has an `AGENT.md` file with personality, vibe, and expertise — editable from Mission Control or by agents themselves
 - **User profile** - Agents know who you are via `USER.md` — editable from Mission Control or by agents themselves
 - **Scheduled tasks** - Cron, interval, or one-shot jobs that run agents and deliver results via Telegram
+- **Secure vault** - AES-256-GCM encrypted secrets, injected as env vars or files at container start (never exposed to LLM)
 - **Agent swarms** - Spin up teams of specialized agents that collaborate on complex tasks
 - **Web & browser access** - Agents can search the web and control Chromium
 - **Mission Control** - Real-time dashboard with WebSocket updates
@@ -81,6 +82,9 @@ CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token
 
 # Mission Control password (optional)
 PRAKTOR_WEB_PASSWORD=your-secret-password
+
+# Vault passphrase for encrypted secrets (required)
+PRAKTOR_VAULT_PASSPHRASE=your-vault-passphrase
 ```
 
 Edit `config/praktor.yaml` to configure your agents:
@@ -140,6 +144,64 @@ curl http://localhost:8080/api/status
 # View logs
 docker compose logs -f praktor
 ```
+
+## Vault (Encrypted Secrets)
+
+Praktor includes an encrypted vault for storing secrets (API keys, tokens, SSH keys, service account files). Secrets are encrypted at rest with AES-256-GCM using a key derived from your passphrase via Argon2id.
+
+Secrets are injected into agent containers at start time — as environment variables or files — and never pass through the LLM conversation.
+
+### Setup
+
+Set the `PRAKTOR_VAULT_PASSPHRASE` environment variable (or `vault.passphrase` in YAML config). The gateway will not start without it.
+
+### CLI Usage
+
+```sh
+# Store a string secret
+praktor vault set github-token --value "ghp_xxxxxxxxxxxx"
+
+# Store a file secret
+praktor vault set ssh-key --file ~/.ssh/id_rsa
+
+# List all secrets (metadata only)
+praktor vault list
+
+# Retrieve and decrypt a secret
+praktor vault get github-token
+
+# Assign a secret to a specific agent
+praktor vault assign github-token --agent coder
+
+# Make a secret globally available to all agents
+praktor vault global github-token --enable
+
+# Delete a secret
+praktor vault delete github-token
+```
+
+### Mission Control
+
+The Secrets page in Mission Control lets you create, edit, delete secrets and manage agent assignments through the web UI. Secret values are never displayed — only metadata is shown.
+
+### Agent Config
+
+Reference vault secrets in agent definitions using `secret:name` syntax:
+
+```yaml
+agents:
+  coder:
+    description: "Software engineering specialist"
+    env:
+      EDITOR: vim                                # Regular env var
+      GITHUB_TOKEN: "secret:github-token"        # Resolved from vault
+    files:
+      - secret: gcp-service-account              # Secret name in vault
+        target: /etc/gcp/sa.json                  # Path inside container
+        mode: "0600"                              # File permissions
+```
+
+Regular env vars are passed through as-is. Values prefixed with `secret:` are resolved from the vault and injected as plain env vars. File secrets are copied into the container before it starts. The agent uses `$GITHUB_TOKEN` or reads `/etc/gcp/sa.json` directly — secret values never enter the LLM context.
 
 ## Development
 

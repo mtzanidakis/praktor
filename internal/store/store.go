@@ -111,6 +111,23 @@ func (s *Store) migrate() error {
 			started_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
 			completed_at DATETIME
 		)`,
+		`CREATE TABLE IF NOT EXISTS secrets (
+			id          TEXT PRIMARY KEY,
+			name        TEXT NOT NULL UNIQUE,
+			description TEXT,
+			kind        TEXT NOT NULL,
+			filename    TEXT,
+			value       BLOB NOT NULL,
+			nonce       BLOB NOT NULL,
+			global      INTEGER DEFAULT 0,
+			created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS agent_secrets (
+			agent_id   TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+			secret_id  TEXT NOT NULL REFERENCES secrets(id) ON DELETE CASCADE,
+			PRIMARY KEY (agent_id, secret_id)
+		)`,
 	}
 
 	for _, m := range migrations {

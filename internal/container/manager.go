@@ -53,8 +53,14 @@ type AgentOpts struct {
 	Mounts       []Mount
 	NATSUrl      string
 	Env          map[string]string
-	Secrets      []string
+	SecretFiles  []SecretFile
 	AllowedTools []string
+}
+
+type SecretFile struct {
+	Content []byte
+	Target  string
+	Mode    int64
 }
 
 func NewManager(bus *natsbus.Bus, cfg config.DefaultsConfig) (*Manager, error) {
@@ -139,16 +145,9 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 		env = append(env, fmt.Sprintf("TZ=%s", tz))
 	}
 
-	// Per-agent env vars
+	// Per-agent env vars (secret:name values already resolved by orchestrator)
 	for k, v := range opts.Env {
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
-	}
-
-	// Forward host secrets
-	for _, secretName := range opts.Secrets {
-		if v := os.Getenv(secretName); v != "" {
-			env = append(env, fmt.Sprintf("%s=%s", secretName, v))
-		}
 	}
 
 	// Allowed tools
@@ -181,6 +180,14 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 		return nil, fmt.Errorf("create container: %w", err)
 	}
 
+	// Copy secret files into container before starting
+	for _, sf := range opts.SecretFiles {
+		if err := m.copyFileToContainer(ctx, resp.ID, sf); err != nil {
+			_ = m.docker.ContainerRemove(ctx, resp.ID, dockercontainer.RemoveOptions{Force: true})
+			return nil, fmt.Errorf("copy secret file %s: %w", sf.Target, err)
+		}
+	}
+
 	if err := m.docker.ContainerStart(ctx, resp.ID, dockercontainer.StartOptions{}); err != nil {
 		return nil, fmt.Errorf("start container: %w", err)
 	}
@@ -197,6 +204,56 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 
 	slog.Info("agent container started", "agent", opts.AgentID, "container", resp.ID[:12])
 	return info, nil
+}
+
+func (m *Manager) copyFileToContainer(ctx context.Context, containerID string, sf SecretFile) error {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+
+	fileMode := sf.Mode
+	if fileMode == 0 {
+		fileMode = 0o600
+	}
+
+	// Derive directory mode: add execute bit for each read bit
+	// e.g. 0600 → 0700, 0644 → 0755
+	dirMode := fileMode | ((fileMode & 0o444) >> 2)
+
+	// Create directory entries for each path component so that parent
+	// directories are created with proper permissions and ownership.
+	// Docker's tar extraction preserves existing directory permissions.
+	targetPath := strings.TrimPrefix(sf.Target, "/")
+	parts := strings.Split(path.Dir(targetPath), "/")
+	for i := range parts {
+		dir := strings.Join(parts[:i+1], "/") + "/"
+		if err := tw.WriteHeader(&tar.Header{
+			Typeflag: tar.TypeDir,
+			Name:     dir,
+			Mode:     dirMode,
+			Uid:      10321,
+			Gid:      10321,
+		}); err != nil {
+			return fmt.Errorf("write dir header %s: %w", dir, err)
+		}
+	}
+
+	if err := tw.WriteHeader(&tar.Header{
+		Name: targetPath,
+		Mode: fileMode,
+		Size: int64(len(sf.Content)),
+		Uid:  10321,
+		Gid:  10321,
+	}); err != nil {
+		return fmt.Errorf("write tar header: %w", err)
+	}
+	if _, err := tw.Write(sf.Content); err != nil {
+		return fmt.Errorf("write tar body: %w", err)
+	}
+	if err := tw.Close(); err != nil {
+		return fmt.Errorf("close tar: %w", err)
+	}
+
+	return m.docker.CopyToContainer(ctx, containerID, "/", &buf, dockercontainer.CopyToContainerOptions{})
 }
 
 func (m *Manager) StopAgent(ctx context.Context, agentID string) error {

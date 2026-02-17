@@ -20,7 +20,12 @@ agents:
     model: "claude-opus-4-6"
     workspace: coder
     env:
-      GITHUB_TOKEN: "${GITHUB_TOKEN}"
+      EDITOR: vim                            # Regular env var
+      GITHUB_TOKEN: "secret:github-token"    # Resolved from vault at container start
+    files:
+      - secret: gcp-service-account          # Secret name in vault
+        target: /etc/gcp/sa.json             # Path inside container
+        mode: "0600"                         # File permissions (default: 0600)
   researcher:
     description: "Web research and analysis"
     workspace: researcher
@@ -33,6 +38,9 @@ web:
   enabled: true
   port: 8080
   auth: "${PRAKTOR_WEB_PASSWORD}"    # Basic auth for dashboard
+
+vault:
+  passphrase: "${PRAKTOR_VAULT_PASSPHRASE}"
 
 scheduler:
   poll_interval: 30s

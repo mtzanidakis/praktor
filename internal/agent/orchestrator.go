@@ -16,6 +16,7 @@ import (
 	"github.com/mtzanidakis/praktor/internal/registry"
 	"github.com/mtzanidakis/praktor/internal/schedule"
 	"github.com/mtzanidakis/praktor/internal/store"
+	"github.com/mtzanidakis/praktor/internal/vault"
 	"github.com/nats-io/nats.go"
 )
 
@@ -25,6 +26,7 @@ type Orchestrator struct {
 	containers *container.Manager
 	store      *store.Store
 	registry   *registry.Registry
+	vault      *vault.Vault
 	cfg        config.DefaultsConfig
 	sessions   *SessionTracker
 	queues     map[string]*AgentQueue
@@ -41,12 +43,13 @@ type IPCCommand struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
-func NewOrchestrator(bus *natsbus.Bus, ctr *container.Manager, s *store.Store, reg *registry.Registry, cfg config.DefaultsConfig) *Orchestrator {
+func NewOrchestrator(bus *natsbus.Bus, ctr *container.Manager, s *store.Store, reg *registry.Registry, cfg config.DefaultsConfig, v *vault.Vault) *Orchestrator {
 	o := &Orchestrator{
 		bus:        bus,
 		containers: ctr,
 		store:      s,
 		registry:   reg,
+		vault:      v,
 		cfg:        cfg,
 		sessions:   NewSessionTracker(),
 		queues:     make(map[string]*AgentQueue),
@@ -172,10 +175,11 @@ func (o *Orchestrator) executeMessage(ctx context.Context, agentID string, msg Q
 			NATSUrl:   o.bus.AgentNATSURL(),
 		}
 		if hasDef {
-			opts.Env = def.Env
-			opts.Secrets = def.Secrets
+			opts.Env = cloneMap(def.Env)
 			opts.AllowedTools = def.AllowedTools
 		}
+
+		o.resolveSecrets(&opts, agentID, def, hasDef)
 
 		info, err = o.containers.StartAgent(ctx, opts)
 		if err != nil {
@@ -258,10 +262,12 @@ func (o *Orchestrator) RouteQuery(ctx context.Context, agentID string, message s
 			Image:     o.registry.ResolveImage(agentID),
 			NATSUrl:   o.bus.AgentNATSURL(),
 		}
-		if def, ok := o.registry.GetDefinition(agentID); ok {
-			opts.Env = def.Env
-			opts.Secrets = def.Secrets
+		def, hasDef := o.registry.GetDefinition(agentID)
+		if hasDef {
+			opts.Env = cloneMap(def.Env)
 		}
+
+		o.resolveSecrets(&opts, agentID, def, hasDef)
 
 		info, err = o.containers.StartAgent(ctx, opts)
 		if err != nil {

@@ -44,6 +44,17 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/tasks/completed", s.deleteCompletedTasks)
 	mux.HandleFunc("DELETE /api/tasks/{id}", s.deleteTask)
 
+	// Secrets
+	mux.HandleFunc("GET /api/secrets", s.listSecrets)
+	mux.HandleFunc("POST /api/secrets", s.createSecret)
+	mux.HandleFunc("GET /api/secrets/{id}", s.getSecret)
+	mux.HandleFunc("PUT /api/secrets/{id}", s.updateSecret)
+	mux.HandleFunc("DELETE /api/secrets/{id}", s.deleteSecret)
+	mux.HandleFunc("GET /api/agents/definitions/{id}/secrets", s.getAgentSecrets)
+	mux.HandleFunc("PUT /api/agents/definitions/{id}/secrets", s.setAgentSecrets)
+	mux.HandleFunc("POST /api/agents/definitions/{id}/secrets/{secretId}", s.addAgentSecret)
+	mux.HandleFunc("DELETE /api/agents/definitions/{id}/secrets/{secretId}", s.removeAgentSecret)
+
 	// Swarms
 	mux.HandleFunc("GET /api/swarms", s.listSwarms)
 	mux.HandleFunc("POST /api/swarms", s.createSwarm)

@@ -20,6 +20,7 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN}
       - PRAKTOR_WEB_PASSWORD=${PRAKTOR_WEB_PASSWORD}
+      - PRAKTOR_VAULT_PASSPHRASE=${PRAKTOR_VAULT_PASSPHRASE}
     networks:
       - praktor-net
     restart: unless-stopped

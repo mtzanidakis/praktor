@@ -23,11 +23,12 @@ The gateway binary runs all core services: Telegram bot, message router, NATS me
 ## Project Structure
 
 ```
-cmd/praktor/main.go              # CLI: `gateway` and `version` subcommands
+cmd/praktor/main.go              # CLI: `gateway`, `vault`, and `version` subcommands
 cmd/ptask/main.go                # Task management CLI (Go, runs inside agent containers)
 internal/
   config/                        # YAML config + env var overrides
-  store/                         # SQLite (modernc.org/sqlite, pure Go) - agents, messages, tasks, swarms
+  store/                         # SQLite (modernc.org/sqlite, pure Go) - agents, messages, tasks, swarms, secrets
+  vault/                         # AES-256-GCM encryption with Argon2id key derivation
   natsbus/                       # Embedded NATS server + client helpers + topic naming
   container/                     # Docker container lifecycle, image building, volume mounts
   agent/                         # Message orchestrator, per-agent queue, session tracking
@@ -41,7 +42,7 @@ Dockerfile                       # Gateway image (multi-stage: UI + Go + scratch
 Dockerfile.agent                 # Agent image (multi-stage: Go + esbuild + alpine)
 agent-runner/src/                # TypeScript entrypoint: NATS bridge + Claude Code SDK (bundled with esbuild)
 ui/                              # React/Vite SPA (dark theme, indigo accent)
-  src/pages/                     # Dashboard, Agents, Conversations, Tasks, Swarms
+  src/pages/                     # Dashboard, Agents, Conversations, Tasks, Secrets, Swarms
   src/hooks/useWebSocket.ts      # Real-time WebSocket event hook
 config/praktor.example.yaml      # Example configuration
 ```
@@ -72,6 +73,7 @@ Loaded from YAML (default: `config/praktor.yaml`, override with `PRAKTOR_CONFIG`
 | `PRAKTOR_WEB_PASSWORD` | `web.auth` | Basic auth password for web UI |
 | `PRAKTOR_WEB_PORT` | `web.port` | Web UI port (default: 8080) |
 | `PRAKTOR_AGENT_MODEL` | `defaults.model` | Override default Claude model |
+| `PRAKTOR_VAULT_PASSPHRASE` | `vault.passphrase` | Encryption passphrase for secrets vault |
 
 Hardcoded paths (not configurable): `data/praktor.db` (SQLite), `data/agents` (agent workspaces).
 
@@ -84,8 +86,8 @@ Agents are defined in the `agents` map in YAML config. Each agent has:
 - `model` - Override default model
 - `image` - Override default container image
 - `workspace` - Volume suffix (defaults to agent name)
-- `env` - Per-agent environment variables
-- `secrets` - Host env var names to forward
+- `env` - Per-agent environment variables (supports `secret:name` references resolved from vault)
+- `files` - Secret files injected into container at start (`secret`, `target`, `mode`)
 - `allowed_tools` - Restrict Claude tools
 - `claude_md` - Relative path to agent-specific CLAUDE.md
 
@@ -114,6 +116,10 @@ POST           /api/agents/{agentID}/stop            # Stop an agent
 GET/POST       /api/tasks                            # List/create scheduled tasks
 PUT/DELETE     /api/tasks/{id}                       # Update/delete task
 DELETE         /api/tasks/completed                  # Delete all completed tasks
+GET/POST       /api/secrets                          # List/create secrets
+GET/PUT/DELETE /api/secrets/{id}                     # Get/update/delete secret
+GET/PUT        /api/agents/definitions/{id}/secrets  # List/set agent secret assignments
+POST/DELETE    /api/agents/definitions/{id}/secrets/{secretId}  # Add/remove agent secret
 GET/POST       /api/swarms                           # List/create swarm runs
 GET            /api/swarms/{id}                      # Swarm status
 GET/PUT        /api/agents/definitions/{id}/agent-md   # Read/update per-agent AGENT.md
@@ -148,7 +154,7 @@ The gateway uses `praktor-data` for SQLite/NATS and `praktor-global` for global 
 
 ## SQLite Schema
 
-Tables: `agents`, `messages` (with agent_id index), `scheduled_tasks` (with status+next_run index), `agent_sessions`, `swarm_runs`. Migrations run automatically on startup.
+Tables: `agents`, `messages` (with agent_id index), `scheduled_tasks` (with status+next_run index), `agent_sessions`, `swarm_runs`, `secrets`, `agent_secrets`. Migrations run automatically on startup.
 
 ## What it supports
 
@@ -161,4 +167,5 @@ Tables: `agents`, `messages` (with agent_id index), `scheduled_tasks` (with stat
 - Browser control - Chromium available in agent containers
 - Container isolation - Agents sandboxed in Docker containers with NATS communication
 - Agent swarms - Spin up teams of specialized agents that collaborate via NATS
+- Secure vault - AES-256-GCM encrypted secrets, injected as env vars or files at container start (never exposed to LLM)
 - Mission Control UI - Real-time dashboard with WebSocket updates
