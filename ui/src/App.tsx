@@ -1,12 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { Routes, Route, NavLink } from 'react-router-dom';
-import Dashboard from './pages/Dashboard';
-import Agents from './pages/Agents';
-import Conversations from './pages/Conversations';
-import Tasks from './pages/Tasks';
-import Secrets from './pages/Secrets';
-import Swarms from './pages/Swarms';
-import UserProfile from './pages/UserProfile';
+
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Agents = lazy(() => import('./pages/Agents'));
+const Conversations = lazy(() => import('./pages/Conversations'));
+const Tasks = lazy(() => import('./pages/Tasks'));
+const Secrets = lazy(() => import('./pages/Secrets'));
+const Swarms = lazy(() => import('./pages/Swarms'));
+const UserProfile = lazy(() => import('./pages/UserProfile'));
 
 // SVG icon components (16x16)
 function IconDashboard() {
@@ -236,15 +237,17 @@ function App() {
         maxHeight: '100vh',
         minHeight: '100vh',
       }}>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/user" element={<UserProfile />} />
-          <Route path="/agents" element={<Agents />} />
-          <Route path="/conversations" element={<Conversations />} />
-          <Route path="/tasks" element={<Tasks />} />
-          <Route path="/secrets" element={<Secrets />} />
-          <Route path="/swarms" element={<Swarms />} />
-        </Routes>
+        <Suspense fallback={null}>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/user" element={<UserProfile />} />
+            <Route path="/agents" element={<Agents />} />
+            <Route path="/conversations" element={<Conversations />} />
+            <Route path="/tasks" element={<Tasks />} />
+            <Route path="/secrets" element={<Secrets />} />
+            <Route path="/swarms" element={<Swarms />} />
+          </Routes>
+        </Suspense>
       </main>
     </div>
   );
