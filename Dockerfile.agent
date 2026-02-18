@@ -16,7 +16,13 @@ COPY agent-runner/tsconfig.json .
 RUN npx esbuild --bundle --format=cjs --platform=node --target=node24 \
       --outfile=out/index.js src/index.ts && \
     npx esbuild --bundle --format=cjs --platform=node --target=node24 \
-      --outfile=out/mcp-server.js src/mcp-server.ts
+      --outfile=out/mcp-tasks.js src/mcp-tasks.ts && \
+    npx esbuild --bundle --format=cjs --platform=node --target=node24 \
+      --outfile=out/mcp-profile.js src/mcp-profile.ts && \
+    npx esbuild --bundle --format=cjs --platform=node --target=node24 \
+      --outfile=out/mcp-memory.js src/mcp-memory.ts && \
+    npx esbuild --bundle --format=cjs --platform=node --target=node24 \
+      --outfile=out/mcp-swarm.js src/mcp-swarm.ts
 
 # Runtime image — no node_modules, just bundled JS files
 FROM alpine:3.23

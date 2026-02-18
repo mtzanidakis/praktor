@@ -197,7 +197,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
       "WebFetch",
       "Task",
       "TaskOutput",
-      "mcp__praktor-tasks__*",
+      "mcp__praktor-*",
     ];
 
     const result = query({
@@ -213,12 +213,29 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
           "praktor-tasks": {
             type: "stdio",
             command: "node",
-            args: ["/app/mcp-server.js"],
-            env: {
-              NATS_URL,
-              AGENT_ID,
-            },
+            args: ["/app/mcp-tasks.js"],
+            env: { NATS_URL, AGENT_ID },
           },
+          "praktor-profile": {
+            type: "stdio",
+            command: "node",
+            args: ["/app/mcp-profile.js"],
+            env: { NATS_URL, AGENT_ID },
+          },
+          "praktor-memory": {
+            type: "stdio",
+            command: "node",
+            args: ["/app/mcp-memory.js"],
+            env: {},
+          },
+          ...(SWARM_CHAT_TOPIC ? {
+            "praktor-swarm": {
+              type: "stdio",
+              command: "node",
+              args: ["/app/mcp-swarm.js"],
+              env: { NATS_URL, AGENT_ID, SWARM_CHAT_TOPIC },
+            },
+          } : {}),
         },
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,

@@ -40,7 +40,14 @@ internal/
   web/                           # HTTP server, REST API, WebSocket hub, embedded SPA
 Dockerfile                       # Gateway image (multi-stage: UI + Go + scratch)
 Dockerfile.agent                 # Agent image (multi-stage: Go + esbuild + alpine)
-agent-runner/src/                # TypeScript entrypoint: NATS bridge + Claude Code SDK + swarm chat + memory MCP tools (bundled with esbuild)
+agent-runner/src/                # TypeScript: NATS bridge + Claude Code SDK + MCP servers (bundled with esbuild)
+  index.ts                       # Main entrypoint: agent lifecycle, message handling, MCP server registration
+  nats-bridge.ts                 # NATS pub/sub wrapper for agent ↔ host communication
+  ipc.ts                         # Shared NATS IPC helper (sendIPC + IPCResponse)
+  mcp-tasks.ts                   # MCP server: scheduled_task_create/list/delete
+  mcp-profile.ts                 # MCP server: user_profile_read/update
+  mcp-memory.ts                  # MCP server: memory_store/recall/list/delete/forget
+  mcp-swarm.ts                   # MCP server: swarm_chat_send (conditional on SWARM_CHAT_TOPIC)
 ui/                              # React/Vite SPA (dark theme, indigo accent)
   src/pages/                     # Dashboard, Agents, Conversations, Tasks, Secrets, Swarms
   src/components/SwarmGraph.tsx   # SVG-based visual graph editor for swarm topology
@@ -218,6 +225,16 @@ The lead agent always runs last and receives all prior results for synthesis.
 ## SQLite Schema
 
 Tables: `agents`, `messages` (with agent_id index), `scheduled_tasks` (with status+next_run index), `agent_sessions`, `swarm_runs`, `secrets`, `agent_secrets`. Migrations run automatically on startup.
+
+## MCP Server Convention
+
+Each MCP tool domain lives in its own file under `agent-runner/src/mcp-*.ts`. To add a new MCP server:
+
+1. Create `agent-runner/src/mcp-{domain}.ts` with its own `McpServer` instance + `StdioServerTransport`
+2. If it needs NATS IPC, import `sendIPC` from `./ipc.js`
+3. Add an esbuild entry in `Dockerfile.agent` to bundle it as `out/mcp-{domain}.js`
+4. Register it in `agent-runner/src/index.ts` under `mcpServers` with `command: "node", args: ["/app/mcp-{domain}.js"]`
+5. The `allowedTools` wildcard `"mcp__praktor-*"` covers all `praktor-*` named servers automatically
 
 ## What it supports
 
