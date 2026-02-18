@@ -143,7 +143,6 @@ GET            /api/agents/definitions              # List agent definitions
 GET            /api/agents/definitions/{id}          # Agent details
 GET            /api/agents/definitions/{id}/messages # Message history
 GET            /api/agents                           # Active agent containers
-POST           /api/agents/{agentID}/stop            # Stop an agent
 GET/POST       /api/tasks                            # List/create scheduled tasks
 PUT/DELETE     /api/tasks/{id}                       # Update/delete task
 DELETE         /api/tasks/completed                  # Delete all completed tasks
