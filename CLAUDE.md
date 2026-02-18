@@ -2,6 +2,8 @@
 
 Personal AI Agent Assistant.
 
+**Do NOT commit or push unless explicitly asked.**
+
 ## Quick Context
 
 Go 1.26 service (`github.com/mtzanidakis/praktor`) that connects to Telegram, routes messages to named agents running Claude Code (Agent SDK) in isolated Docker containers, and provides a Mission Control Web UI. Single binary deployment via Docker Compose.
