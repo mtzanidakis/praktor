@@ -61,6 +61,15 @@ docker compose up                      # Run full stack
 
 Note: On this system, binaries must be built with `CGO_ENABLED=0` due to the nix dynamic linker. The `modernc.org/sqlite` driver is pure Go and does not require CGO.
 
+**IMPORTANT: Never run `node`, `npm`, or `npx` directly on the host.** Always run them inside a Docker container. For the UI:
+
+```sh
+docker run --rm -v $(pwd)/ui:/app -w /app node:25-alpine sh -c "npm install && npm run build"
+docker run --rm -v $(pwd)/ui:/app -w /app node:25-alpine npm run dev
+```
+
+For agent-runner or any other Node.js tooling, use the same pattern with the appropriate volume mount.
+
 ## Configuration
 
 Loaded from YAML (default: `config/praktor.yaml`, override with `PRAKTOR_CONFIG` env var). Environment variables take precedence over YAML values:
