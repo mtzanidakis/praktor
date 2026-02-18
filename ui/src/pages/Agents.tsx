@@ -22,15 +22,6 @@ const card: React.CSSProperties = {
   boxShadow: 'var(--shadow)',
 };
 
-const badge = (color: string, bg: string): React.CSSProperties => ({
-  display: 'inline-block',
-  padding: '2px 10px',
-  borderRadius: 999,
-  fontSize: 14,
-  fontWeight: 600,
-  background: bg,
-  color,
-});
 
 function Agents() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -40,6 +31,7 @@ function Agents() {
   const [agentMdSaved, setAgentMdSaved] = useState(false);
   const [agentMdLoading, setAgentMdLoading] = useState(false);
   const [confirmStop, setConfirmStop] = useState<string | null>(null);
+  const [starting, setStarting] = useState<string | null>(null);
   const { events } = useWebSocket();
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -73,6 +65,19 @@ function Agents() {
       .catch(() => setAgentMd(''))
       .finally(() => setAgentMdLoading(false));
   }, [selected?.id]);
+
+  const startAgent = async (agentId: string) => {
+    try {
+      setStarting(agentId);
+      const res = await fetch(`/api/agents/${agentId}/start`, { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      fetchAgents();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start agent');
+    } finally {
+      setStarting(null);
+    }
+  };
 
   const stopAgent = async (agentId: string) => {
     try {
@@ -120,43 +125,43 @@ function Agents() {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)' }}>{agent.name}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {agent.agent_status === 'running' && (
-                  confirmStop === agent.id ? (
-                    <span style={{ display: 'flex', gap: 4 }}>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); stopAgent(agent.id); }}
-                        style={{
-                          padding: '2px 10px',
-                          borderRadius: 6,
-                          border: '1px solid var(--red)',
-                          background: 'var(--red-muted)',
-                          color: 'var(--red)',
-                          fontSize: 13,
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        confirm
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setConfirmStop(null); }}
-                        style={{
-                          padding: '2px 10px',
-                          borderRadius: 6,
-                          border: '1px solid var(--border)',
-                          background: 'transparent',
-                          color: 'var(--text-secondary)',
-                          fontSize: 13,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        cancel
-                      </button>
-                    </span>
-                  ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <button
+                  data-agent-start={agent.agent_status !== 'running' ? '' : undefined}
+                  onClick={agent.agent_status !== 'running' ? (e) => { e.stopPropagation(); startAgent(agent.id); } : undefined}
+                  disabled={agent.agent_status === 'running' || starting === agent.id}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    fontSize: 16,
+                    cursor: agent.agent_status !== 'running' ? 'pointer' : 'default',
+                    color: agent.agent_status === 'running' ? 'var(--green)' : 'var(--text-muted)',
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    lineHeight: 1,
+                  }}
+                >
+                  ▶
+                </button>
+                {confirmStop === agent.id ? (
+                  <span style={{ display: 'flex', gap: 4 }}>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setConfirmStop(agent.id); }}
+                      onClick={(e) => { e.stopPropagation(); stopAgent(agent.id); }}
+                      style={{
+                        padding: '2px 10px',
+                        borderRadius: 6,
+                        border: '1px solid var(--red)',
+                        background: 'var(--red-muted)',
+                        color: 'var(--red)',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      confirm
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setConfirmStop(null); }}
                       style={{
                         padding: '2px 10px',
                         borderRadius: 6,
@@ -167,17 +172,27 @@ function Agents() {
                         cursor: 'pointer',
                       }}
                     >
-                      stop
+                      cancel
                     </button>
-                  )
-                )}
-                {agent.agent_status && (
-                  <span style={badge(
-                    agent.agent_status === 'running' ? 'var(--green)' : 'var(--text-secondary)',
-                    agent.agent_status === 'running' ? 'var(--green-muted)' : 'var(--accent-muted)',
-                  )}>
-                    {agent.agent_status}
                   </span>
+                ) : (
+                  <button
+                    data-agent-stop={agent.agent_status === 'running' ? '' : undefined}
+                    onClick={agent.agent_status === 'running' ? (e) => { e.stopPropagation(); setConfirmStop(agent.id); } : undefined}
+                    disabled={agent.agent_status !== 'running'}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      fontSize: 16,
+                      cursor: agent.agent_status === 'running' ? 'pointer' : 'default',
+                      color: 'var(--text-muted)',
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      lineHeight: 1,
+                    }}
+                  >
+                    ■
+                  </button>
                 )}
               </div>
             </div>

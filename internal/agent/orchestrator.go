@@ -663,6 +663,73 @@ func (o *Orchestrator) publishMessageEvent(msg *store.Message) {
 	_ = o.client.Publish(topic, data)
 }
 
+func (o *Orchestrator) EnsureAgent(ctx context.Context, agentID string) error {
+	// Already running — nothing to do
+	if info := o.containers.GetRunning(agentID); info != nil {
+		return nil
+	}
+
+	def, hasDef := o.registry.GetDefinition(agentID)
+	ag, err := o.registry.Get(agentID)
+	if err != nil || ag == nil {
+		return fmt.Errorf("agent not found: %s", agentID)
+	}
+
+	clientsBefore := o.bus.NumClients()
+	slog.Info("starting agent", "agent", agentID, "nats_clients_before", clientsBefore)
+
+	opts := container.AgentOpts{
+		AgentID:   agentID,
+		Workspace: ag.Workspace,
+		Model:     o.registry.ResolveModel(agentID),
+		Image:     o.registry.ResolveImage(agentID),
+		NATSUrl:   o.bus.AgentNATSURL(),
+	}
+	if hasDef {
+		opts.Env = cloneMap(def.Env)
+		opts.AllowedTools = def.AllowedTools
+	}
+	o.resolveSecrets(&opts, agentID, def, hasDef)
+
+	info, err := o.containers.StartAgent(ctx, opts)
+	if err != nil {
+		return fmt.Errorf("start agent: %w", err)
+	}
+
+	deadline := time.After(30 * time.Second)
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+
+waitLoop:
+	for {
+		select {
+		case <-deadline:
+			slog.Warn("agent ready timeout", "agent", agentID, "nats_clients", o.bus.NumClients())
+			break waitLoop
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if o.bus.NumClients() > clientsBefore {
+				time.Sleep(500 * time.Millisecond)
+				slog.Info("agent container ready", "agent", agentID, "nats_clients", o.bus.NumClients())
+				break waitLoop
+			}
+		}
+	}
+
+	now := time.Now()
+	o.sessions.Set(agentID, &Session{
+		ID:          info.ID,
+		AgentID:     agentID,
+		ContainerID: info.ID,
+		Status:      "running",
+		StartedAt:   now,
+		LastActive:  now,
+	})
+	o.publishAgentStartEvent(agentID)
+	return nil
+}
+
 func (o *Orchestrator) StopAgent(ctx context.Context, agentID string) error {
 	o.sessions.Remove(agentID)
 	err := o.containers.StopAgent(ctx, agentID)
