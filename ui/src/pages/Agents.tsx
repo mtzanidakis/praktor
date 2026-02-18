@@ -26,7 +26,7 @@ const badge = (color: string, bg: string): React.CSSProperties => ({
   display: 'inline-block',
   padding: '2px 10px',
   borderRadius: 999,
-  fontSize: 12,
+  fontSize: 14,
   fontWeight: 600,
   background: bg,
   color,
@@ -87,7 +87,7 @@ function Agents() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 28, color: 'var(--text-primary)' }}>Agents</h1>
+      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 28, color: 'var(--text-primary)' }}>Agents</h1>
 
       {error && (
         <div style={{ ...card, color: 'var(--red-light)', marginBottom: 16, cursor: 'default' }}>
@@ -107,7 +107,7 @@ function Agents() {
             onClick={() => setSelected(selected?.id === agent.id ? null : agent)}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>{agent.name}</span>
+              <span style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)' }}>{agent.name}</span>
               {agent.agent_status && (
                 <span style={badge(
                   agent.agent_status === 'running' ? 'var(--green)' : 'var(--text-secondary)',
@@ -118,12 +118,12 @@ function Agents() {
               )}
             </div>
             {agent.description && (
-              <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginBottom: 4 }}>{agent.description}</div>
+              <div style={{ fontSize: 15, color: 'var(--text-tertiary)', marginBottom: 4 }}>{agent.description}</div>
             )}
             {agent.model && (
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Model: {agent.model}</div>
+              <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 4 }}>Model: {agent.model}</div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-tertiary)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, color: 'var(--text-tertiary)' }}>
               <span>{agent.message_count ?? 0} messages</span>
               {agent.last_active && <span>{agent.last_active}</span>}
             </div>
@@ -132,16 +132,16 @@ function Agents() {
       </div>
 
       {agents.length === 0 && !error && (
-        <div style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>No agents found</div>
+        <div style={{ color: 'var(--text-tertiary)', fontSize: 16 }}>No agents found</div>
       )}
 
       {selected && (
         <div style={{ marginTop: 28 }}>
           <div style={{ ...card, cursor: 'default' }}>
-            <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16, color: 'var(--accent)' }}>
+            <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 16, color: 'var(--accent)' }}>
               {selected.name}
             </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 16 }}>
               <div>
                 <span style={{ color: 'var(--text-tertiary)' }}>ID: </span>
                 <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{selected.id}</span>
@@ -185,16 +185,16 @@ function Agents() {
           <div style={{ ...card, cursor: 'default', marginTop: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <div>
-                <h3 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
+                <h3 style={{ fontSize: 20, fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
                   Agent Identity
                 </h3>
-                <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '4px 0 0' }}>
+                <p style={{ fontSize: 15, color: 'var(--text-secondary)', margin: '4px 0 0' }}>
                   Personal identity and instructions for this agent via AGENT.md
                 </p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 {agentMdSaved && (
-                  <span style={{ color: 'var(--green)', fontSize: 13, fontWeight: 500 }}>Saved</span>
+                  <span style={{ color: 'var(--green)', fontSize: 15, fontWeight: 500 }}>Saved</span>
                 )}
                 {!agentMdLoading && (
                   <button
@@ -206,7 +206,7 @@ function Agents() {
                       border: 'none',
                       borderRadius: 6,
                       cursor: 'pointer',
-                      fontSize: 13,
+                      fontSize: 15,
                       fontWeight: 600,
                     }}
                   >
@@ -216,7 +216,7 @@ function Agents() {
               </div>
             </div>
             {agentMdLoading ? (
-              <div style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>Loading...</div>
+              <div style={{ color: 'var(--text-tertiary)', fontSize: 15 }}>Loading...</div>
             ) : (
               <textarea
                 value={agentMd}
@@ -225,7 +225,7 @@ function Agents() {
                   width: '100%',
                   minHeight: 180,
                   fontFamily: 'monospace',
-                  fontSize: 13,
+                  fontSize: 15,
                   background: 'var(--bg-main)',
                   color: 'var(--text-primary)',
                   border: '1px solid var(--border)',

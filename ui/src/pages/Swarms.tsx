@@ -42,7 +42,7 @@ const btnPrimary: React.CSSProperties = {
   border: 'none',
   background: 'var(--accent)',
   color: '#fff',
-  fontSize: 14,
+  fontSize: 16,
   fontWeight: 600,
   cursor: 'pointer',
 };
@@ -53,7 +53,7 @@ const btnSmall: React.CSSProperties = {
   border: '1px solid var(--border)',
   background: 'transparent',
   color: 'var(--text-secondary)',
-  fontSize: 12,
+  fontSize: 14,
   cursor: 'pointer',
 };
 
@@ -165,7 +165,7 @@ function Swarms() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary)' }}>Swarms</h1>
+        <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }}>Swarms</h1>
         <button
           style={btnPrimary}
           onClick={() => {
@@ -213,12 +213,12 @@ function Swarms() {
                 >
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                      <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>
+                      <span style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)' }}>
                         {swarm.name || 'Swarm'}
                       </span>
                       <span
                         style={{
-                          fontSize: 12,
+                          fontSize: 14,
                           padding: '2px 8px',
                           borderRadius: 999,
                           background: sc.bg,
@@ -229,15 +229,15 @@ function Swarms() {
                         {swarm.status}
                       </span>
                       {swarm.lead_agent && (
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
                           Lead: {swarm.lead_agent}
                         </span>
                       )}
                     </div>
-                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', maxWidth: 600 }}>
+                    <div style={{ fontSize: 15, color: 'var(--text-secondary)', maxWidth: 600 }}>
                       {swarm.task.length > 120 ? swarm.task.slice(0, 120) + '...' : swarm.task}
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6, display: 'flex', gap: 16 }}>
+                    <div style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 6, display: 'flex', gap: 16 }}>
                       {agents.length > 0 && <span>{agents.length} agent(s)</span>}
                       {synapses.length > 0 && <span>{synapses.length} connection(s)</span>}
                       {swarm.started_at && <span>Started: {swarm.started_at}</span>}
@@ -272,7 +272,7 @@ function Swarms() {
                     )}
                     <span style={{
                       color: 'var(--text-tertiary)',
-                      fontSize: 15,
+                      fontSize: 17,
                       transform: isExpanded ? 'rotate(90deg)' : 'none',
                       transition: 'transform 0.15s',
                       marginLeft: 4,
@@ -292,7 +292,7 @@ function Swarms() {
                     {/* Results */}
                     {results.length > 0 && (
                       <div style={{ marginTop: 16 }}>
-                        <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 10 }}>
+                        <h4 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 10 }}>
                           Results
                         </h4>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -301,14 +301,14 @@ function Swarms() {
                             return (
                               <div key={i} style={{ padding: '10px 14px', background: 'var(--bg-elevated)', borderRadius: 8 }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                                  <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>{r.role}</span>
-                                  <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 999, background: rc.bg, color: rc.color }}>
+                                  <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--text-primary)' }}>{r.role}</span>
+                                  <span style={{ fontSize: 13, padding: '1px 6px', borderRadius: 999, background: rc.bg, color: rc.color }}>
                                     {r.status}
                                   </span>
                                 </div>
                                 {r.output && (
                                   <pre style={{
-                                    fontSize: 12,
+                                    fontSize: 14,
                                     color: 'var(--text-secondary)',
                                     whiteSpace: 'pre-wrap',
                                     wordBreak: 'break-word',
@@ -320,7 +320,7 @@ function Swarms() {
                                   </pre>
                                 )}
                                 {r.error && (
-                                  <div style={{ fontSize: 12, color: 'var(--red)' }}>{r.error}</div>
+                                  <div style={{ fontSize: 14, color: 'var(--red)' }}>{r.error}</div>
                                 )}
                               </div>
                             );
@@ -334,7 +334,7 @@ function Swarms() {
             );
           })}
           {swarms.length === 0 && !error && (
-            <div style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>No swarm runs yet</div>
+            <div style={{ color: 'var(--text-tertiary)', fontSize: 16 }}>No swarm runs yet</div>
           )}
         </div>
       )}
@@ -411,7 +411,7 @@ function MiniTopology({
             />
             <text
               x={n.x + nodeW / 2} y={n.y + nodeH / 2 + 4}
-              textAnchor="middle" fontSize={11} fontWeight={600}
+              textAnchor="middle" fontSize={13} fontWeight={600}
               fill={sc.color}
             >
               {n.role.length > 12 ? n.role.slice(0, 10) + '..' : n.role}

@@ -14,7 +14,7 @@ const btnPrimary: React.CSSProperties = {
   border: 'none',
   background: 'var(--accent)',
   color: '#fff',
-  fontSize: 14,
+  fontSize: 16,
   fontWeight: 600,
   cursor: 'pointer',
 };
@@ -65,13 +65,13 @@ export default function UserProfile() {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>User Profile</h1>
-          <p style={{ fontSize: 14, color: 'var(--text-secondary)', margin: '4px 0 0' }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>User Profile</h1>
+          <p style={{ fontSize: 16, color: 'var(--text-secondary)', margin: '4px 0 0' }}>
             Personal information shared with all agents via USER.md
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {saved && <span style={{ color: 'var(--green-light)', fontSize: 13, fontWeight: 500 }}>Saved</span>}
+          {saved && <span style={{ color: 'var(--green-light)', fontSize: 15, fontWeight: 500 }}>Saved</span>}
           <button style={btnPrimary} onClick={handleSave} disabled={saving}>
             {saving ? 'Saving...' : 'Save'}
           </button>
@@ -90,7 +90,7 @@ export default function UserProfile() {
             border: '1px solid var(--border)',
             background: 'var(--bg-input)',
             color: 'var(--text-primary)',
-            fontSize: 14,
+            fontSize: 16,
             fontFamily: 'monospace',
             lineHeight: 1.6,
             resize: 'vertical',

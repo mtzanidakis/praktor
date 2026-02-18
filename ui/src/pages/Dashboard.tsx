@@ -49,7 +49,7 @@ function Dashboard() {
   if (error) {
     return (
       <div>
-        <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 24, color: 'var(--text-primary)' }}>Dashboard</h1>
+        <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 24, color: 'var(--text-primary)' }}>Dashboard</h1>
         <div style={{ ...card, color: 'var(--red-light)' }}>
           Failed to load status: {error}
         </div>
@@ -60,8 +60,8 @@ function Dashboard() {
   if (!status) {
     return (
       <div>
-        <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 24, color: 'var(--text-primary)' }}>Dashboard</h1>
-        <div style={{ color: 'var(--text-tertiary)', fontSize: 15 }}>Loading...</div>
+        <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 24, color: 'var(--text-primary)' }}>Dashboard</h1>
+        <div style={{ color: 'var(--text-tertiary)', fontSize: 17 }}>Loading...</div>
       </div>
     );
   }
@@ -75,10 +75,10 @@ function Dashboard() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary)' }}>Dashboard</h1>
+        <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }}>Dashboard</h1>
         {status.version && (
           <span style={{
-            fontSize: 13,
+            fontSize: 15,
             color: 'var(--text-tertiary)',
             background: 'var(--bg-elevated)',
             padding: '4px 12px',
@@ -94,12 +94,12 @@ function Dashboard() {
         {stats.map((s) => (
           <div key={s.label} style={card}>
             <div style={{
-              fontSize: 40,
+              fontSize: 42,
               fontWeight: 700,
               color: s.color,
               lineHeight: 1,
             }}>{s.value}</div>
-            <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 6 }}>{s.label}</div>
+            <div style={{ fontSize: 16, color: 'var(--text-secondary)', marginTop: 6 }}>{s.label}</div>
           </div>
         ))}
       </div>
@@ -114,16 +114,16 @@ function Dashboard() {
             flexShrink: 0,
           }} />
           <div>
-            <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginBottom: 2 }}>Uptime</div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>{status.uptime}</div>
+            <div style={{ fontSize: 15, color: 'var(--text-tertiary)', marginBottom: 2 }}>Uptime</div>
+            <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)' }}>{status.uptime}</div>
           </div>
         </div>
       )}
 
       <div style={card}>
-        <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, color: 'var(--text-primary)' }}>Recent Messages</h2>
+        <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16, color: 'var(--text-primary)' }}>Recent Messages</h2>
         {(!status.recent_messages || status.recent_messages.length === 0) ? (
-          <div style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>No recent messages</div>
+          <div style={{ color: 'var(--text-tertiary)', fontSize: 16 }}>No recent messages</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {status.recent_messages.map((msg) => (
@@ -131,7 +131,7 @@ function Dashboard() {
                 padding: '10px 14px',
                 background: 'var(--bg-elevated)',
                 borderRadius: 8,
-                fontSize: 14,
+                fontSize: 16,
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, alignItems: 'center' }}>
                   <span>
@@ -139,7 +139,7 @@ function Dashboard() {
                     <span style={{ color: 'var(--text-muted)', margin: '0 6px' }}>in</span>
                     <span style={{ color: 'var(--text-secondary)' }}>{msg.agent}</span>
                   </span>
-                  <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{msg.time}</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 14 }}>{msg.time}</span>
                 </div>
                 <div style={{ color: 'var(--text-primary)' }}>{msg.text}</div>
               </div>

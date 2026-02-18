@@ -45,7 +45,7 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid var(--border)',
   background: 'var(--bg-input)',
   color: 'var(--text-primary)',
-  fontSize: 14,
+  fontSize: 16,
   outline: 'none',
 };
 
@@ -55,7 +55,7 @@ const btnPrimary: React.CSSProperties = {
   border: 'none',
   background: 'var(--accent)',
   color: '#fff',
-  fontSize: 14,
+  fontSize: 16,
   fontWeight: 600,
   cursor: 'pointer',
 };
@@ -66,7 +66,7 @@ const btnDanger: React.CSSProperties = {
   border: '1px solid var(--border)',
   background: 'transparent',
   color: 'var(--red-light)',
-  fontSize: 13,
+  fontSize: 15,
   cursor: 'pointer',
 };
 
@@ -74,7 +74,7 @@ const badge = (color: string, bg: string): React.CSSProperties => ({
   display: 'inline-block',
   padding: '2px 10px',
   borderRadius: 999,
-  fontSize: 12,
+  fontSize: 14,
   fontWeight: 600,
   background: bg,
   color,
@@ -220,7 +220,7 @@ function Secrets() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary)' }}>Secrets</h1>
+        <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }}>Secrets</h1>
         <button
           style={btnPrimary}
           onClick={() => { setForm(emptyForm); setEditing(null); setShowForm(!showForm); }}
@@ -237,12 +237,12 @@ function Secrets() {
 
       {showForm && (
         <form onSubmit={handleSubmit} style={{ ...card, marginBottom: 20 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: 'var(--text-primary)' }}>
+          <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, color: 'var(--text-primary)' }}>
             {editing ? 'Edit Secret' : 'Create Secret'}
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div>
-              <label style={{ fontSize: 13, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Name</label>
+              <label style={{ fontSize: 15, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Name</label>
               <input
                 style={inputStyle}
                 value={form.name}
@@ -253,7 +253,7 @@ function Secrets() {
               />
             </div>
             <div>
-              <label style={{ fontSize: 13, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Kind</label>
+              <label style={{ fontSize: 15, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Kind</label>
               <select
                 style={inputStyle}
                 value={form.kind}
@@ -264,7 +264,7 @@ function Secrets() {
               </select>
             </div>
             <div style={{ gridColumn: '1 / -1' }}>
-              <label style={{ fontSize: 13, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Description</label>
+              <label style={{ fontSize: 15, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Description</label>
               <input
                 style={inputStyle}
                 value={form.description}
@@ -275,14 +275,14 @@ function Secrets() {
           </div>
 
           <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 13, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>
+            <label style={{ fontSize: 15, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>
               Value {editing && '(leave empty to keep current)'}
             </label>
             {form.kind === 'file' ? (
               <input
                 type="file"
                 onChange={handleFileChange}
-                style={{ fontSize: 14, color: 'var(--text-primary)' }}
+                style={{ fontSize: 16, color: 'var(--text-primary)' }}
               />
             ) : (
               <textarea
@@ -296,7 +296,7 @@ function Secrets() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 16 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, color: 'var(--text-secondary)', cursor: 'pointer' }}>
               <input
                 type="checkbox"
                 checked={form.global}
@@ -308,7 +308,7 @@ function Secrets() {
 
           {agents.length > 0 && !form.global && (
             <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 13, color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>
+              <label style={{ fontSize: 15, color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>
                 Assign to agents
               </label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -319,7 +319,7 @@ function Secrets() {
                       display: 'flex',
                       alignItems: 'center',
                       gap: 6,
-                      fontSize: 13,
+                      fontSize: 15,
                       color: 'var(--text-secondary)',
                       cursor: 'pointer',
                       padding: '4px 10px',
@@ -353,7 +353,7 @@ function Secrets() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                  <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>{secret.name}</span>
+                  <span style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)' }}>{secret.name}</span>
                   <span style={badge(
                     secret.kind === 'string' ? 'var(--accent)' : 'var(--amber)',
                     secret.kind === 'string' ? 'var(--accent-muted)' : 'var(--amber-muted)',
@@ -368,12 +368,12 @@ function Secrets() {
                 </div>
 
                 {secret.description && (
-                  <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginBottom: 8 }}>
+                  <div style={{ fontSize: 15, color: 'var(--text-tertiary)', marginBottom: 8 }}>
                     {secret.description}
                   </div>
                 )}
 
-                <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4, fontFamily: 'monospace' }}>
+                <div style={{ fontSize: 15, color: 'var(--text-muted)', marginBottom: 4, fontFamily: 'monospace' }}>
                   {'*'.repeat(12)}
                 </div>
 
@@ -381,7 +381,7 @@ function Secrets() {
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
                     {secret.agent_ids.map((id) => (
                       <span key={id} style={{
-                        fontSize: 11,
+                        fontSize: 13,
                         padding: '1px 8px',
                         borderRadius: 4,
                         background: 'var(--bg-elevated)',
@@ -409,7 +409,7 @@ function Secrets() {
           </div>
         ))}
         {secrets.length === 0 && !error && (
-          <div style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>No secrets stored</div>
+          <div style={{ color: 'var(--text-tertiary)', fontSize: 16 }}>No secrets stored</div>
         )}
       </div>
     </div>

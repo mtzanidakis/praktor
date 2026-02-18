@@ -78,8 +78,8 @@ function Conversations() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary)' }}>Conversations</h1>
-        <div style={{ display: 'flex', alignItems: 'center', fontSize: 13, color: 'var(--text-tertiary)', gap: 6 }}>
+        <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }}>Conversations</h1>
+        <div style={{ display: 'flex', alignItems: 'center', fontSize: 15, color: 'var(--text-tertiary)', gap: 6 }}>
           <span style={{
             width: 7,
             height: 7,
@@ -103,7 +103,7 @@ function Conversations() {
                 padding: '8px 12px',
                 borderRadius: 7,
                 cursor: 'pointer',
-                fontSize: 14,
+                fontSize: 16,
                 fontWeight: selectedAgentId === agent.id ? 600 : 400,
                 background: selectedAgentId === agent.id ? 'var(--accent)' : 'transparent',
                 color: selectedAgentId === agent.id ? '#fff' : 'var(--text-secondary)',
@@ -114,7 +114,7 @@ function Conversations() {
             </div>
           ))}
           {agents.length === 0 && (
-            <div style={{ padding: 12, color: 'var(--text-tertiary)', fontSize: 13 }}>No agents</div>
+            <div style={{ padding: 12, color: 'var(--text-tertiary)', fontSize: 15 }}>No agents</div>
           )}
         </div>
 
@@ -124,15 +124,15 @@ function Conversations() {
             padding: '14px 20px',
             borderBottom: '1px solid var(--border)',
             fontWeight: 600,
-            fontSize: 15,
+            fontSize: 17,
             color: 'var(--text-primary)',
           }}>
             {selectedAgent?.name ?? 'Select an agent'}
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {loadingMessages && <div style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>Loading...</div>}
+            {loadingMessages && <div style={{ color: 'var(--text-tertiary)', fontSize: 16 }}>Loading...</div>}
             {!loadingMessages && messages.length === 0 && (
-              <div style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>No messages yet</div>
+              <div style={{ color: 'var(--text-tertiary)', fontSize: 16 }}>No messages yet</div>
             )}
             {messages.map((msg) => {
               const isAssistant = msg.role === 'assistant';
@@ -146,10 +146,10 @@ function Conversations() {
                     borderRadius: 10,
                     background: isAssistant ? 'var(--accent-muted)' : 'var(--bg-elevated)',
                     borderLeft: isAssistant ? '3px solid var(--accent)' : 'none',
-                    fontSize: 14,
+                    fontSize: 16,
                   }}
                 >
-                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 4 }}>
+                  <div style={{ fontSize: 14, color: 'var(--text-tertiary)', marginBottom: 4 }}>
                     <span style={{ color: isAssistant ? 'var(--accent)' : 'var(--text-secondary)', fontWeight: 600 }}>{msg.role}</span>
                     {msg.time && <span style={{ marginLeft: 8 }}>{msg.time}</span>}
                   </div>

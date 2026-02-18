@@ -52,7 +52,7 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid var(--border)',
   background: 'var(--bg-input)',
   color: 'var(--text-primary)',
-  fontSize: 14,
+  fontSize: 16,
   outline: 'none',
   boxSizing: 'border-box',
 };
@@ -62,7 +62,7 @@ const btnPrimary: React.CSSProperties = {
   border: 'none',
   background: 'var(--accent)',
   color: '#fff',
-  fontSize: 14,
+  fontSize: 16,
   fontWeight: 600,
   cursor: 'pointer',
 };
@@ -72,7 +72,7 @@ const btnSecondary: React.CSSProperties = {
   border: '1px solid var(--border)',
   background: 'transparent',
   color: 'var(--text-secondary)',
-  fontSize: 13,
+  fontSize: 15,
   cursor: 'pointer',
 };
 
@@ -294,7 +294,7 @@ export default function SwarmGraph({ onLaunch, initialData, launchLabel }: Props
     <div style={{ display: 'flex', gap: 16, height: 'calc(100vh - 180px)', minHeight: 500 }}>
       {/* Left: Agent palette */}
       <div style={{ ...card, width: 200, overflowY: 'auto', flexShrink: 0 }}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
           Agents
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -313,13 +313,13 @@ export default function SwarmGraph({ onLaunch, initialData, launchLabel }: Props
                   background: added ? 'var(--bg-elevated)' : 'var(--bg-input)',
                   color: added ? 'var(--text-muted)' : 'var(--text-primary)',
                   cursor: added ? 'default' : 'pointer',
-                  fontSize: 13,
+                  fontSize: 15,
                   opacity: added ? 0.5 : 1,
                 }}
               >
                 <div style={{ fontWeight: 600 }}>{a.name}</div>
                 {a.description && (
-                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                  <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginTop: 2 }}>
                     {a.description.length > 60 ? a.description.slice(0, 60) + '...' : a.description}
                   </div>
                 )}
@@ -327,7 +327,7 @@ export default function SwarmGraph({ onLaunch, initialData, launchLabel }: Props
             );
           })}
           {agents.length === 0 && (
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No agents defined</div>
+            <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>No agents defined</div>
           )}
         </div>
       </div>
@@ -383,7 +383,7 @@ export default function SwarmGraph({ onLaunch, initialData, launchLabel }: Props
                 {edge.bidirectional && (
                   <text
                     x={(fx + tx) / 2} y={(fy + ty) / 2 - 8}
-                    textAnchor="middle" fontSize={10} fill={color}
+                    textAnchor="middle" fontSize={12} fill={color}
                     style={{ pointerEvents: 'none' }}
                   >
                     collab
@@ -433,7 +433,7 @@ export default function SwarmGraph({ onLaunch, initialData, launchLabel }: Props
                 <text
                   x={node.x + NODE_W / 2} y={node.y + 26}
                   textAnchor="middle"
-                  fontSize={13} fontWeight={600}
+                  fontSize={15} fontWeight={600}
                   fill="var(--text-primary)"
                   style={{ pointerEvents: 'none' }}
                 >
@@ -443,7 +443,7 @@ export default function SwarmGraph({ onLaunch, initialData, launchLabel }: Props
                 <text
                   x={node.x + NODE_W / 2} y={node.y + 44}
                   textAnchor="middle"
-                  fontSize={10}
+                  fontSize={12}
                   fill="var(--text-muted)"
                   style={{ pointerEvents: 'none' }}
                 >
@@ -453,7 +453,7 @@ export default function SwarmGraph({ onLaunch, initialData, launchLabel }: Props
                 {node.isLead && (
                   <text
                     x={node.x + NODE_W - 12} y={node.y + 16}
-                    fontSize={14} style={{ pointerEvents: 'none' }}
+                    fontSize={16} style={{ pointerEvents: 'none' }}
                   >
                     {'★'}
                   </text>
@@ -485,7 +485,7 @@ export default function SwarmGraph({ onLaunch, initialData, launchLabel }: Props
 
           {/* Empty state */}
           {nodes.length === 0 && (
-            <text x="50%" y="50%" textAnchor="middle" fontSize={14} fill="var(--text-muted)">
+            <text x="50%" y="50%" textAnchor="middle" fontSize={16} fill="var(--text-muted)">
               Click agents in the palette to add them to the canvas
             </text>
           )}
@@ -495,7 +495,7 @@ export default function SwarmGraph({ onLaunch, initialData, launchLabel }: Props
       {/* Right: Properties panel */}
       <div style={{ ...card, width: 260, overflowY: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div>
-          <label style={{ fontSize: 12, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>
+          <label style={{ fontSize: 14, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>
             Swarm Name
           </label>
           <input
@@ -506,7 +506,7 @@ export default function SwarmGraph({ onLaunch, initialData, launchLabel }: Props
           />
         </div>
         <div>
-          <label style={{ fontSize: 12, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>
+          <label style={{ fontSize: 14, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>
             Task
           </label>
           <textarea
@@ -520,7 +520,7 @@ export default function SwarmGraph({ onLaunch, initialData, launchLabel }: Props
         {/* Selected node properties */}
         {selectedNodeObj && (
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-            <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
+            <h4 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
               {selectedNodeObj.role}
             </h4>
             <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
@@ -542,7 +542,7 @@ export default function SwarmGraph({ onLaunch, initialData, launchLabel }: Props
                 Remove
               </button>
             </div>
-            <label style={{ fontSize: 12, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>
+            <label style={{ fontSize: 14, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>
               Agent Prompt
             </label>
             <textarea
@@ -557,10 +557,10 @@ export default function SwarmGraph({ onLaunch, initialData, launchLabel }: Props
         {/* Selected edge properties */}
         {selectedEdgeObj && (
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-            <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
+            <h4 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
               Connection
             </h4>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
+            <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 8 }}>
               {nodes.find((n) => n.id === selectedEdgeObj.from)?.role}
               {selectedEdgeObj.bidirectional ? ' ↔ ' : ' → '}
               {nodes.find((n) => n.id === selectedEdgeObj.to)?.role}
@@ -587,7 +587,7 @@ export default function SwarmGraph({ onLaunch, initialData, launchLabel }: Props
 
         {/* Legend */}
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 'auto' }}>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.8 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.8 }}>
             <div>{'→'} Pipeline: B waits for A</div>
             <div>{'↔'} Collaborative: shared chat</div>
             <div>No connection: parallel</div>

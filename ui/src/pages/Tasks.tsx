@@ -45,7 +45,7 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid var(--border)',
   background: 'var(--bg-input)',
   color: 'var(--text-primary)',
-  fontSize: 14,
+  fontSize: 16,
   outline: 'none',
 };
 
@@ -55,7 +55,7 @@ const btnPrimary: React.CSSProperties = {
   border: 'none',
   background: 'var(--accent)',
   color: '#fff',
-  fontSize: 14,
+  fontSize: 16,
   fontWeight: 600,
   cursor: 'pointer',
 };
@@ -66,7 +66,7 @@ const btnDanger: React.CSSProperties = {
   border: '1px solid var(--border)',
   background: 'transparent',
   color: 'var(--red-light)',
-  fontSize: 13,
+  fontSize: 15,
   cursor: 'pointer',
 };
 
@@ -74,7 +74,7 @@ const badge = (color: string, bg: string): React.CSSProperties => ({
   display: 'inline-block',
   padding: '2px 10px',
   borderRadius: 999,
-  fontSize: 12,
+  fontSize: 14,
   fontWeight: 600,
   background: bg,
   color,
@@ -214,7 +214,7 @@ function Tasks() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary)' }}>Scheduled Tasks</h1>
+        <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }}>Scheduled Tasks</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           {tasks.some((t) => t.status === 'completed') && (
             <button style={btnDanger} onClick={handleDeleteCompleted}>
@@ -238,12 +238,12 @@ function Tasks() {
 
       {showForm && (
         <form onSubmit={handleSubmit} style={{ ...card, marginBottom: 20 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: 'var(--text-primary)' }}>
+          <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16, color: 'var(--text-primary)' }}>
             {editing ? 'Edit Task' : 'Create Task'}
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div>
-              <label style={{ fontSize: 13, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Name</label>
+              <label style={{ fontSize: 15, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Name</label>
               <input
                 style={inputStyle}
                 value={form.name}
@@ -253,7 +253,7 @@ function Tasks() {
               />
             </div>
             <div>
-              <label style={{ fontSize: 13, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Schedule (cron, +5m, +2h)</label>
+              <label style={{ fontSize: 15, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Schedule (cron, +5m, +2h)</label>
               <input
                 style={inputStyle}
                 value={form.schedule}
@@ -263,7 +263,7 @@ function Tasks() {
               />
             </div>
             <div>
-              <label style={{ fontSize: 13, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Agent</label>
+              <label style={{ fontSize: 15, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Agent</label>
               <select
                 style={inputStyle}
                 value={form.agent_id}
@@ -276,7 +276,7 @@ function Tasks() {
               </select>
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, color: 'var(--text-secondary)', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
                   checked={form.enabled}
@@ -287,7 +287,7 @@ function Tasks() {
             </div>
           </div>
           <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 13, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Prompt</label>
+            <label style={{ fontSize: 15, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Prompt</label>
             <textarea
               style={{ ...inputStyle, minHeight: 80, resize: 'vertical' }}
               value={form.prompt}
@@ -307,7 +307,7 @@ function Tasks() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                  <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>{task.name}</span>
+                  <span style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)' }}>{task.name}</span>
                   <span
                     style={{
                       ...badge(
@@ -322,7 +322,7 @@ function Tasks() {
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 8, fontSize: 15, color: 'var(--text-secondary)' }}>
                   <span>{task.schedule_display || task.schedule}</span>
                   {task.agent_id && (
                     <span style={badge('var(--accent)', 'var(--accent-muted)')}>
@@ -332,12 +332,12 @@ function Tasks() {
                 </div>
 
                 {task.prompt && (
-                  <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginBottom: 8, maxWidth: 600 }}>
+                  <div style={{ fontSize: 15, color: 'var(--text-tertiary)', marginBottom: 8, maxWidth: 600 }}>
                     {task.prompt.length > 120 ? task.prompt.slice(0, 120) + '...' : task.prompt}
                   </div>
                 )}
 
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 16 }}>
+                <div style={{ fontSize: 14, color: 'var(--text-muted)', display: 'flex', gap: 16 }}>
                   {task.last_run && <span>Last run: {task.last_run}</span>}
                   {task.next_run && <span>Next run: {task.next_run}</span>}
                 </div>
@@ -358,7 +358,7 @@ function Tasks() {
           </div>
         ))}
         {tasks.length === 0 && !error && (
-          <div style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>No scheduled tasks</div>
+          <div style={{ color: 'var(--text-tertiary)', fontSize: 16 }}>No scheduled tasks</div>
         )}
       </div>
     </div>
