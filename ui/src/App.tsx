@@ -111,7 +111,7 @@ const navItems = [
   { to: '/', label: 'Dashboard', Icon: IconDashboard },
   { to: '/agents', label: 'Agents', Icon: IconAgents },
   { to: '/conversations', label: 'Conversations', Icon: IconConversations },
-  { to: '/tasks', label: 'Tasks', Icon: IconTasks },
+  { to: '/tasks', label: 'Scheduled Tasks', Icon: IconTasks },
   { to: '/secrets', label: 'Secrets', Icon: IconSecrets },
   { to: '/swarms', label: 'Swarms', Icon: IconSwarms },
   { to: '/user', label: 'User', Icon: IconUser },
