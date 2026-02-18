@@ -36,13 +36,14 @@ internal/
   router/                        # Message router - @prefix parsing, smart routing via default agent
   telegram/                      # Telegram bot (telego), long-polling, message chunking
   scheduler/                     # Cron/interval/relative delay task polling (adhocore/gronx)
-  swarm/                         # Multi-container swarm coordination
+  swarm/                         # Graph-based swarm orchestration (DAG execution, collaborative chat)
   web/                           # HTTP server, REST API, WebSocket hub, embedded SPA
 Dockerfile                       # Gateway image (multi-stage: UI + Go + scratch)
 Dockerfile.agent                 # Agent image (multi-stage: Go + esbuild + alpine)
-agent-runner/src/                # TypeScript entrypoint: NATS bridge + Claude Code SDK (bundled with esbuild)
+agent-runner/src/                # TypeScript entrypoint: NATS bridge + Claude Code SDK + swarm chat (bundled with esbuild)
 ui/                              # React/Vite SPA (dark theme, indigo accent)
   src/pages/                     # Dashboard, Agents, Conversations, Tasks, Secrets, Swarms
+  src/components/SwarmGraph.tsx   # SVG-based visual graph editor for swarm topology
   src/hooks/useWebSocket.ts      # Real-time WebSocket event hook
 config/praktor.example.yaml      # Example configuration
 ```
@@ -117,13 +118,15 @@ Key implementation files: `internal/config/diff.go` (config diffing), `cmd/prakt
 ## NATS Topics
 
 ```
-agent.{agentID}.input      # Host → Container: user messages
-agent.{agentID}.output     # Container → Host: agent responses (text, result)
-agent.{agentID}.control    # Host → Container: shutdown, ping
-agent.{agentID}.route      # Host → Container: routing classification queries
-host.ipc.{agentID}         # Container → Host: IPC commands
-swarm.{swarmID}.*          # Inter-agent swarm communication
-events.>                   # System events (broadcast to WebSocket clients)
+agent.{agentID}.input           # Host → Container: user messages
+agent.{agentID}.output          # Container → Host: agent responses (text, result)
+agent.{agentID}.control         # Host → Container: shutdown, ping
+agent.{agentID}.route           # Host → Container: routing classification queries
+host.ipc.{agentID}              # Container → Host: IPC commands
+swarm.{swarmID}.chat.{groupID}  # Inter-agent collaborative chat within a swarm group
+swarm.{swarmID}.*               # Other inter-agent swarm communication
+events.swarm.{swarmID}          # Swarm lifecycle events (started, agent_started, tier_completed, completed, failed)
+events.>                        # System events (broadcast to WebSocket clients)
 ```
 
 ## REST API
@@ -173,6 +176,42 @@ The gateway uses `praktor-data` for SQLite/NATS and `praktor-global` for global 
 - `adhocore/gronx` - Cron expression parsing
 - `gopkg.in/yaml.v3` - YAML config parsing
 
+## Swarm Orchestration
+
+Swarms are graph-based: agents are nodes, connections ("synapses") define execution patterns, and a lead agent synthesizes results.
+
+**Three orchestration patterns** defined by synapse types:
+- **No connection** → Fan-out: agents run in parallel, independently
+- **A → B directed** → Pipeline: B waits for A, receives A's output as context
+- **A ↔ B bidirectional** → Collaborative: agents share a real-time NATS chat channel
+
+The lead agent always runs last and receives all prior results for synthesis.
+
+**Key files:**
+- `internal/swarm/types.go` — `SwarmRequest`, `SwarmAgent`, `Synapse`, `AgentResult`
+- `internal/swarm/graph.go` — `BuildPlan()`: topological sort, collab group detection (union-find), cycle detection, tier assignment
+- `internal/swarm/graph_test.go` — Unit tests for all graph topologies
+- `internal/swarm/coordinator.go` — Tier-based DAG execution, secret resolution, event publishing, swarm membership tracking
+- `ui/src/components/SwarmGraph.tsx` — SVG visual graph editor (drag nodes, draw edges, toggle direction)
+
+**Execution flow:**
+1. `BuildPlan()` analyzes the graph → produces ordered `ExecutionTier`s, `CollabGroups`, and `PipelineInputs`
+2. Coordinator executes tier-by-tier; within each tier, agents run in parallel via WaitGroup
+3. Pipeline agents receive predecessor outputs prepended to their prompt
+4. Collaborative agents get `SWARM_CHAT_TOPIC` env var → agent-runner subscribes to chat, buffers messages, and provides `swarm_chat_send` MCP tool
+5. Lead agent (last tier) receives all previous results in a synthesis prompt
+
+**Telegram syntax** (`@swarm` prefix):
+- `@swarm agent1,agent2,agent3: task` → fan-out, first agent = lead
+- `@swarm agent1>agent2>agent3: task` → pipeline, last agent = lead
+- `@swarm agent1<>agent2,agent3: task` → agent1↔agent2 collaborative + agent3 independent
+
+**API:** `POST /api/swarms` accepts `SwarmRequest` with `agents`, `synapses`, `lead_agent`, `task`, and `name`. Graph is validated via `BuildPlan()` before execution; returns 400 on cycles or unknown roles.
+
+**WebSocket events:** `swarm_started`, `swarm_agent_started`, `swarm_agent_completed`, `swarm_tier_completed`, `swarm_completed`, `swarm_failed` — published on `events.swarm.{swarmID}`.
+
+**DB columns:** `swarm_runs` table includes `name`, `synapses` (JSON), `lead_agent` (added via ALTER TABLE migrations that ignore duplicate column errors).
+
 ## SQLite Schema
 
 Tables: `agents`, `messages` (with agent_id index), `scheduled_tasks` (with status+next_run index), `agent_sessions`, `swarm_runs`, `secrets`, `agent_secrets`. Migrations run automatically on startup.
@@ -187,7 +226,7 @@ Tables: `agents`, `messages` (with agent_id index), `scheduled_tasks` (with stat
 - Web access - Agents can use WebSearch and WebFetch tools
 - Browser control - Chromium available in agent containers
 - Container isolation - Agents sandboxed in Docker containers with NATS communication
-- Agent swarms - Spin up teams of specialized agents that collaborate via NATS
+- Agent swarms - Graph-based orchestration: fan-out (parallel), pipeline (sequential with context passing), and collaborative (real-time chat) execution patterns. Visual graph editor in Mission Control, `@swarm` Telegram integration
 - Secure vault - AES-256-GCM encrypted secrets, injected as env vars or files at container start (never exposed to LLM)
 - Hot config reload - Config file changes are detected automatically (file polling every 3s) or via SIGHUP; only affected agents are restarted
 - Mission Control UI - Real-time dashboard with WebSocket updates

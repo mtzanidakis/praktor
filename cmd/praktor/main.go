@@ -112,7 +112,8 @@ func runGateway() error {
 	go orch.StartIdleReaper(ctx)
 
 	// Swarm coordinator
-	swarmCoord := swarm.NewCoordinator(bus, ctrMgr, db)
+	swarmCoord := swarm.NewCoordinator(bus, ctrMgr, db, reg, v)
+	orch.SetSwarmCoordinator(swarmCoord)
 
 	// Scheduler
 	sched := scheduler.New(db, orch, bus, cfg.Scheduler, cfg.Telegram.MainChatID)
@@ -121,7 +122,7 @@ func runGateway() error {
 
 	// Telegram bot
 	if cfg.Telegram.Token != "" {
-		bot, err := telegram.NewBot(cfg.Telegram, orch, rtr)
+		bot, err := telegram.NewBot(cfg.Telegram, orch, rtr, swarmCoord, reg, bus)
 		if err != nil {
 			return fmt.Errorf("init telegram bot: %w", err)
 		}

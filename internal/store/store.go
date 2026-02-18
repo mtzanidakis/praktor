@@ -136,5 +136,14 @@ func (s *Store) migrate() error {
 		}
 	}
 
+	// Add columns to swarm_runs (ignore errors if column already exists)
+	for _, stmt := range []string{
+		`ALTER TABLE swarm_runs ADD COLUMN name TEXT DEFAULT ''`,
+		`ALTER TABLE swarm_runs ADD COLUMN synapses TEXT DEFAULT '[]'`,
+		`ALTER TABLE swarm_runs ADD COLUMN lead_agent TEXT DEFAULT ''`,
+	} {
+		_, _ = s.db.Exec(stmt)
+	}
+
 	return nil
 }

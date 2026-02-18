@@ -36,6 +36,14 @@ func TopicSwarmResults(swarmID string) string {
 	return fmt.Sprintf("swarm.%s.results", swarmID)
 }
 
+func TopicSwarmChat(swarmID, groupID string) string {
+	return fmt.Sprintf("swarm.%s.chat.%s", swarmID, groupID)
+}
+
+func TopicEventsSwarmID(swarmID string) string {
+	return fmt.Sprintf("events.swarm.%s", swarmID)
+}
+
 func TopicEventsAgent(agentID string) string {
 	return fmt.Sprintf("events.agent.%s", agentID)
 }

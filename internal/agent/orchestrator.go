@@ -20,6 +20,12 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
+// SwarmCoordinator is the interface the orchestrator uses to handle swarm IPC.
+type SwarmCoordinator interface {
+	GetSwarmChatTopic(containerAgentID string) (swarmID, chatTopic string, ok bool)
+	PublishSwarmChat(topic, from, content string) error
+}
+
 type Orchestrator struct {
 	bus        *natsbus.Bus
 	client     *natsbus.Client
@@ -34,6 +40,7 @@ type Orchestrator struct {
 	mu         sync.RWMutex
 	listeners  []OutputListener
 	listenerMu sync.RWMutex
+	swarmCoord SwarmCoordinator
 }
 
 type OutputListener func(agentID, content string, meta map[string]string)
@@ -74,6 +81,11 @@ func NewOrchestrator(bus *natsbus.Bus, ctr *container.Manager, s *store.Store, r
 	})
 
 	return o
+}
+
+// SetSwarmCoordinator sets the swarm coordinator for handling swarm IPC commands.
+func (o *Orchestrator) SetSwarmCoordinator(sc SwarmCoordinator) {
+	o.swarmCoord = sc
 }
 
 // UpdateDefaults replaces the defaults config used for new containers.
@@ -414,6 +426,8 @@ func (o *Orchestrator) handleIPC(msg *nats.Msg) {
 		o.ipcReadUserMD(msg)
 	case "update_user_md":
 		o.ipcUpdateUserMD(msg, cmd.Payload)
+	case "swarm_message":
+		o.ipcSwarmMessage(msg, agentID, cmd.Payload)
 	default:
 		slog.Warn("unknown IPC command", "type", cmd.Type)
 		o.respondIPC(msg, map[string]any{"error": "unknown command: " + cmd.Type})
@@ -580,6 +594,35 @@ func (o *Orchestrator) ipcUpdateUserMD(msg *nats.Msg, payload json.RawMessage) {
 		return
 	}
 	slog.Info("user profile updated via IPC")
+	o.respondIPC(msg, map[string]any{"ok": true})
+}
+
+func (o *Orchestrator) ipcSwarmMessage(msg *nats.Msg, agentID string, payload json.RawMessage) {
+	if o.swarmCoord == nil {
+		o.respondIPC(msg, map[string]any{"error": "swarm coordinator not available"})
+		return
+	}
+
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil || req.Content == "" {
+		o.respondIPC(msg, map[string]any{"error": "content is required"})
+		return
+	}
+
+	swarmID, chatTopic, ok := o.swarmCoord.GetSwarmChatTopic(agentID)
+	if !ok {
+		o.respondIPC(msg, map[string]any{"error": "agent is not in a swarm"})
+		return
+	}
+
+	if err := o.swarmCoord.PublishSwarmChat(chatTopic, agentID, req.Content); err != nil {
+		o.respondIPC(msg, map[string]any{"error": fmt.Sprintf("publish failed: %v", err)})
+		return
+	}
+
+	slog.Info("swarm chat message sent via IPC", "agent", agentID, "swarm", swarmID)
 	o.respondIPC(msg, map[string]any{"ok": true})
 }
 

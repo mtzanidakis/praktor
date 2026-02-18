@@ -59,6 +59,7 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/swarms", s.listSwarms)
 	mux.HandleFunc("POST /api/swarms", s.createSwarm)
 	mux.HandleFunc("GET /api/swarms/{id}", s.getSwarm)
+	mux.HandleFunc("DELETE /api/swarms/{id}", s.deleteSwarm)
 
 	// User profile
 	mux.HandleFunc("GET /api/user-profile", s.getUserProfile)
@@ -348,12 +349,28 @@ func (s *Server) createSwarm(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "task and agents are required", http.StatusBadRequest)
 		return
 	}
+
+	// Validate graph before launching
+	if _, err := swarm.BuildPlan(req.Agents, req.Synapses, req.LeadAgent); err != nil {
+		jsonError(w, fmt.Sprintf("invalid swarm graph: %v", err), http.StatusBadRequest)
+		return
+	}
+
 	run, err := s.swarmCoord.RunSwarm(r.Context(), req)
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	jsonResponse(w, run)
+}
+
+func (s *Server) deleteSwarm(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.store.DeleteSwarmRun(id); err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonResponse(w, map[string]string{"status": "deleted"})
 }
 
 func (s *Server) getSwarm(w http.ResponseWriter, r *http.Request) {

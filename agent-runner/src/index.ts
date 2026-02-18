@@ -20,10 +20,20 @@ const AGENT_ID = process.env.AGENT_ID || process.env.GROUP_ID || "default";
 const SESSION_ID = process.env.SESSION_ID || undefined;
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || undefined;
 const ALLOWED_TOOLS_ENV = process.env.ALLOWED_TOOLS || "";
+const SWARM_CHAT_TOPIC = process.env.SWARM_CHAT_TOPIC || "";
+const SWARM_ROLE = process.env.SWARM_ROLE || "";
 
 let bridge: NatsBridge;
 let isProcessing = false;
 let hasSession = false;
+
+// Swarm collaborative chat buffer
+interface ChatMessage {
+  from: string;
+  content: string;
+  timestamp: number;
+}
+const chatHistory: ChatMessage[] = [];
 
 function parseAllowedTools(): string[] | undefined {
   if (!ALLOWED_TOOLS_ENV) return undefined;
@@ -133,6 +143,16 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
     const systemPrompt = loadSystemPrompt();
     const cwd = "/workspace/agent";
 
+    // Prepend swarm chat context if in collaborative mode
+    let augmentedText = text;
+    if (SWARM_CHAT_TOPIC && chatHistory.length > 0) {
+      const chatContext = chatHistory
+        .map((m) => `[${m.from}]: ${m.content}`)
+        .join("\n");
+      augmentedText = `## Collaborative Chat History\n\n${chatContext}\n\n---\n\n${text}`;
+      console.log(`[agent] prepended ${chatHistory.length} chat messages to prompt`);
+    }
+
     console.log(`[agent] starting claude query, cwd=${cwd}`);
 
     const configuredTools = parseAllowedTools();
@@ -150,7 +170,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
     ];
 
     const result = query({
-      prompt: text,
+      prompt: augmentedText,
       options: {
         model: CLAUDE_MODEL,
         cwd,
@@ -315,6 +335,21 @@ async function main(): Promise<void> {
   bridge.subscribeInput(handleMessage);
   bridge.subscribeControl(handleControl);
   bridge.subscribeRoute(handleRoute);
+
+  // Subscribe to swarm collaborative chat if in swarm mode
+  if (SWARM_CHAT_TOPIC) {
+    console.log(`[agent] swarm mode: subscribing to chat topic ${SWARM_CHAT_TOPIC}`);
+    bridge.subscribeSwarmChat(SWARM_CHAT_TOPIC, (msg) => {
+      // Don't echo own messages
+      if (msg.from === AGENT_ID) return;
+      chatHistory.push({
+        from: msg.from,
+        content: msg.content,
+        timestamp: Date.now(),
+      });
+      console.log(`[agent] swarm chat from ${msg.from}: ${msg.content.substring(0, 80)}...`);
+    });
+  }
 
   // Flush to ensure subscriptions are registered with NATS server
   await bridge.flush();

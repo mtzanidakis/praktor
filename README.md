@@ -23,7 +23,7 @@ Praktor is a single Go binary that orchestrates the full loop: it receives messa
 - **Scheduled tasks** - Cron, interval, or one-shot jobs that run agents and deliver results via Telegram
 - **Secure vault** - AES-256-GCM encrypted secrets, injected as env vars or files at container start (never exposed to LLM)
 - **Hot config reload** - Edit `praktor.yaml` and changes apply automatically — no restart needed
-- **Agent swarms** - Spin up teams of specialized agents that collaborate on complex tasks
+- **Agent swarms** - Graph-based orchestration with fan-out, pipeline, and collaborative execution patterns — visual graph editor in Mission Control, `@swarm` Telegram commands
 - **Web & browser access** - Agents can search the web and control Chromium
 - **Mission Control** - Real-time dashboard with WebSocket updates
 
@@ -219,6 +219,75 @@ agents:
 ```
 
 Regular env vars are passed through as-is. Values prefixed with `secret:` are resolved from the vault and injected as plain env vars. File secrets are copied into the container before it starts. The agent uses `$GITHUB_TOKEN` or reads `/etc/gcp/sa.json` directly — secret values never enter the LLM context.
+
+## Agent Swarms
+
+Swarms let multiple agents work together on a task. You define a graph of agents and connections, and Praktor orchestrates execution based on the topology.
+
+### Orchestration Patterns
+
+Connections between agents ("synapses") determine execution order:
+
+| Pattern | Syntax | Behavior |
+|---------|--------|----------|
+| **Fan-out** | No connection | Agents run in parallel, independently |
+| **Pipeline** | A → B (directed) | B waits for A and receives A's output as context |
+| **Collaborative** | A ↔ B (bidirectional) | Agents share a real-time chat channel |
+
+The **lead agent** always runs last and synthesizes all results.
+
+### Mission Control
+
+The Swarms page in Mission Control provides a visual graph editor:
+
+1. Click agents in the palette to add them to the canvas
+2. Drag from connection handles to draw edges between agents
+3. Click an edge to toggle between pipeline (→) and collaborative (↔)
+4. Click the star on a node to set it as lead agent
+5. Write the swarm task and per-agent prompts
+6. Click "Launch Swarm"
+
+Running swarms show real-time status updates via WebSocket, with a mini topology visualization and expandable results.
+
+### Telegram
+
+Use the `@swarm` prefix to launch swarms from Telegram:
+
+```
+# Fan-out: agents run in parallel, first agent is lead
+@swarm researcher,writer,reviewer: Write a blog post about AI agents
+
+# Pipeline: sequential execution, last agent is lead
+@swarm researcher>writer>reviewer: Write a blog post about AI agents
+
+# Collaborative: agents share a chat channel
+@swarm researcher<>writer,reviewer: Write a blog post about AI agents
+```
+
+Results are delivered to the chat when the swarm completes.
+
+### API
+
+```sh
+# Launch a swarm
+curl -X POST http://localhost:8080/api/swarms \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "Research Team",
+    "task": "Analyze recent developments in AI agents",
+    "lead_agent": "writer",
+    "agents": [
+      {"agent_id": "researcher", "role": "researcher", "prompt": "Find key developments", "workspace": "researcher"},
+      {"agent_id": "writer", "role": "writer", "prompt": "Synthesize findings", "workspace": "writer"}
+    ],
+    "synapses": [
+      {"from": "researcher", "to": "writer", "bidirectional": false}
+    ]
+  }'
+
+# Check status
+curl http://localhost:8080/api/swarms/{id}
+```
 
 ## Development
 

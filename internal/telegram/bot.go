@@ -2,44 +2,61 @@ package telegram
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/mtzanidakis/praktor/internal/agent"
 	"github.com/mtzanidakis/praktor/internal/config"
+	"github.com/mtzanidakis/praktor/internal/natsbus"
+	"github.com/mtzanidakis/praktor/internal/registry"
 	"github.com/mtzanidakis/praktor/internal/router"
+	"github.com/mtzanidakis/praktor/internal/swarm"
 	"github.com/mymmrac/telego"
 	th "github.com/mymmrac/telego/telegohandler"
 	tu "github.com/mymmrac/telego/telegoutil"
+	"github.com/nats-io/nats.go"
 )
 
 type Bot struct {
-	bot     *telego.Bot
-	handler *th.BotHandler
-	orch    *agent.Orchestrator
-	router  *router.Router
-	cfg     config.TelegramConfig
-	cancel  context.CancelFunc
+	bot        *telego.Bot
+	handler    *th.BotHandler
+	orch       *agent.Orchestrator
+	router     *router.Router
+	cfg        config.TelegramConfig
+	cancel     context.CancelFunc
+	swarmCoord *swarm.Coordinator
+	registry   *registry.Registry
+	bus        *natsbus.Bus
 
 	// Track chat_id → agentID mapping for responses
 	chatAgentMu sync.RWMutex
 	chatAgent   map[int64]string // chatID → agentID that last handled a message
+
+	// Track swarm → chat_id for result delivery
+	swarmChatMu sync.RWMutex
+	swarmChat   map[string]int64 // swarmID → chatID
 }
 
-func NewBot(cfg config.TelegramConfig, orch *agent.Orchestrator, rtr *router.Router) (*Bot, error) {
+func NewBot(cfg config.TelegramConfig, orch *agent.Orchestrator, rtr *router.Router, sc *swarm.Coordinator, reg *registry.Registry, bus *natsbus.Bus) (*Bot, error) {
 	bot, err := telego.NewBot(cfg.Token)
 	if err != nil {
 		return nil, fmt.Errorf("create telegram bot: %w", err)
 	}
 
 	b := &Bot{
-		bot:       bot,
-		orch:      orch,
-		router:    rtr,
-		cfg:       cfg,
-		chatAgent: make(map[int64]string),
+		bot:        bot,
+		orch:       orch,
+		router:     rtr,
+		cfg:        cfg,
+		swarmCoord: sc,
+		registry:   reg,
+		bus:        bus,
+		chatAgent:  make(map[int64]string),
+		swarmChat:  make(map[string]int64),
 	}
 
 	// Register output listener to send responses back to Telegram
@@ -80,6 +97,16 @@ func NewBot(cfg config.TelegramConfig, orch *agent.Orchestrator, rtr *router.Rou
 			slog.Error("failed to send telegram message", "chat", chatID, "error", err)
 		}
 	})
+
+	// Subscribe to swarm events for result delivery
+	if bus != nil && sc != nil {
+		client, cerr := natsbus.NewClient(bus)
+		if cerr == nil {
+			_, _ = client.Subscribe(natsbus.TopicEventsSwarm, func(msg *nats.Msg) {
+				b.handleSwarmEvent(msg)
+			})
+		}
+	}
 
 	return b, nil
 }
@@ -165,6 +192,12 @@ func (b *Bot) handleMessage(ctx context.Context, msg telego.Message) {
 		cleanedMessage = text
 	}
 
+	// Handle @swarm command
+	if agentID == "swarm" {
+		b.handleSwarmCommand(ctx, chatID, cleanedMessage)
+		return
+	}
+
 	// Track which chat is talking to which agent
 	b.chatAgentMu.Lock()
 	b.chatAgent[chatID] = agentID
@@ -206,4 +239,217 @@ func (b *Bot) SendMessage(ctx context.Context, chatID int64, text string) error 
 
 func (b *Bot) sendChatAction(ctx context.Context, chatID int64, action string) error {
 	return b.bot.SendChatAction(ctx, tu.ChatAction(tu.ID(chatID), action))
+}
+
+// handleSwarmCommand parses the swarm syntax and launches a swarm.
+//
+// Syntax:
+//   - agent1,agent2,agent3: task    -> fan-out, first agent = lead
+//   - agent1>agent2>agent3: task    -> pipeline, last agent = lead
+//   - agent1<>agent2,agent3: task   -> collaborative + independent
+func (b *Bot) handleSwarmCommand(ctx context.Context, chatID int64, message string) {
+	if b.swarmCoord == nil || b.registry == nil {
+		_ = b.SendMessage(ctx, chatID, "Swarm support is not configured.")
+		return
+	}
+
+	// Split at first ": " to get agents spec and task
+	colonIdx := strings.Index(message, ": ")
+	if colonIdx < 0 {
+		_ = b.SendMessage(ctx, chatID, "Invalid swarm syntax. Use: `agent1,agent2: task` or `agent1>agent2: task` or `agent1<>agent2: task`")
+		return
+	}
+	agentSpec := strings.TrimSpace(message[:colonIdx])
+	task := strings.TrimSpace(message[colonIdx+2:])
+	if task == "" {
+		_ = b.SendMessage(ctx, chatID, "Task is required after the colon.")
+		return
+	}
+
+	agents, synapses, leadAgent, err := b.parseSwarmSpec(agentSpec)
+	if err != nil {
+		_ = b.SendMessage(ctx, chatID, fmt.Sprintf("Invalid swarm spec: %s", err))
+		return
+	}
+
+	req := swarm.SwarmRequest{
+		Name:      fmt.Sprintf("Telegram Swarm"),
+		LeadAgent: leadAgent,
+		Agents:    agents,
+		Synapses:  synapses,
+		Task:      task,
+	}
+
+	_ = b.SendMessage(ctx, chatID, fmt.Sprintf("Launching swarm with %d agents...", len(agents)))
+
+	run, err := b.swarmCoord.RunSwarm(ctx, req)
+	if err != nil {
+		_ = b.SendMessage(ctx, chatID, fmt.Sprintf("Failed to launch swarm: %s", err))
+		return
+	}
+
+	// Track which chat started this swarm
+	b.swarmChatMu.Lock()
+	b.swarmChat[run.ID] = chatID
+	b.swarmChatMu.Unlock()
+}
+
+func (b *Bot) parseSwarmSpec(spec string) ([]swarm.SwarmAgent, []swarm.Synapse, string, error) {
+	var agents []swarm.SwarmAgent
+	var synapses []swarm.Synapse
+	var leadAgent string
+	seen := make(map[string]bool)
+
+	addAgent := func(name string) error {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return fmt.Errorf("empty agent name")
+		}
+		if seen[name] {
+			return nil
+		}
+		if _, ok := b.registry.GetDefinition(name); !ok {
+			return fmt.Errorf("unknown agent: %s", name)
+		}
+		seen[name] = true
+		agents = append(agents, swarm.SwarmAgent{
+			AgentID:   name,
+			Role:      name,
+			Workspace: name,
+		})
+		return nil
+	}
+
+	// Check for pipeline syntax (>)
+	if strings.Contains(spec, ">") && !strings.Contains(spec, "<>") {
+		parts := strings.Split(spec, ">")
+		for _, p := range parts {
+			if err := addAgent(p); err != nil {
+				return nil, nil, "", err
+			}
+		}
+		// Create pipeline synapses
+		for i := 0; i < len(parts)-1; i++ {
+			synapses = append(synapses, swarm.Synapse{
+				From: strings.TrimSpace(parts[i]),
+				To:   strings.TrimSpace(parts[i+1]),
+			})
+		}
+		leadAgent = strings.TrimSpace(parts[len(parts)-1])
+		return agents, synapses, leadAgent, nil
+	}
+
+	// Check for collaborative syntax (<>)
+	// Split by comma first, then check each segment for <>
+	segments := strings.Split(spec, ",")
+	for _, seg := range segments {
+		seg = strings.TrimSpace(seg)
+		if strings.Contains(seg, "<>") {
+			pair := strings.SplitN(seg, "<>", 2)
+			a := strings.TrimSpace(pair[0])
+			bName := strings.TrimSpace(pair[1])
+			if err := addAgent(a); err != nil {
+				return nil, nil, "", err
+			}
+			if err := addAgent(bName); err != nil {
+				return nil, nil, "", err
+			}
+			synapses = append(synapses, swarm.Synapse{
+				From:          a,
+				To:            bName,
+				Bidirectional: true,
+			})
+		} else {
+			if err := addAgent(seg); err != nil {
+				return nil, nil, "", err
+			}
+		}
+	}
+
+	// Default lead: first agent
+	if len(agents) > 0 {
+		leadAgent = agents[0].Role
+	}
+
+	return agents, synapses, leadAgent, nil
+}
+
+// handleSwarmEvent handles swarm completion events and delivers results to Telegram.
+func (b *Bot) handleSwarmEvent(msg *nats.Msg) {
+	var event struct {
+		Type    string          `json:"type"`
+		SwarmID string          `json:"swarm_id"`
+		Data    json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(msg.Data, &event); err != nil {
+		return
+	}
+
+	if event.Type != "swarm_completed" && event.Type != "swarm_failed" {
+		return
+	}
+
+	b.swarmChatMu.RLock()
+	chatID, ok := b.swarmChat[event.SwarmID]
+	b.swarmChatMu.RUnlock()
+
+	if ok {
+		// Clean up tracking
+		b.swarmChatMu.Lock()
+		delete(b.swarmChat, event.SwarmID)
+		b.swarmChatMu.Unlock()
+	} else if b.cfg.MainChatID != 0 {
+		// Swarm launched from Mission Control — deliver to main chat
+		chatID = b.cfg.MainChatID
+	} else {
+		return
+	}
+
+	ctx := context.Background()
+
+	if event.Type == "swarm_failed" {
+		_ = b.SendMessage(ctx, chatID, "Swarm failed.")
+		return
+	}
+
+	// Get the swarm run to extract results
+	run, err := b.swarmCoord.GetStatus(event.SwarmID)
+	if err != nil || run == nil {
+		_ = b.SendMessage(ctx, chatID, "Swarm completed but could not retrieve results.")
+		return
+	}
+
+	var results []swarm.AgentResult
+	if run.Results != nil {
+		_ = json.Unmarshal(run.Results, &results)
+	}
+
+	// Find lead agent's result
+	var leadResult string
+	for _, r := range results {
+		if r.Role == run.LeadAgent && r.Output != "" {
+			leadResult = r.Output
+			break
+		}
+	}
+
+	if leadResult != "" {
+		_ = b.SendMessage(ctx, chatID, fmt.Sprintf("*Swarm Result* (%s):\n\n%s", run.Name, leadResult))
+	} else {
+		// Send all results if no lead result
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("*Swarm Complete* (%s):\n\n", run.Name))
+		for _, r := range results {
+			sb.WriteString(fmt.Sprintf("*%s* [%s]", r.Role, r.Status))
+			if r.Output != "" {
+				output := r.Output
+				if len(output) > 500 {
+					output = output[:500] + "..."
+				}
+				sb.WriteString(fmt.Sprintf(":\n%s", output))
+			}
+			sb.WriteString("\n\n")
+		}
+		_ = b.SendMessage(ctx, chatID, sb.String())
+	}
 }

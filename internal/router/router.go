@@ -32,6 +32,11 @@ func (r *Router) SetOrchestrator(orch Orchestrator) {
 }
 
 func (r *Router) Route(ctx context.Context, message string) (agentID string, cleanedMessage string, err error) {
+	// 0. Check for @swarm prefix
+	if strings.HasPrefix(message, "@swarm ") {
+		return "swarm", strings.TrimPrefix(message, "@swarm "), nil
+	}
+
 	// 1. Check for @agent_name prefix
 	if strings.HasPrefix(message, "@") {
 		parts := strings.SplitN(message, " ", 2)

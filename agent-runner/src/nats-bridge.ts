@@ -85,6 +85,34 @@ export class NatsBridge {
     this.subscribe(`agent.${this.agentId}.route`, handler);
   }
 
+  subscribeSwarmChat(
+    topic: string,
+    handler: (data: { from: string; content: string }) => void
+  ): void {
+    this.subscribe(topic, (data) => {
+      handler(data as { from: string; content: string });
+    });
+  }
+
+  async publishSwarmChat(
+    topic: string,
+    from: string,
+    content: string
+  ): Promise<void> {
+    await this.publish(topic, { from, content });
+  }
+
+  async requestIPC(
+    command: string,
+    payload: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
+    if (!this.conn) throw new Error("Not connected to NATS");
+    const topic = `host.ipc.${this.agentId}`;
+    const data = sc.encode(JSON.stringify({ type: command, payload }));
+    const resp = await this.conn.request(topic, data, { timeout: 10000 });
+    return JSON.parse(sc.decode(resp.data));
+  }
+
   async close(): Promise<void> {
     for (const sub of this.subscriptions) {
       sub.unsubscribe();
