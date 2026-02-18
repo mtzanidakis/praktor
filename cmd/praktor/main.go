@@ -122,7 +122,7 @@ func runGateway() error {
 
 	// Telegram bot
 	if cfg.Telegram.Token != "" {
-		bot, err := telegram.NewBot(cfg.Telegram, orch, rtr, swarmCoord, reg, bus)
+		bot, err := telegram.NewBot(cfg.Telegram, orch, rtr, swarmCoord, reg, bus, db)
 		if err != nil {
 			return fmt.Errorf("init telegram bot: %w", err)
 		}

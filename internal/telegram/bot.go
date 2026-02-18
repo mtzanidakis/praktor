@@ -14,6 +14,7 @@ import (
 	"github.com/mtzanidakis/praktor/internal/natsbus"
 	"github.com/mtzanidakis/praktor/internal/registry"
 	"github.com/mtzanidakis/praktor/internal/router"
+	"github.com/mtzanidakis/praktor/internal/store"
 	"github.com/mtzanidakis/praktor/internal/swarm"
 	"github.com/mymmrac/telego"
 	th "github.com/mymmrac/telego/telegohandler"
@@ -26,6 +27,7 @@ type Bot struct {
 	handler    *th.BotHandler
 	orch       *agent.Orchestrator
 	router     *router.Router
+	store      *store.Store
 	cfg        config.TelegramConfig
 	cancel     context.CancelFunc
 	swarmCoord *swarm.Coordinator
@@ -41,7 +43,7 @@ type Bot struct {
 	swarmChat   map[string]int64 // swarmID → chatID
 }
 
-func NewBot(cfg config.TelegramConfig, orch *agent.Orchestrator, rtr *router.Router, sc *swarm.Coordinator, reg *registry.Registry, bus *natsbus.Bus) (*Bot, error) {
+func NewBot(cfg config.TelegramConfig, orch *agent.Orchestrator, rtr *router.Router, sc *swarm.Coordinator, reg *registry.Registry, bus *natsbus.Bus, s *store.Store) (*Bot, error) {
 	bot, err := telego.NewBot(cfg.Token)
 	if err != nil {
 		return nil, fmt.Errorf("create telegram bot: %w", err)
@@ -51,6 +53,7 @@ func NewBot(cfg config.TelegramConfig, orch *agent.Orchestrator, rtr *router.Rou
 		bot:        bot,
 		orch:       orch,
 		router:     rtr,
+		store:      s,
 		cfg:        cfg,
 		swarmCoord: sc,
 		registry:   reg,
@@ -65,6 +68,7 @@ func NewBot(cfg config.TelegramConfig, orch *agent.Orchestrator, rtr *router.Rou
 			{Command: "start", Description: "Say hello to an agent"},
 			{Command: "stop", Description: "Abort the active agent run"},
 			{Command: "reset", Description: "Reset conversation session"},
+			{Command: "agents", Description: "List available agents"},
 		},
 	})
 
@@ -164,6 +168,14 @@ func (b *Bot) Start(ctx context.Context) error {
 		b.cmdReset(ctx, message.Chat.ID, payload)
 		return nil
 	}, th.CommandEqual("reset"))
+
+	handler.HandleMessage(func(hctx *th.Context, message telego.Message) error {
+		if !b.allowedUser(message) {
+			return nil
+		}
+		b.cmdAgents(ctx, message.Chat.ID)
+		return nil
+	}, th.CommandEqual("agents"))
 
 	// Catch-all for regular messages
 	handler.HandleMessage(func(hctx *th.Context, message telego.Message) error {
@@ -465,7 +477,7 @@ func (b *Bot) cmdStop(ctx context.Context, chatID int64, payload string) {
 func (b *Bot) cmdReset(ctx context.Context, chatID int64, payload string) {
 	agentID := b.resolveAgent(chatID, payload)
 	if agentID == "" {
-		_ = b.SendMessage(ctx, chatID, "Usage: /new [agent]")
+		_ = b.SendMessage(ctx, chatID, "Usage: /reset [agent]")
 		return
 	}
 	if err := b.orch.ClearSession(ctx, agentID); err != nil {
@@ -473,6 +485,50 @@ func (b *Bot) cmdReset(ctx context.Context, chatID int64, payload string) {
 		return
 	}
 	_ = b.SendMessage(ctx, chatID, fmt.Sprintf("New session started for *%s*.", agentID))
+}
+
+func (b *Bot) cmdAgents(ctx context.Context, chatID int64) {
+	agents, err := b.store.ListAgents()
+	if err != nil {
+		_ = b.SendMessage(ctx, chatID, "Failed to list agents.")
+		return
+	}
+
+	running, _ := b.orch.ListRunning(ctx)
+	runningSet := make(map[string]bool, len(running))
+	for _, c := range running {
+		runningSet[c.AgentID] = true
+	}
+
+	msgStats, _ := b.store.GetAgentMessageStats()
+
+	var sb strings.Builder
+	sb.WriteString("*Agents*\n\n")
+	for _, a := range agents {
+		status := "stopped"
+		if runningSet[a.ID] {
+			status = "running"
+		}
+
+		model := b.registry.ResolveModel(a.ID)
+
+		sb.WriteString(fmt.Sprintf("*%s*", a.ID))
+		if a.Description != "" {
+			sb.WriteString(fmt.Sprintf(" — %s", a.Description))
+		}
+		sb.WriteString(fmt.Sprintf("\n  Status: `%s` | Model: `%s`", status, model))
+
+		if stats, ok := msgStats[a.ID]; ok {
+			sb.WriteString(fmt.Sprintf(" | Messages: %d", stats.MessageCount))
+		}
+		sb.WriteString("\n\n")
+	}
+
+	if len(agents) == 0 {
+		sb.WriteString("No agents configured.")
+	}
+
+	_ = b.SendMessage(ctx, chatID, sb.String())
 }
 
 // handleSwarmEvent handles swarm completion events and delivers results to Telegram.
