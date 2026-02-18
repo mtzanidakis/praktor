@@ -65,10 +65,10 @@ func NewBot(cfg config.TelegramConfig, orch *agent.Orchestrator, rtr *router.Rou
 	// Register bot commands with Telegram so they appear in the menu
 	_ = bot.SetMyCommands(context.Background(), &telego.SetMyCommandsParams{
 		Commands: []telego.BotCommand{
+			{Command: "agents", Description: "List available agents"},
 			{Command: "start", Description: "Say hello to an agent"},
 			{Command: "stop", Description: "Abort the active agent run"},
 			{Command: "reset", Description: "Reset conversation session"},
-			{Command: "agents", Description: "List available agents"},
 		},
 	})
 
