@@ -35,8 +35,6 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 
 	// Running agent containers
 	mux.HandleFunc("GET /api/agents", s.listRunningAgents)
-	mux.HandleFunc("POST /api/agents/{agentID}/start", s.startAgent)
-	mux.HandleFunc("POST /api/agents/{agentID}/stop", s.stopAgent)
 
 	// Tasks
 	mux.HandleFunc("GET /api/tasks", s.listTasks)
@@ -157,24 +155,6 @@ func (s *Server) listRunningAgents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResponse(w, agents)
-}
-
-func (s *Server) startAgent(w http.ResponseWriter, r *http.Request) {
-	agentID := r.PathValue("agentID")
-	if err := s.orch.EnsureAgent(r.Context(), agentID); err != nil {
-		jsonError(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	jsonResponse(w, map[string]string{"status": "started"})
-}
-
-func (s *Server) stopAgent(w http.ResponseWriter, r *http.Request) {
-	agentID := r.PathValue("agentID")
-	if err := s.orch.StopAgent(r.Context(), agentID); err != nil {
-		jsonError(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	jsonResponse(w, map[string]string{"status": "stopped"})
 }
 
 func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
