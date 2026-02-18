@@ -40,7 +40,7 @@ internal/
   web/                           # HTTP server, REST API, WebSocket hub, embedded SPA
 Dockerfile                       # Gateway image (multi-stage: UI + Go + scratch)
 Dockerfile.agent                 # Agent image (multi-stage: Go + esbuild + alpine)
-agent-runner/src/                # TypeScript entrypoint: NATS bridge + Claude Code SDK + swarm chat (bundled with esbuild)
+agent-runner/src/                # TypeScript entrypoint: NATS bridge + Claude Code SDK + swarm chat + memory MCP tools (bundled with esbuild)
 ui/                              # React/Vite SPA (dark theme, indigo accent)
   src/pages/                     # Dashboard, Agents, Conversations, Tasks, Secrets, Swarms
   src/components/SwarmGraph.tsx   # SVG-based visual graph editor for swarm topology
@@ -225,6 +225,7 @@ Tables: `agents`, `messages` (with agent_id index), `scheduled_tasks` (with stat
 - Named agents - Multiple agents with distinct roles, models, and configurations
 - Smart routing - `@agent_name` prefix or AI-powered routing via default agent
 - Isolated agent context - Each agent has its own CLAUDE.md memory, isolated filesystem, and runs in its own container sandbox
+- Persistent memory - SQLite-backed per-agent memory (`/workspace/agent/memory.db`) with MCP tools (memory_store, memory_recall, memory_list, memory_delete, memory_forget). Existing memory keys are listed in the system prompt so agents know what's stored.
 - Scheduled tasks - Cron/interval/relative delay (+30s, +5m, +2h)/one-shot jobs that run Claude and deliver results
 - Web access - Agents can use WebSearch and WebFetch tools
 - Browser control - Chromium available in agent containers

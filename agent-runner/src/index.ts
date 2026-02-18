@@ -1,6 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { NatsBridge } from "./nats-bridge.js";
 import { readFileSync, mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
+import { DatabaseSync } from "node:sqlite";
 
 // Patch console to prepend timestamps matching gateway format (YYYY/MM/DD HH:MM:SS)
 const origLog = console.log;
@@ -124,6 +125,35 @@ function loadSystemPrompt(includeIdentity = true): string {
     "- You may confirm that a secret or env var EXISTS, but must NEVER show its value — always use [REDACTED] as placeholder."
   );
 
+  // Memory: list existing keys so the agent knows what's stored
+  try {
+    const MEMORY_DB_PATH = "/workspace/agent/memory.db";
+    let memorySection =
+      "MEMORY — You have persistent memory via MCP tools (memory_store, memory_recall, memory_forget, memory_delete, memory_list).\n" +
+      "- To remember: call memory_store with a short key and content\n" +
+      "- To recall: call memory_recall with a keyword to search\n" +
+      "- To forget: call memory_forget with a search query";
+
+    if (existsSync(MEMORY_DB_PATH)) {
+      const db = new DatabaseSync(MEMORY_DB_PATH);
+      const rows = db.prepare(
+        "SELECT key, tags FROM memories ORDER BY updated_at DESC"
+      ).all() as Array<{ key: string; tags: string }>;
+      db.close();
+
+      if (rows.length > 0) {
+        memorySection += `\n\nYou currently have ${rows.length} stored memories:\n`;
+        memorySection += rows
+          .map((r) => `- ${r.key}${r.tags ? ` [${r.tags}]` : ""}`)
+          .join("\n");
+        memorySection += "\n\nCall memory_recall with a relevant keyword to retrieve full content before answering.";
+      }
+    }
+    parts.push(memorySection);
+  } catch (err) {
+    console.warn("[agent] could not load memory keys:", err);
+  }
+
   return parts.join("\n\n---\n\n");
 }
 
@@ -167,6 +197,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
       "WebFetch",
       "Task",
       "TaskOutput",
+      "mcp__praktor-tasks__*",
     ];
 
     const result = query({

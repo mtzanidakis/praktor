@@ -18,6 +18,7 @@ Praktor is a single Go binary that orchestrates the full loop: it receives messa
 - **Named agents** - Define multiple agents with distinct roles, models, and configurations
 - **Smart routing** - `@agent_name` prefix or AI-powered routing via the default agent
 - **Per-agent isolation** - Each agent runs in its own Docker container with its own filesystem and memory (Docker named volumes)
+- **Persistent memory** - Each agent has a SQLite-backed memory database (`memory.db`) with MCP tools for storing and recalling facts across sessions
 - **Agent identity** - Each agent has an `AGENT.md` file with personality, vibe, and expertise — editable from Mission Control or by agents themselves
 - **User profile** - Agents know who you are via `USER.md` — editable from Mission Control or by agents themselves
 - **Scheduled tasks** - Cron, interval, or one-shot jobs that run agents and deliver results via Telegram
