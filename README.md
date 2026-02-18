@@ -93,7 +93,7 @@ Edit `config/praktor.yaml` to configure your agents:
 ```yaml
 telegram:
   allow_from: []            # Telegram user IDs allowed to use the bot (empty = allow all)
-  main_chat_id: 0           # Your chat ID for scheduled task results
+  main_chat_id: 0           # Your chat ID for scheduled task and swarm results
 
 defaults:
   model: "claude-sonnet-4-6"
@@ -247,7 +247,7 @@ The Swarms page in Mission Control provides a visual graph editor:
 5. Write the swarm task and per-agent prompts
 6. Click "Launch Swarm"
 
-Running swarms show real-time status updates via WebSocket, with a mini topology visualization and expandable results.
+Running swarms show real-time status updates via WebSocket, with a mini topology visualization and expandable results. Completed swarms can be replayed, edited (re-opens the graph editor pre-populated), or deleted.
 
 ### Telegram
 
@@ -264,7 +264,7 @@ Use the `@swarm` prefix to launch swarms from Telegram:
 @swarm researcher<>writer,reviewer: Write a blog post about AI agents
 ```
 
-Results are delivered to the chat when the swarm completes.
+Results are delivered to the chat when the swarm completes. Swarms launched from Mission Control deliver results to `telegram.main_chat_id`.
 
 ### API
 
@@ -287,6 +287,9 @@ curl -X POST http://localhost:8080/api/swarms \
 
 # Check status
 curl http://localhost:8080/api/swarms/{id}
+
+# Delete a swarm run
+curl -X DELETE http://localhost:8080/api/swarms/{id}
 ```
 
 ## Development

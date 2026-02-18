@@ -87,7 +87,7 @@ Loaded from YAML (default: `config/praktor.yaml`, override with `PRAKTOR_CONFIG`
 
 Hardcoded paths (not configurable): `data/praktor.db` (SQLite), `data/agents` (agent workspaces).
 
-The `telegram.main_chat_id` setting specifies which Telegram chat receives scheduled task results.
+The `telegram.main_chat_id` setting specifies which Telegram chat receives scheduled task results and swarm results launched from Mission Control.
 
 ### Agent Definitions
 
@@ -145,7 +145,7 @@ GET/PUT/DELETE /api/secrets/{id}                     # Get/update/delete secret
 GET/PUT        /api/agents/definitions/{id}/secrets  # List/set agent secret assignments
 POST/DELETE    /api/agents/definitions/{id}/secrets/{secretId}  # Add/remove agent secret
 GET/POST       /api/swarms                           # List/create swarm runs
-GET            /api/swarms/{id}                      # Swarm status
+GET/DELETE     /api/swarms/{id}                      # Swarm status / delete
 GET/PUT        /api/agents/definitions/{id}/agent-md   # Read/update per-agent AGENT.md
 GET/PUT        /api/user-profile                      # Read/update USER.md
 GET            /api/status                           # System health
@@ -192,7 +192,8 @@ The lead agent always runs last and receives all prior results for synthesis.
 - `internal/swarm/graph.go` — `BuildPlan()`: topological sort, collab group detection (union-find), cycle detection, tier assignment
 - `internal/swarm/graph_test.go` — Unit tests for all graph topologies
 - `internal/swarm/coordinator.go` — Tier-based DAG execution, secret resolution, event publishing, swarm membership tracking
-- `ui/src/components/SwarmGraph.tsx` — SVG visual graph editor (drag nodes, draw edges, toggle direction)
+- `ui/src/components/SwarmGraph.tsx` — SVG visual graph editor (drag nodes, draw edges, toggle direction, edit mode with initialData)
+- `ui/src/pages/Swarms.tsx` — Create/list views with edit, delete, and replay buttons per swarm
 
 **Execution flow:**
 1. `BuildPlan()` analyzes the graph → produces ordered `ExecutionTier`s, `CollabGroups`, and `PipelineInputs`
@@ -206,7 +207,9 @@ The lead agent always runs last and receives all prior results for synthesis.
 - `@swarm agent1>agent2>agent3: task` → pipeline, last agent = lead
 - `@swarm agent1<>agent2,agent3: task` → agent1↔agent2 collaborative + agent3 independent
 
-**API:** `POST /api/swarms` accepts `SwarmRequest` with `agents`, `synapses`, `lead_agent`, `task`, and `name`. Graph is validated via `BuildPlan()` before execution; returns 400 on cycles or unknown roles.
+**API:** `POST /api/swarms` accepts `SwarmRequest` with `agents`, `synapses`, `lead_agent`, `task`, and `name`. Graph is validated via `BuildPlan()` before execution; returns 400 on cycles or unknown roles. `DELETE /api/swarms/{id}` removes a swarm run.
+
+**Result delivery:** Swarms launched from Telegram deliver results to the originating chat. Swarms launched from Mission Control deliver results to `telegram.main_chat_id`.
 
 **WebSocket events:** `swarm_started`, `swarm_agent_started`, `swarm_agent_completed`, `swarm_tier_completed`, `swarm_completed`, `swarm_failed` — published on `events.swarm.{swarmID}`.
 
