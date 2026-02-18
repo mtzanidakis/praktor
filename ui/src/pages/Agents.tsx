@@ -39,6 +39,7 @@ function Agents() {
   const [agentMd, setAgentMd] = useState('');
   const [agentMdSaved, setAgentMdSaved] = useState(false);
   const [agentMdLoading, setAgentMdLoading] = useState(false);
+  const [confirmStop, setConfirmStop] = useState<string | null>(null);
   const { events } = useWebSocket();
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -72,6 +73,17 @@ function Agents() {
       .catch(() => setAgentMd(''))
       .finally(() => setAgentMdLoading(false));
   }, [selected?.id]);
+
+  const stopAgent = async (agentId: string) => {
+    try {
+      const res = await fetch(`/api/agents/${agentId}/stop`, { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setConfirmStop(null);
+      fetchAgents();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to stop agent');
+    }
+  };
 
   const saveAgentMd = () => {
     if (!selected) return;
@@ -108,14 +120,66 @@ function Agents() {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)' }}>{agent.name}</span>
-              {agent.agent_status && (
-                <span style={badge(
-                  agent.agent_status === 'running' ? 'var(--green)' : 'var(--text-secondary)',
-                  agent.agent_status === 'running' ? 'var(--green-muted)' : 'var(--accent-muted)',
-                )}>
-                  {agent.agent_status}
-                </span>
-              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {agent.agent_status === 'running' && (
+                  confirmStop === agent.id ? (
+                    <span style={{ display: 'flex', gap: 4 }}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); stopAgent(agent.id); }}
+                        style={{
+                          padding: '2px 10px',
+                          borderRadius: 6,
+                          border: '1px solid var(--red)',
+                          background: 'var(--red-muted)',
+                          color: 'var(--red)',
+                          fontSize: 13,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        confirm
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirmStop(null); }}
+                        style={{
+                          padding: '2px 10px',
+                          borderRadius: 6,
+                          border: '1px solid var(--border)',
+                          background: 'transparent',
+                          color: 'var(--text-secondary)',
+                          fontSize: 13,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        cancel
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setConfirmStop(agent.id); }}
+                      style={{
+                        padding: '2px 10px',
+                        borderRadius: 6,
+                        border: '1px solid var(--border)',
+                        background: 'transparent',
+                        color: 'var(--text-secondary)',
+                        fontSize: 13,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      stop
+                    </button>
+                  )
+                )}
+                {agent.agent_status && (
+                  <span style={badge(
+                    agent.agent_status === 'running' ? 'var(--green)' : 'var(--text-secondary)',
+                    agent.agent_status === 'running' ? 'var(--green-muted)' : 'var(--accent-muted)',
+                  )}>
+                    {agent.agent_status}
+                  </span>
+                )}
+              </div>
             </div>
             {agent.description && (
               <div style={{ fontSize: 15, color: 'var(--text-tertiary)', marginBottom: 4 }}>{agent.description}</div>
