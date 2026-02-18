@@ -66,6 +66,7 @@ func NewBot(cfg config.TelegramConfig, orch *agent.Orchestrator, rtr *router.Rou
 	_ = bot.SetMyCommands(context.Background(), &telego.SetMyCommandsParams{
 		Commands: []telego.BotCommand{
 			{Command: "agents", Description: "List available agents"},
+			{Command: "commands", Description: "Show available commands"},
 			{Command: "start", Description: "Say hello to an agent"},
 			{Command: "stop", Description: "Abort the active agent run"},
 			{Command: "reset", Description: "Reset conversation session"},
@@ -176,6 +177,14 @@ func (b *Bot) Start(ctx context.Context) error {
 		b.cmdAgents(ctx, message.Chat.ID)
 		return nil
 	}, th.CommandEqual("agents"))
+
+	handler.HandleMessage(func(hctx *th.Context, message telego.Message) error {
+		if !b.allowedUser(message) {
+			return nil
+		}
+		b.cmdCommands(ctx, message.Chat.ID)
+		return nil
+	}, th.CommandEqual("commands"))
 
 	// Catch-all for regular messages
 	handler.HandleMessage(func(hctx *th.Context, message telego.Message) error {
@@ -485,6 +494,18 @@ func (b *Bot) cmdReset(ctx context.Context, chatID int64, payload string) {
 		return
 	}
 	_ = b.SendMessage(ctx, chatID, fmt.Sprintf("New session started for *%s*.", agentID))
+}
+
+func (b *Bot) cmdCommands(ctx context.Context, chatID int64) {
+	text := "*Commands*\n\n" +
+		"  /agents — List available agents\n" +
+		"  /commands — Show available commands\n" +
+		"  /start \\[agent] — Say hello to an agent\n" +
+		"  /stop \\[agent] — Abort the active agent run\n" +
+		"  /reset \\[agent] — Reset conversation session\n" +
+		"\n@agent\\_name prefix or smart routing for regular messages.\n" +
+		"@swarm prefix for swarm orchestration."
+	_ = b.SendMessage(ctx, chatID, text)
 }
 
 func (b *Bot) cmdAgents(ctx context.Context, chatID int64) {

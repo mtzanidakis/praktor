@@ -252,4 +252,9 @@ Each MCP tool domain lives in its own file under `agent-runner/src/mcp-*.ts`. To
 - Secure vault - AES-256-GCM encrypted secrets, injected as env vars or files at container start (never exposed to LLM)
 - Hot config reload - Config file changes are detected automatically (file polling every 3s) or via SIGHUP; only affected agents are restarted
 - Mission Control UI - Real-time dashboard with WebSocket updates
-- Telegram slash commands - `/start [agent]` sends a greeting to start a conversation, `/stop [agent]` aborts the active run and drains the message queue (container stays running), `/reset [agent]` clears session context for a fresh conversation. Agent resolved from arg or last-used agent for the chat (`/start` falls back to default agent). Registered as proper Telegram bot commands via `SetMyCommands` with `th.CommandEqual()` predicates
+- Telegram slash commands — registered via `SetMyCommands` with `th.CommandEqual()` predicates. Agent resolved from arg or last-used agent for the chat (`/start` falls back to default agent). **When adding a new command, also add it to the `/commands` handler output and the list below.**
+  - `/agents` — List available agents (id, description, status, model, messages)
+  - `/commands` — Show available commands
+  - `/start [agent]` — Say hello to an agent
+  - `/stop [agent]` — Abort the active run and drain the message queue (container stays running)
+  - `/reset [agent]` — Clear session context for a fresh conversation
