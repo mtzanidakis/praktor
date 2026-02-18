@@ -730,6 +730,34 @@ waitLoop:
 	return nil
 }
 
+// AbortSession sends an abort control command to a running agent,
+// terminating the active Claude query without stopping the container.
+func (o *Orchestrator) AbortSession(ctx context.Context, agentID string) error {
+	// Drain pending messages so they don't run after the abort
+	if q := o.getQueue(agentID); q != nil {
+		q.Clear()
+	}
+	if o.containers.GetRunning(agentID) == nil {
+		return nil
+	}
+	topic := natsbus.TopicAgentControl(agentID)
+	data, _ := json.Marshal(map[string]string{"command": "abort"})
+	_, err := o.client.Request(topic, data, 5*time.Second)
+	return err
+}
+
+// ClearSession sends a clear_session control command to a running agent,
+// resetting its conversation context without stopping the container.
+func (o *Orchestrator) ClearSession(ctx context.Context, agentID string) error {
+	if o.containers.GetRunning(agentID) == nil {
+		return nil
+	}
+	topic := natsbus.TopicAgentControl(agentID)
+	data, _ := json.Marshal(map[string]string{"command": "clear_session"})
+	_, err := o.client.Request(topic, data, 5*time.Second)
+	return err
+}
+
 func (o *Orchestrator) StopAgent(ctx context.Context, agentID string) error {
 	o.sessions.Remove(agentID)
 	err := o.containers.StopAgent(ctx, agentID)

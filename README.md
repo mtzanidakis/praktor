@@ -24,6 +24,7 @@ Praktor is a single Go binary that orchestrates the full loop: it receives messa
 - **Scheduled tasks** - Cron, interval, or one-shot jobs that run agents and deliver results via Telegram
 - **Secure vault** - AES-256-GCM encrypted secrets, injected as env vars or files at container start (never exposed to LLM)
 - **Hot config reload** - Edit `praktor.yaml` and changes apply automatically — no restart needed
+- **Telegram commands** - `/start [agent]` to say hello, `/stop [agent]` to abort the active run, `/reset [agent]` to clear session context
 - **Agent swarms** - Graph-based orchestration with fan-out, pipeline, and collaborative execution patterns — visual graph editor in Mission Control, `@swarm` Telegram commands
 - **Web & browser access** - Agents can search the web and control Chromium
 - **Mission Control** - Real-time dashboard with WebSocket updates

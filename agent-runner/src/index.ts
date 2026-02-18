@@ -1,6 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { NatsBridge } from "./nats-bridge.js";
 import { readFileSync, mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
+import { execSync } from "child_process";
 import { DatabaseSync } from "node:sqlite";
 
 // Patch console to prepend timestamps matching gateway format (YYYY/MM/DD HH:MM:SS)
@@ -27,6 +28,8 @@ const SWARM_ROLE = process.env.SWARM_ROLE || "";
 let bridge: NatsBridge;
 let isProcessing = false;
 let hasSession = false;
+let currentQueryIter: AsyncIterator<unknown> | null = null;
+let abortPending = false;
 
 // Swarm collaborative chat buffer
 interface ChatMessage {
@@ -161,6 +164,12 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
   const text = data.text as string;
   if (!text) return;
 
+  if (abortPending) {
+    abortPending = false;
+    console.log("[agent] discarding message received after abort");
+    return;
+  }
+
   if (isProcessing) {
     console.log("[agent] already processing, queuing message");
     return;
@@ -247,8 +256,10 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
 
     // Process streaming result
     let fullResponse = "";
+    const iter = result[Symbol.asyncIterator]();
+    currentQueryIter = iter;
     try {
-      for await (const event of result) {
+      for await (const event of { [Symbol.asyncIterator]: () => iter }) {
         console.log(`[agent] event: type=${event.type}${"subtype" in event ? ` subtype=${event.subtype}` : ""}`);
         if (event.type === "result" && event.subtype === "success") {
           fullResponse = event.result;
@@ -280,10 +291,17 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
     hasSession = true;
     console.log(`[agent] completed processing for agent ${AGENT_ID}`);
   } catch (err) {
+    if ((err as Error)?.message === "aborted") {
+      console.log("[agent] query aborted by user");
+      await bridge.publishResult("Aborted.");
+      hasSession = true;
+      return;
+    }
     console.error(`[agent] error processing message:`, err);
     const errorMsg = err instanceof Error ? err.message : String(err);
     await bridge.publishResult(`Error: ${errorMsg}`);
   } finally {
+    currentQueryIter = null;
     isProcessing = false;
   }
 }
@@ -361,6 +379,37 @@ async function handleControl(
       break;
     case "ping":
       msg.respond(new TextEncoder().encode(JSON.stringify({ status: "ok" })));
+      break;
+    case "abort":
+      console.log("[agent] aborting current run...");
+      abortPending = true;
+      if (currentQueryIter) {
+        currentQueryIter.return?.(undefined);
+        currentQueryIter = null;
+      }
+      // Kill any running claude processes as backstop
+      try { execSync("pkill -f /usr/local/bin/claude", { timeout: 3000 }); } catch { /* ignore */ }
+      isProcessing = false;
+      msg.respond(new TextEncoder().encode(JSON.stringify({ status: "ok" })));
+      console.log("[agent] run aborted");
+      break;
+    case "clear_session":
+      console.log("[agent] clearing session...");
+      hasSession = false;
+      for (const dir of [
+        "/home/praktor/.claude/projects",
+        "/home/praktor/.claude/sessions",
+        "/home/praktor/.claude/debug",
+        "/home/praktor/.claude/todos",
+      ]) {
+        try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+      }
+      msg.respond(new TextEncoder().encode(JSON.stringify({ status: "ok" })));
+      console.log("[agent] session cleared");
+      break;
+    default:
+      console.warn(`[agent] unknown control command: ${command}`);
+      msg.respond(new TextEncoder().encode(JSON.stringify({ error: `unknown command: ${command}` })));
       break;
   }
 }

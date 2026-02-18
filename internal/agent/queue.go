@@ -55,6 +55,12 @@ func (q *AgentQueue) Unlock() {
 	q.locked = false
 }
 
+func (q *AgentQueue) Clear() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.pending = nil
+}
+
 func (q *AgentQueue) Len() int {
 	q.mu.Lock()
 	defer q.mu.Unlock()

@@ -59,6 +59,15 @@ func NewBot(cfg config.TelegramConfig, orch *agent.Orchestrator, rtr *router.Rou
 		swarmChat:  make(map[string]int64),
 	}
 
+	// Register bot commands with Telegram so they appear in the menu
+	_ = bot.SetMyCommands(context.Background(), &telego.SetMyCommandsParams{
+		Commands: []telego.BotCommand{
+			{Command: "start", Description: "Say hello to an agent"},
+			{Command: "stop", Description: "Abort the active agent run"},
+			{Command: "reset", Description: "Reset conversation session"},
+		},
+	})
+
 	// Register output listener to send responses back to Telegram
 	orch.OnOutput(func(agentID, content string, meta map[string]string) {
 		// Try to get chat_id from meta
@@ -128,6 +137,35 @@ func (b *Bot) Start(ctx context.Context) error {
 	}
 	b.handler = handler
 
+	// Command handlers — registered before the catch-all so they match first
+	handler.HandleMessage(func(hctx *th.Context, message telego.Message) error {
+		if !b.allowedUser(message) {
+			return nil
+		}
+		_, _, payload := tu.ParseCommandPayload(message.Text)
+		b.cmdStart(ctx, message, payload)
+		return nil
+	}, th.CommandEqual("start"))
+
+	handler.HandleMessage(func(hctx *th.Context, message telego.Message) error {
+		if !b.allowedUser(message) {
+			return nil
+		}
+		_, _, payload := tu.ParseCommandPayload(message.Text)
+		b.cmdStop(ctx, message.Chat.ID, payload)
+		return nil
+	}, th.CommandEqual("stop"))
+
+	handler.HandleMessage(func(hctx *th.Context, message telego.Message) error {
+		if !b.allowedUser(message) {
+			return nil
+		}
+		_, _, payload := tu.ParseCommandPayload(message.Text)
+		b.cmdReset(ctx, message.Chat.ID, payload)
+		return nil
+	}, th.CommandEqual("reset"))
+
+	// Catch-all for regular messages
 	handler.HandleMessage(func(hctx *th.Context, message telego.Message) error {
 		b.handleMessage(ctx, message)
 		return nil
@@ -150,23 +188,12 @@ func (b *Bot) Stop() {
 }
 
 func (b *Bot) handleMessage(ctx context.Context, msg telego.Message) {
+	if !b.allowedUser(msg) {
+		return
+	}
+
 	chatID := msg.Chat.ID
 	userID := msg.From.ID
-
-	// Check allow list
-	if len(b.cfg.AllowFrom) > 0 {
-		allowed := false
-		for _, id := range b.cfg.AllowFrom {
-			if id == userID {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			slog.Warn("unauthorized telegram user", "user_id", userID, "chat_id", chatID)
-			return
-		}
-	}
 
 	text := msg.Text
 	if text == "" {
@@ -372,6 +399,80 @@ func (b *Bot) parseSwarmSpec(spec string) ([]swarm.SwarmAgent, []swarm.Synapse, 
 	}
 
 	return agents, synapses, leadAgent, nil
+}
+
+// allowedUser checks whether the message sender is in the allow list.
+func (b *Bot) allowedUser(msg telego.Message) bool {
+	if len(b.cfg.AllowFrom) == 0 {
+		return true
+	}
+	for _, id := range b.cfg.AllowFrom {
+		if id == msg.From.ID {
+			return true
+		}
+	}
+	slog.Warn("unauthorized telegram user", "user_id", msg.From.ID, "chat_id", msg.Chat.ID)
+	return false
+}
+
+// resolveAgent returns the agent ID from payload or falls back to the last agent for the chat.
+func (b *Bot) resolveAgent(chatID int64, payload string) string {
+	if payload != "" {
+		name := strings.Fields(payload)[0]
+		return strings.TrimPrefix(name, "@")
+	}
+	b.chatAgentMu.RLock()
+	defer b.chatAgentMu.RUnlock()
+	return b.chatAgent[chatID]
+}
+
+func (b *Bot) cmdStart(ctx context.Context, msg telego.Message, payload string) {
+	chatID := msg.Chat.ID
+	agentID := b.resolveAgent(chatID, payload)
+	if agentID == "" {
+		agentID = b.router.DefaultAgent()
+	}
+
+	b.chatAgentMu.Lock()
+	b.chatAgent[chatID] = agentID
+	b.chatAgentMu.Unlock()
+
+	_ = b.sendChatAction(ctx, chatID, "typing")
+
+	meta := map[string]string{
+		"sender":  fmt.Sprintf("user:%d", msg.From.ID),
+		"chat_id": strconv.FormatInt(chatID, 10),
+	}
+	if err := b.orch.HandleMessage(ctx, agentID, "Hello!", meta); err != nil {
+		slog.Error("handle start failed", "agent", agentID, "error", err)
+		_ = b.SendMessage(ctx, chatID, "Sorry, I encountered an error starting the conversation.")
+	}
+}
+
+func (b *Bot) cmdStop(ctx context.Context, chatID int64, payload string) {
+	agentID := b.resolveAgent(chatID, payload)
+	if agentID == "" {
+		_ = b.SendMessage(ctx, chatID, "Usage: /stop [agent]")
+		return
+	}
+	if err := b.orch.AbortSession(ctx, agentID); err != nil {
+		_ = b.SendMessage(ctx, chatID, fmt.Sprintf("Failed to stop *%s*: %s", agentID, err))
+		return
+	}
+	_ = b.SendMessage(ctx, chatID, fmt.Sprintf("Stopped *%s*.", agentID))
+}
+
+func (b *Bot) cmdReset(ctx context.Context, chatID int64, payload string) {
+	agentID := b.resolveAgent(chatID, payload)
+	if agentID == "" {
+		_ = b.SendMessage(ctx, chatID, "Usage: /new [agent]")
+		return
+	}
+	if err := b.orch.ClearSession(ctx, agentID); err != nil {
+		_ = b.SendMessage(ctx, chatID, fmt.Sprintf("Failed to clear session for *%s*: %s", agentID, err))
+		return
+	}
+	_ = b.SendMessage(ctx, chatID, fmt.Sprintf("New session started for *%s*.", agentID))
 }
 
 // handleSwarmEvent handles swarm completion events and delivers results to Telegram.
