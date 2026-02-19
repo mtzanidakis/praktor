@@ -38,11 +38,15 @@ RUN apk add --no-cache \
     git \
     libgcc \
     libstdc++ \
+    nix \
     nodejs \
     nss \
     ripgrep \
     tzdata && \
     update-ca-certificates
+
+# enable nix-command and flakes
+RUN echo "extra-experimental-features = nix-command flakes" >> /etc/nix/nix.conf
 
 RUN adduser \
    --disabled-password \
@@ -50,7 +54,8 @@ RUN adduser \
    --home "/home/praktor" \
    --shell "/sbin/nologin" \
    --uid 10321 \
-   praktor
+   praktor && \
+   addgroup praktor nix
 
 # Copy built artifacts from builder stages
 COPY --from=agent-builder /app/out/ /app/

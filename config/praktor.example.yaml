@@ -19,6 +19,7 @@ agents:
     description: "Software engineering specialist"
     model: "claude-opus-4-6"
     workspace: coder
+    nix_enabled: true                              # Enable nix package manager
     env:
       EDITOR: vim                            # Regular env var
       GITHUB_TOKEN: "secret:github-token"    # Resolved from vault at container start

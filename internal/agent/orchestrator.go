@@ -196,6 +196,7 @@ func (o *Orchestrator) executeMessage(ctx context.Context, agentID string, msg Q
 		if hasDef {
 			opts.Env = cloneMap(def.Env)
 			opts.AllowedTools = def.AllowedTools
+			opts.NixEnabled = def.NixEnabled
 		}
 
 		o.resolveSecrets(&opts, agentID, def, hasDef)
@@ -286,6 +287,7 @@ func (o *Orchestrator) RouteQuery(ctx context.Context, agentID string, message s
 		def, hasDef := o.registry.GetDefinition(agentID)
 		if hasDef {
 			opts.Env = cloneMap(def.Env)
+			opts.NixEnabled = def.NixEnabled
 		}
 
 		o.resolveSecrets(&opts, agentID, def, hasDef)
@@ -688,6 +690,7 @@ func (o *Orchestrator) EnsureAgent(ctx context.Context, agentID string) error {
 	if hasDef {
 		opts.Env = cloneMap(def.Env)
 		opts.AllowedTools = def.AllowedTools
+		opts.NixEnabled = def.NixEnabled
 	}
 	o.resolveSecrets(&opts, agentID, def, hasDef)
 

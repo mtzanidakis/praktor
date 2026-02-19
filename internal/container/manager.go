@@ -55,6 +55,7 @@ type AgentOpts struct {
 	Env          map[string]string
 	SecretFiles  []SecretFile
 	AllowedTools []string
+	NixEnabled   bool
 }
 
 type SecretFile struct {
