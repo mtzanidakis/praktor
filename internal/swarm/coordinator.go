@@ -295,6 +295,7 @@ func (c *Coordinator) runSwarmAgent(ctx context.Context, swarmID string, agent S
 				opts.Env[k] = v
 			}
 			opts.AllowedTools = def.AllowedTools
+			opts.NixEnabled = def.NixEnabled
 			c.resolveSecrets(&opts, agent.AgentID, def)
 		}
 	}

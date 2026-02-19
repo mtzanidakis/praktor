@@ -54,6 +54,7 @@ type AgentDefinition struct {
 	Env          map[string]string `yaml:"env"`
 	Files        []FileMount       `yaml:"files"`
 	AllowedTools []string          `yaml:"allowed_tools"`
+	NixEnabled   bool              `yaml:"nix_enabled"`
 }
 
 type FileMount struct {

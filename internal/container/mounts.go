@@ -24,6 +24,11 @@ func buildMounts(opts AgentOpts) []string {
 	// Claude session data (named volume)
 	binds = append(binds, fmt.Sprintf("praktor-home-%s:/home/praktor", workspace))
 
+	// Nix store (shared named volume)
+	if opts.NixEnabled {
+		binds = append(binds, fmt.Sprintf("praktor-nix-%s:/nix", workspace))
+	}
+
 	// Extra mounts (user-configured, kept as-is)
 	for _, m := range opts.Mounts {
 		bind := fmt.Sprintf("%s:%s", m.Source, m.Target)
