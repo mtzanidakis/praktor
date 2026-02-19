@@ -74,8 +74,8 @@ Note: On this system, binaries must be built with `CGO_ENABLED=0` due to the nix
 **IMPORTANT: Never run `node`, `npm`, or `npx` directly on the host.** Always run them inside a Docker container. For the UI:
 
 ```sh
-docker run --rm -v $(pwd)/ui:/app -w /app node:25-alpine sh -c "npm install && npm run build"
-docker run --rm -v $(pwd)/ui:/app -w /app node:25-alpine npm run dev
+docker run --rm -v $(pwd)/ui:/app -w /app node:24-alpine sh -c "npm install && npm run build"
+docker run --rm -v $(pwd)/ui:/app -w /app node:24-alpine npm run dev
 ```
 
 For agent-runner or any other Node.js tooling, use the same pattern with the appropriate volume mount.
@@ -168,7 +168,7 @@ All containers use Docker named volumes (no host path dependencies):
 |--------|---------------|------|---------|
 | `praktor-wk-{workspace}` | `/workspace/agent` | rw | Agent workspace |
 | `praktor-global` | `/workspace/global` | ro | Global instructions |
-| `praktor-sess-{workspace}` | `/home/praktor/.claude` | rw | Claude session data |
+| `praktor-home-{workspace}` | `/home/praktor` | rw | Agent home directory |
 
 The gateway uses `praktor-data` for SQLite/NATS and `praktor-global` for global instructions. Both gateway and agents run as non-root user `praktor` (uid 10321).
 
