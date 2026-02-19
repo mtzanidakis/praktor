@@ -22,7 +22,7 @@ func buildMounts(opts AgentOpts) []string {
 	binds = append(binds, "praktor-global:/workspace/global:ro")
 
 	// Claude session data (named volume)
-	binds = append(binds, fmt.Sprintf("praktor-sess-%s:/home/praktor/.claude", workspace))
+	binds = append(binds, fmt.Sprintf("praktor-home-%s:/home/praktor", workspace))
 
 	// Extra mounts (user-configured, kept as-is)
 	for _, m := range opts.Mounts {

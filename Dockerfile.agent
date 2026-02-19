@@ -59,8 +59,9 @@ COPY --from=go-build /claude /usr/local/bin/claude
 
 # Pre-create volume mount points with correct ownership so Docker
 # populates new named volumes with the right permissions and structure.
-RUN mkdir -p /home/praktor/.claude/debug /workspace/agent /workspace/global && \
-    chown -R praktor:praktor /home/praktor/.claude /workspace/agent /workspace/global
+RUN mkdir -p /workspace/agent /workspace/global && \
+    chown -R praktor:praktor /workspace/agent /workspace/global && \
+    chmod 0700 /home/praktor
 
 # Runtime config
 ENV CHROMIUM_PATH=/usr/bin/chromium
