@@ -30,17 +30,13 @@ FROM alpine:3.23
 RUN apk add --no-cache \
     bash \
     ca-certificates \
-    chromium \
     curl \
-    font-liberation \
-    font-noto-cjk \
-    font-noto-emoji \
     git \
+    jq \
     libgcc \
     libstdc++ \
     nix \
     nodejs \
-    nss \
     ripgrep \
     tzdata && \
     update-ca-certificates
@@ -69,7 +65,6 @@ RUN mkdir -p /workspace/agent /workspace/global && \
     chmod 0700 /home/praktor
 
 # Runtime config
-ENV CHROMIUM_PATH=/usr/bin/chromium
 ENV USE_BUILTIN_RIPGREP=0
 ENV NIX_PROFILES="/nix/var/nix/profiles/default /home/praktor/.nix-profile"
 ENV NIX_SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
