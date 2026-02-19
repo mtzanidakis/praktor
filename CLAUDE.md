@@ -50,6 +50,7 @@ agent-runner/src/                # TypeScript: NATS bridge + Claude Code SDK + M
   mcp-profile.ts                 # MCP server: user_profile_read/update
   mcp-memory.ts                  # MCP server: memory_store/recall/list/delete/forget
   mcp-swarm.ts                   # MCP server: swarm_chat_send (conditional on SWARM_CHAT_TOPIC)
+  mcp-nix.ts                     # MCP server: nix_search/add/list_installed/remove/upgrade
 ui/                              # React/Vite SPA (dark theme, indigo accent)
   src/pages/                     # Dashboard, Agents, Conversations, Tasks, Secrets, Swarms
   src/components/SwarmGraph.tsx   # SVG-based visual graph editor for swarm topology
@@ -109,6 +110,7 @@ Agents are defined in the `agents` map in YAML config. Each agent has:
 - `files` - Secret files injected into container at start (`secret`, `target`, `mode`)
 - `allowed_tools` - Restrict Claude tools
 - `claude_md` - Relative path to agent-specific CLAUDE.md
+- `nix_enabled` - Enable nix package manager in agent container (starts nix-daemon)
 
 The `router.default_agent` must reference an existing agent.
 
@@ -246,6 +248,7 @@ Each MCP tool domain lives in its own file under `agent-runner/src/mcp-*.ts`. To
 - Persistent memory - SQLite-backed per-agent memory (`/workspace/agent/memory.db`) with MCP tools (memory_store, memory_recall, memory_list, memory_delete, memory_forget). Existing memory keys are listed in the system prompt so agents know what's stored.
 - Scheduled tasks - Cron/interval/relative delay (+30s, +5m, +2h)/one-shot jobs that run Claude and deliver results
 - Web access - Agents can use WebSearch and WebFetch tools
+- Nix package manager - Agents with `nix_enabled: true` can install packages on demand via MCP tools (nix_search, nix_add, nix_list_installed, nix_remove, nix_upgrade). When nix-daemon is detected, the system prompt instructs agents to auto-install missing tools. The `/nix` Telegram command provides direct user control over agent packages.
 - Browser control - Chromium available in agent containers
 - Container isolation - Agents sandboxed in Docker containers with NATS communication
 - Agent swarms - Graph-based orchestration: fan-out (parallel), pipeline (sequential with context passing), and collaborative (real-time chat) execution patterns. Visual graph editor in Mission Control, `@swarm` Telegram integration
@@ -258,3 +261,4 @@ Each MCP tool domain lives in its own file under `agent-runner/src/mcp-*.ts`. To
   - `/start [agent]` — Say hello to an agent
   - `/stop [agent]` — Abort the active run and drain the message queue (container stays running)
   - `/reset [agent]` — Clear session context for a fresh conversation
+  - `/nix <action> [package] [@agent]` — Manage nix packages (search, add, list, remove, upgrade)

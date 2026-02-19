@@ -22,7 +22,9 @@ RUN npx esbuild --bundle --format=cjs --platform=node --target=node24 \
     npx esbuild --bundle --format=cjs --platform=node --target=node24 \
       --outfile=out/mcp-memory.js src/mcp-memory.ts && \
     npx esbuild --bundle --format=cjs --platform=node --target=node24 \
-      --outfile=out/mcp-swarm.js src/mcp-swarm.ts
+      --outfile=out/mcp-swarm.js src/mcp-swarm.ts && \
+    npx esbuild --bundle --format=cjs --platform=node --target=node24 \
+      --outfile=out/mcp-nix.js src/mcp-nix.ts
 
 # Runtime image — no node_modules, just bundled JS files
 FROM alpine:3.23

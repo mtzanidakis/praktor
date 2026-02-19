@@ -24,7 +24,8 @@ Praktor is a single Go binary that orchestrates the full loop: it receives messa
 - **Scheduled tasks** - Cron, interval, or one-shot jobs that run agents and deliver results via Telegram
 - **Secure vault** - AES-256-GCM encrypted secrets, injected as env vars or files at container start (never exposed to LLM)
 - **Hot config reload** - Edit `praktor.yaml` and changes apply automatically — no restart needed
-- **Telegram commands** - `/start [agent]` to say hello, `/stop [agent]` to abort the active run, `/reset [agent]` to clear session context
+- **Nix package manager** - Agents with `nix_enabled: true` can install packages on demand (e.g. Python, ffmpeg, LaTeX) via MCP tools — or manage them directly with the `/nix` Telegram command
+- **Telegram commands** - `/start [agent]` to say hello, `/stop [agent]` to abort the active run, `/reset [agent]` to clear session context, `/nix <action> [pkg] [@agent]` to manage nix packages
 - **Agent swarms** - Graph-based orchestration with fan-out, pipeline, and collaborative execution patterns — visual graph editor in Mission Control, `@swarm` Telegram commands
 - **Web & browser access** - Agents can search the web and control Chromium
 - **Mission Control** - Real-time dashboard with WebSocket updates
@@ -105,9 +106,11 @@ defaults:
 agents:
   general:
     description: "General-purpose assistant for everyday tasks"
+    nix_enabled: true           # Enable nix package manager
   coder:
     description: "Software engineering specialist"
     model: "claude-opus-4-6"
+    nix_enabled: true
     env:
       GITHUB_TOKEN: "${GITHUB_TOKEN}"
   researcher:
@@ -293,6 +296,48 @@ curl http://localhost:8080/api/swarms/{id}
 # Delete a swarm run
 curl -X DELETE http://localhost:8080/api/swarms/{id}
 ```
+
+## Nix Package Manager
+
+Agents with `nix_enabled: true` have access to the [Nix](https://nixos.org/) package manager inside their containers. This lets agents install any package from [nixpkgs](https://search.nixos.org/packages) on demand — no custom Docker images needed.
+
+### How It Works
+
+When nix is enabled for an agent, the gateway starts `nix-daemon` in the container via Docker exec. The agent-runner detects the daemon and adds instructions to the system prompt so the agent knows it can install missing tools autonomously.
+
+For example, if you ask an agent to "write a Python scraping script" and Python isn't installed, the agent will:
+1. Use `nix_search` to find the package
+2. Use `nix_add` to install it
+3. Proceed with the task
+
+Installed packages persist across sessions — the nix store lives in `praktor-nix-{workspace}` and the profile metadata in `praktor-home-{workspace}`.
+
+### MCP Tools
+
+Agents have five MCP tools for package management:
+
+| Tool | Description |
+|------|-------------|
+| `nix_search` | Search nixpkgs for packages |
+| `nix_add` | Install a package |
+| `nix_list_installed` | List installed packages |
+| `nix_remove` | Remove a package |
+| `nix_upgrade` | Upgrade all packages |
+
+### Telegram Command
+
+Use `/nix` to manage packages directly from Telegram:
+
+```
+/nix search python3          # Search for packages
+/nix add python3             # Install a package
+/nix list                    # List installed packages
+/nix remove python3          # Remove a package
+/nix upgrade                 # Upgrade all packages
+/nix list @coder             # Target a specific agent
+```
+
+Without `@agent`, the command runs on the default agent.
 
 ## Development
 

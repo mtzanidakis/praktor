@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -70,6 +71,7 @@ func NewBot(cfg config.TelegramConfig, orch *agent.Orchestrator, rtr *router.Rou
 			{Command: "start", Description: "Say hello to an agent"},
 			{Command: "stop", Description: "Abort the active agent run"},
 			{Command: "reset", Description: "Reset conversation session"},
+			{Command: "nix", Description: "Manage nix packages in agent container"},
 		},
 	})
 
@@ -185,6 +187,15 @@ func (b *Bot) Start(ctx context.Context) error {
 		b.cmdCommands(ctx, message.Chat.ID)
 		return nil
 	}, th.CommandEqual("commands"))
+
+	handler.HandleMessage(func(hctx *th.Context, message telego.Message) error {
+		if !b.allowedUser(message) {
+			return nil
+		}
+		_, _, payload := tu.ParseCommandPayload(message.Text)
+		b.cmdPkg(ctx, message.Chat.ID, payload)
+		return nil
+	}, th.CommandEqual("nix"))
 
 	// Catch-all for regular messages
 	handler.HandleMessage(func(hctx *th.Context, message telego.Message) error {
@@ -503,6 +514,7 @@ func (b *Bot) cmdCommands(ctx context.Context, chatID int64) {
 		"  /start \\[agent] — Say hello to an agent\n" +
 		"  /stop \\[agent] — Abort the active agent run\n" +
 		"  /reset \\[agent] — Reset conversation session\n" +
+		"  /nix <action> \\[package] \\[@agent] — Manage nix packages\n" +
 		"\n@agent\\_name prefix or smart routing for regular messages.\n" +
 		"@swarm prefix for swarm orchestration."
 	_ = b.SendMessage(ctx, chatID, text)
@@ -550,6 +562,158 @@ func (b *Bot) cmdAgents(ctx context.Context, chatID int64) {
 	}
 
 	_ = b.SendMessage(ctx, chatID, sb.String())
+}
+
+func (b *Bot) cmdPkg(ctx context.Context, chatID int64, payload string) {
+	usage := "Usage: /nix <search|add|list|remove|upgrade> \\[package] \\[@agent]"
+
+	args := strings.Fields(payload)
+	if len(args) == 0 {
+		_ = b.SendMessage(ctx, chatID, usage)
+		return
+	}
+
+	// Extract @agent hint from args (scan from end)
+	var agentHint string
+	var cleanArgs []string
+	for _, a := range args {
+		if strings.HasPrefix(a, "@") {
+			agentHint = strings.TrimPrefix(a, "@")
+		} else {
+			cleanArgs = append(cleanArgs, a)
+		}
+	}
+
+	action := cleanArgs[0]
+	agentID := agentHint
+	if agentID == "" {
+		agentID = b.router.DefaultAgent()
+	}
+
+	var cmd []string
+	switch action {
+	case "search":
+		if len(cleanArgs) < 2 {
+			_ = b.SendMessage(ctx, chatID, "Usage: /nix search <query> \\[@agent]")
+			return
+		}
+		cmd = []string{"nix", "search", "--json", "--quiet", "nixpkgs", cleanArgs[1]}
+	case "add", "install":
+		if len(cleanArgs) < 2 {
+			_ = b.SendMessage(ctx, chatID, "Usage: /nix add <package> \\[@agent]")
+			return
+		}
+		cmd = []string{"nix", "profile", "add", "nixpkgs#" + cleanArgs[1]}
+	case "list", "ls":
+		cmd = []string{"nix", "profile", "list", "--json"}
+	case "remove", "rm":
+		if len(cleanArgs) < 2 {
+			_ = b.SendMessage(ctx, chatID, "Usage: /nix remove <package> \\[@agent]")
+			return
+		}
+		cmd = []string{"nix", "profile", "remove", cleanArgs[1]}
+	case "upgrade":
+		cmd = []string{"nix", "profile", "upgrade", "--all"}
+	default:
+		_ = b.SendMessage(ctx, chatID, fmt.Sprintf("Unknown action: %s\n%s", action, usage))
+		return
+	}
+
+	// Ensure agent container is running
+	if err := b.orch.EnsureAgent(ctx, agentID); err != nil {
+		_ = b.SendMessage(ctx, chatID, fmt.Sprintf("Failed to start agent *%s*: %s", agentID, err))
+		return
+	}
+
+	_ = b.sendChatAction(ctx, chatID, "typing")
+
+	output, err := b.orch.ExecInAgent(ctx, agentID, cmd)
+	if err != nil && output == "" {
+		_ = b.SendMessage(ctx, chatID, fmt.Sprintf("Failed: %s", err))
+		return
+	}
+
+	// Parse JSON output
+	switch action {
+	case "list", "ls":
+		output = parseNixProfileList(output)
+	case "search":
+		output = parseNixSearchResults(output)
+	}
+
+	if output == "" {
+		output = "Done (no output)."
+	}
+	if len(output) > 3500 {
+		output = output[:3500] + "\n... (truncated)"
+	}
+
+	_ = b.SendMessage(ctx, chatID, fmt.Sprintf("*%s* `%s`:\n```\n%s\n```", agentID, action, output))
+}
+
+// parseNixProfileList parses `nix profile list --json` output into a human-readable format.
+func parseNixProfileList(jsonOutput string) string {
+	var data struct {
+		Elements map[string]struct {
+			StorePaths []string `json:"storePaths"`
+		} `json:"elements"`
+	}
+	if err := json.Unmarshal([]byte(jsonOutput), &data); err != nil {
+		return jsonOutput
+	}
+
+	var lines []string
+	for name, elem := range data.Elements {
+		var versions []string
+		for _, p := range elem.StorePaths {
+			// Store path format: /nix/store/<32-char hash>-<name>-<version>
+			base := path.Base(p)
+			if len(base) > 33 {
+				afterHash := base[33:] // skip hash + dash
+				prefix := name + "-"
+				if strings.HasPrefix(afterHash, prefix) {
+					versions = append(versions, afterHash[len(prefix):])
+				} else {
+					versions = append(versions, afterHash)
+				}
+			}
+		}
+		if len(versions) == 0 {
+			versions = []string{"unknown"}
+		}
+		lines = append(lines, fmt.Sprintf("%s: %s", name, strings.Join(versions, ", ")))
+	}
+	if len(lines) == 0 {
+		return "No packages installed."
+	}
+	return strings.Join(lines, "\n")
+}
+
+// parseNixSearchResults parses `nix search --json` output into a human-readable format.
+func parseNixSearchResults(jsonOutput string) string {
+	var data map[string]struct {
+		Pname       string `json:"pname"`
+		Version     string `json:"version"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal([]byte(jsonOutput), &data); err != nil {
+		return jsonOutput
+	}
+
+	seen := make(map[string]bool)
+	var results []string
+	for _, entry := range data {
+		key := entry.Pname + "\t" + entry.Version + "\t" + entry.Description
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		results = append(results, fmt.Sprintf("%s %s\n%s", entry.Pname, entry.Version, entry.Description))
+	}
+	if len(results) == 0 {
+		return "No results found."
+	}
+	return strings.Join(results, "\n\n")
 }
 
 // handleSwarmEvent handles swarm completion events and delivers results to Telegram.

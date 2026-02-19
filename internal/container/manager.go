@@ -17,6 +17,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/mtzanidakis/praktor/internal/config"
 	"github.com/mtzanidakis/praktor/internal/natsbus"
 )
@@ -333,6 +334,47 @@ func (m *Manager) GetRunning(agentID string) *ContainerInfo {
 		return info
 	}
 	return nil
+}
+
+// Exec runs a command inside a running agent container and returns the combined output.
+func (m *Manager) Exec(ctx context.Context, agentID string, cmd []string) (string, error) {
+	m.mu.RLock()
+	info, ok := m.active[agentID]
+	m.mu.RUnlock()
+	if !ok {
+		return "", fmt.Errorf("agent %s is not running", agentID)
+	}
+
+	execResp, err := m.docker.ContainerExecCreate(ctx, info.ID, dockercontainer.ExecOptions{
+		Cmd:          cmd,
+		AttachStdout: true,
+		AttachStderr: true,
+	})
+	if err != nil {
+		return "", fmt.Errorf("exec create: %w", err)
+	}
+
+	attach, err := m.docker.ContainerExecAttach(ctx, execResp.ID, dockercontainer.ExecAttachOptions{})
+	if err != nil {
+		return "", fmt.Errorf("exec attach: %w", err)
+	}
+	defer attach.Close()
+
+	var stdout, stderr bytes.Buffer
+	if _, err := stdcopy.StdCopy(&stdout, &stderr, attach.Reader); err != nil {
+		return "", fmt.Errorf("exec read: %w", err)
+	}
+
+	inspect, err := m.docker.ContainerExecInspect(ctx, execResp.ID)
+	if err != nil {
+		return "", fmt.Errorf("exec inspect: %w", err)
+	}
+
+	output := stdout.String() + stderr.String()
+	if inspect.ExitCode != 0 {
+		return output, fmt.Errorf("exit code %d: %s", inspect.ExitCode, output)
+	}
+	return output, nil
 }
 
 func (m *Manager) ActiveCount() int {

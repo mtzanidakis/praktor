@@ -119,6 +119,21 @@ function loadSystemPrompt(includeIdentity = true): string {
     // Global instructions not available
   }
 
+  // Nix package manager: detect nix-daemon and inform agent
+  try {
+    execSync("pgrep -l nix-daemon", { timeout: 5000 });
+    parts.push(
+      "NIX PACKAGE MANAGER — You have the nix package manager available.\n" +
+      "- When a task requires a tool or language not present in the container, use nix to install it.\n" +
+      "- Use the `nix_search` MCP tool to find packages, and `nix_add` to install them.\n" +
+      "- Use `nix_list_installed` to see what's already installed.\n" +
+      "- Example: if asked to run a Python script and python is missing, install it with nix_add(package: \"python3\") first.\n" +
+      "- Always check if a command exists before installing (e.g. `which python3`)."
+    );
+  } catch {
+    // nix-daemon not running, skip
+  }
+
   // Security: prevent agents from revealing secret values
   parts.push(
     "SECURITY — MANDATORY RULES:\n" +
@@ -235,6 +250,12 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
             type: "stdio",
             command: "node",
             args: ["/app/mcp-memory.js"],
+            env: {},
+          },
+          "praktor-nix": {
+            type: "stdio",
+            command: "node",
+            args: ["/app/mcp-nix.js"],
             env: {},
           },
           ...(SWARM_CHAT_TOPIC ? {

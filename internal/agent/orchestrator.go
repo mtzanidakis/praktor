@@ -850,3 +850,7 @@ func (o *Orchestrator) ReadVolumeFile(ctx context.Context, workspace, filePath, 
 func (o *Orchestrator) WriteVolumeFile(ctx context.Context, workspace, filePath, content, image string) error {
 	return o.containers.WriteVolumeFile(ctx, workspace, filePath, content, image)
 }
+
+func (o *Orchestrator) ExecInAgent(ctx context.Context, agentID string, cmd []string) (string, error) {
+	return o.containers.Exec(ctx, agentID, cmd)
+}
