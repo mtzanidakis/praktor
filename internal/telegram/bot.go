@@ -460,7 +460,10 @@ func (b *Bot) resolveAgent(chatID int64, payload string) string {
 
 func (b *Bot) cmdStart(ctx context.Context, msg telego.Message, payload string) {
 	chatID := msg.Chat.ID
-	agentID := b.resolveAgent(chatID, payload)
+	agentID := ""
+	if f := strings.Fields(payload); len(f) > 0 {
+		agentID = strings.TrimPrefix(f[0], "@")
+	}
 	if agentID == "" {
 		agentID = b.router.DefaultAgent()
 	}
