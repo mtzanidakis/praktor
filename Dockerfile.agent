@@ -71,6 +71,9 @@ RUN mkdir -p /workspace/agent /workspace/global && \
 # Runtime config
 ENV CHROMIUM_PATH=/usr/bin/chromium
 ENV USE_BUILTIN_RIPGREP=0
+ENV NIX_PROFILES="/nix/var/nix/profiles/default /home/praktor/.nix-profile"
+ENV NIX_SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+ENV PATH="/home/praktor/.nix-profile/bin:/nix/var/nix/profiles/default/bin:${PATH}"
 
 USER praktor
 WORKDIR /workspace/agent

@@ -200,6 +200,21 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 		return nil, fmt.Errorf("start container: %w", err)
 	}
 
+	// Start nix-daemon as root via Docker exec (container runs as praktor)
+	if opts.NixEnabled {
+		execResp, err := m.docker.ContainerExecCreate(ctx, resp.ID, dockercontainer.ExecOptions{
+			User: "root",
+			Cmd:  []string{"/usr/sbin/nix-daemon"},
+		})
+		if err != nil {
+			slog.Warn("failed to create nix-daemon exec", "agent", opts.AgentID, "error", err)
+		} else if err := m.docker.ContainerExecStart(ctx, execResp.ID, dockercontainer.ExecStartOptions{Detach: true}); err != nil {
+			slog.Warn("failed to start nix-daemon", "agent", opts.AgentID, "error", err)
+		} else {
+			slog.Info("nix-daemon started", "agent", opts.AgentID)
+		}
+	}
+
 	info := &ContainerInfo{
 		ID:        resp.ID,
 		AgentID:   opts.AgentID,
