@@ -607,18 +607,21 @@ func (b *Bot) cmdPkg(ctx context.Context, chatID int64, payload string) {
 		cmd = []string{"nix", "search", "--json", "--quiet", "nixpkgs", cleanArgs[1]}
 	case "add", "install":
 		if len(cleanArgs) < 2 {
-			_ = b.SendMessage(ctx, chatID, "Usage: /nix add <package> \\[@agent]")
+			_ = b.SendMessage(ctx, chatID, "Usage: /nix add <package...> \\[@agent]")
 			return
 		}
-		cmd = []string{"nix", "profile", "add", "nixpkgs#" + cleanArgs[1]}
+		cmd = []string{"nix", "profile", "add"}
+		for _, p := range cleanArgs[1:] {
+			cmd = append(cmd, "nixpkgs#"+p)
+		}
 	case "list", "ls":
 		cmd = []string{"nix", "profile", "list", "--json"}
 	case "remove", "rm":
 		if len(cleanArgs) < 2 {
-			_ = b.SendMessage(ctx, chatID, "Usage: /nix remove <package> \\[@agent]")
+			_ = b.SendMessage(ctx, chatID, "Usage: /nix remove <package...> \\[@agent]")
 			return
 		}
-		cmd = []string{"nix", "profile", "remove", cleanArgs[1]}
+		cmd = append([]string{"nix", "profile", "remove"}, cleanArgs[1:]...)
 	case "upgrade":
 		cmd = []string{"nix", "profile", "upgrade", "--all"}
 	default:

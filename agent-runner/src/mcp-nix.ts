@@ -91,19 +91,21 @@ server.tool(
 
 server.tool(
   "nix_add",
-  "Install a package from nixpkgs into the agent's nix profile.",
+  "Install one or more packages from nixpkgs into the agent's nix profile.",
   {
-    package: z.string().describe("Package name (e.g. 'neovim', 'ripgrep', 'python3')"),
+    packages: z.string().describe("Space-separated package names (e.g. 'neovim ripgrep python3')"),
   },
-  async ({ package: pkg }) => {
-    console.error(`[mcp-nix] add package=${pkg}`);
+  async ({ packages }) => {
+    const pkgs = packages.split(/\s+/).filter(Boolean);
+    console.error(`[mcp-nix] add packages=${pkgs.join(",")}`);
     if (!nixAvailable()) return nixUnavailableResult();
     try {
-      const stdout = execFileSync("nix", ["profile", "add", `nixpkgs#${pkg}`], {
+      const args = ["profile", "add", ...pkgs.map((p) => `nixpkgs#${p}`)];
+      const stdout = execFileSync("nix", args, {
         timeout: 120000,
         encoding: "utf-8",
       });
-      return { content: [{ type: "text" as const, text: stdout || `Package '${pkg}' installed successfully.` }] };
+      return { content: [{ type: "text" as const, text: stdout || `Installed: ${pkgs.join(", ")}` }] };
     } catch (err: any) {
       const output = err.stderr || err.stdout || err.message;
       return { content: [{ type: "text" as const, text: `Install failed: ${output}` }] };
@@ -133,19 +135,21 @@ server.tool(
 
 server.tool(
   "nix_remove",
-  "Remove a package from the agent's nix profile.",
+  "Remove one or more packages from the agent's nix profile.",
   {
-    package: z.string().describe("Package name to remove"),
+    packages: z.string().describe("Space-separated package names to remove (e.g. 'neovim ripgrep')"),
   },
-  async ({ package: pkg }) => {
-    console.error(`[mcp-nix] remove package=${pkg}`);
+  async ({ packages }) => {
+    const pkgs = packages.split(/\s+/).filter(Boolean);
+    console.error(`[mcp-nix] remove packages=${pkgs.join(",")}`);
     if (!nixAvailable()) return nixUnavailableResult();
     try {
-      const stdout = execFileSync("nix", ["profile", "remove", pkg], {
+      const args = ["profile", "remove", ...pkgs];
+      const stdout = execFileSync("nix", args, {
         timeout: 30000,
         encoding: "utf-8",
       });
-      return { content: [{ type: "text" as const, text: stdout || `Package '${pkg}' removed successfully.` }] };
+      return { content: [{ type: "text" as const, text: stdout || `Removed: ${pkgs.join(", ")}` }] };
     } catch (err: any) {
       const output = err.stderr || err.stdout || err.message;
       return { content: [{ type: "text" as const, text: `Remove failed: ${output}` }] };
