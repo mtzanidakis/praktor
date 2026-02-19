@@ -554,6 +554,10 @@ func (b *Bot) cmdAgents(ctx context.Context, chatID int64) {
 		}
 		sb.WriteString(fmt.Sprintf("\n  Status: `%s` | Model: `%s`", status, model))
 
+		if def, ok := b.registry.GetDefinition(a.ID); ok && def.NixEnabled {
+			sb.WriteString(" | Nix: `enabled`")
+		}
+
 		if stats, ok := msgStats[a.ID]; ok {
 			sb.WriteString(fmt.Sprintf(" | Messages: %d", stats.MessageCount))
 		}
