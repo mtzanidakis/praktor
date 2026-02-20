@@ -111,6 +111,9 @@ func runGateway() error {
 	// Idle reaper
 	go orch.StartIdleReaper(ctx)
 
+	// Nix garbage collection
+	go orch.StartNixGC(ctx)
+
 	// Swarm coordinator
 	swarmCoord := swarm.NewCoordinator(bus, ctrMgr, db, reg, v)
 	orch.SetSwarmCoordinator(swarmCoord)
