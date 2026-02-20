@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"strings"
 	"sync"
 	"time"
@@ -791,6 +792,52 @@ func (o *Orchestrator) StartIdleReaper(ctx context.Context) {
 					continue
 				}
 				o.publishIdleStopEvent(agentID)
+			}
+		}
+	}
+}
+
+// StartNixGC runs nix-collect-garbage -d once per day at a random time
+// in all running agent containers that have nix_enabled.
+func (o *Orchestrator) StartNixGC(ctx context.Context) {
+	for {
+		// Sleep for a random duration between 0 and 24 hours
+		delay := time.Duration(rand.Int64N(int64(24 * time.Hour)))
+		slog.Info("nix-collect-garbage scheduled", "in", delay.Round(time.Minute))
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(delay):
+		}
+
+		agents, err := o.registry.List()
+		if err != nil {
+			slog.Error("nix-gc: failed to list agents", "error", err)
+			continue
+		}
+
+		for _, ag := range agents {
+			def, ok := o.registry.GetDefinition(ag.ID)
+			if !ok || !def.NixEnabled {
+				continue
+			}
+
+			if err := o.EnsureAgent(ctx, ag.ID); err != nil {
+				slog.Warn("nix-gc: failed to start agent", "agent", ag.ID, "error", err)
+				continue
+			}
+
+			output, err := o.containers.Exec(ctx, ag.ID, []string{"nix-collect-garbage", "-d"})
+			if err != nil {
+				slog.Warn("nix-collect-garbage failed", "agent", ag.ID, "error", err)
+				continue
+			}
+
+			// Log last non-empty line
+			lines := strings.Split(strings.TrimSpace(output), "\n")
+			if len(lines) > 0 {
+				slog.Info("nix-collect-garbage: ["+ag.ID+"] "+lines[len(lines)-1])
 			}
 		}
 	}
