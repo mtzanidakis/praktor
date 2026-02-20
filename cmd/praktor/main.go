@@ -121,7 +121,6 @@ func runGateway() error {
 	// Scheduler
 	sched := scheduler.New(db, orch, bus, cfg.Scheduler, cfg.Telegram.MainChatID)
 	go sched.Start(ctx)
-	slog.Info("scheduler started")
 
 	// Telegram bot
 	if cfg.Telegram.Token != "" {
@@ -143,7 +142,6 @@ func runGateway() error {
 				slog.Error("web server error", "error", err)
 			}
 		}()
-		slog.Info("web server started", "port", cfg.Web.Port)
 	}
 
 	// Config file watcher — polls mtime every 3s
