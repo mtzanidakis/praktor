@@ -162,6 +162,19 @@ agents:
         mode: "0600"
 ```
 
+## Browser Automation
+
+All agent containers come with [playwright-cli](https://github.com/microsoft/playwright-cli) pre-installed and configured to use system Chromium. Agents can navigate websites, fill forms, take screenshots, and extract data — no setup needed.
+
+The browser session persists across messages within the same agent session and shuts down with the container on idle timeout.
+
+```
+@general take a screenshot of https://example.com
+@general go to https://example.com/form, fill in the email field, and submit
+```
+
+The playwright-cli skill is automatically loaded into every agent's system prompt, teaching it the full command set (`open`, `goto`, `click`, `fill`, `screenshot`, `snapshot`, tabs, etc.).
+
 ## Agent Extensions
 
 Extend agents with MCP servers, plugins, and skills — all managed per-agent from Mission Control. Extensions are applied automatically when containers start.
@@ -282,19 +295,6 @@ praktor restore -f /path/to/backup.tar.zst -overwrite    # Overwrites existing v
 Restores volumes from a backup archive. Without `-overwrite`, refuses to restore if any target volume already exists.
 
 Both commands accept `-image <name>` to override the helper container image (default: `alpine:3`).
-
-## Browser Automation
-
-All agent containers come with [playwright-cli](https://github.com/microsoft/playwright-cli) pre-installed and configured to use system Chromium. Agents can navigate websites, fill forms, take screenshots, and extract data — no setup needed.
-
-The browser session persists across messages within the same agent session and shuts down with the container on idle timeout.
-
-```
-@general take a screenshot of https://example.com
-@general go to https://example.com/form, fill in the email field, and submit
-```
-
-The playwright-cli skill is automatically loaded into every agent's system prompt, teaching it the full command set (`open`, `goto`, `click`, `fill`, `screenshot`, `snapshot`, tabs, etc.).
 
 ## Development
 
