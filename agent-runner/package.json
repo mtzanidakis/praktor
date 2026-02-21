@@ -6,16 +6,18 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.2.49",
+    "@anthropic-ai/claude-agent-sdk": "0.2.50",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "nats": "latest"
   },
   "devDependencies": {
     "@types/node": "latest",
     "esbuild": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "vitest": "latest"
   }
 }
