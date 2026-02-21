@@ -976,6 +976,10 @@ func (o *Orchestrator) WriteVolumeFile(ctx context.Context, workspace, filePath,
 	return o.containers.WriteVolumeFile(ctx, workspace, filePath, content, image)
 }
 
+func (o *Orchestrator) WriteVolumeBytes(ctx context.Context, workspace, filePath string, data []byte, image string) error {
+	return o.containers.WriteVolumeBytes(ctx, workspace, filePath, data, image)
+}
+
 func (o *Orchestrator) ExecInAgent(ctx context.Context, agentID string, cmd []string) (string, error) {
 	return o.containers.Exec(ctx, agentID, cmd)
 }

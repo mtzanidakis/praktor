@@ -295,6 +295,7 @@ All agent containers include [playwright-cli](https://github.com/microsoft/playw
 - Web access - Agents can use WebSearch and WebFetch tools
 - Nix package manager - Agents with `nix_enabled: true` can install packages on demand via MCP tools (nix_search, nix_add, nix_list_installed, nix_remove, nix_upgrade). When nix-daemon is detected, the system prompt instructs agents to auto-install missing tools. The `/nix` Telegram command provides direct user control over agent packages.
 - File sending - Agents can send files (screenshots, PDFs, etc.) to Telegram via the `file_send` MCP tool. Images are sent as photos, other files as documents. Max 12MB per file.
+- File receiving - Files sent to the bot in Telegram (documents, photos, audio, video, voice, video notes, animations) are downloaded and saved to the agent's workspace at `/workspace/agent/uploads/{timestamp}_{filename}`. The agent receives the file path in the message. Supports Telegram's 20MB download limit.
 - Browser automation - [playwright-cli](https://github.com/microsoft/playwright-cli) pre-installed with system Chromium, skill auto-loaded into system prompt. Browser session persists across messages, shuts down with container.
 - Container isolation - Agents sandboxed in Docker containers with NATS communication
 - Agent swarms - Graph-based orchestration: fan-out (parallel), pipeline (sequential with context passing), and collaborative (real-time chat) execution patterns. Visual graph editor in Mission Control, `@swarm` Telegram integration

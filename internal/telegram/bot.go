@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mtzanidakis/praktor/internal/agent"
 	"github.com/mtzanidakis/praktor/internal/config"
@@ -242,13 +243,23 @@ func (b *Bot) handleMessage(ctx context.Context, msg telego.Message) {
 	chatID := msg.Chat.ID
 	userID := msg.From.ID
 
+	// Extract text from message or caption
 	text := msg.Text
 	if text == "" {
-		if msg.Caption != "" {
-			text = msg.Caption
-		} else {
-			return
-		}
+		text = msg.Caption
+	}
+
+	// Extract file attachment
+	attachment := extractAttachment(msg)
+
+	// Nothing to process
+	if text == "" && attachment == nil {
+		return
+	}
+
+	// File with no text — provide default prompt
+	if text == "" && attachment != nil {
+		text = fmt.Sprintf("I'm sending you a file: %s", attachment.Name)
 	}
 
 	senderID := strconv.FormatInt(userID, 10)
@@ -280,6 +291,39 @@ func (b *Bot) handleMessage(ctx context.Context, msg telego.Message) {
 	// Send thinking indicator
 	_ = b.sendChatAction(ctx, chatID, "typing")
 
+	// Handle file attachment: download and write to agent workspace
+	if attachment != nil {
+		data, err := b.downloadFile(ctx, attachment.FileID)
+		if err != nil {
+			slog.Error("file download failed", "file_id", attachment.FileID, "error", err)
+			_ = b.SendMessage(ctx, chatID, "Sorry, I couldn't download the file.")
+			return
+		}
+
+		// Resolve agent workspace and image
+		ag, err := b.registry.Get(agentID)
+		if err != nil || ag == nil {
+			slog.Error("agent not found for file upload", "agent", agentID, "error", err)
+			_ = b.SendMessage(ctx, chatID, "Sorry, I couldn't find the agent to deliver the file.")
+			return
+		}
+
+		image := b.registry.ResolveImage(agentID)
+		volumePath := fmt.Sprintf("uploads/%d_%s", time.Now().Unix(), attachment.Name)
+		containerPath := "/workspace/agent/" + volumePath
+
+		if err := b.orch.WriteVolumeBytes(ctx, ag.Workspace, volumePath, data, image); err != nil {
+			slog.Error("file write to volume failed", "path", volumePath, "error", err)
+			_ = b.SendMessage(ctx, chatID, "Sorry, I couldn't save the file to the agent workspace.")
+			return
+		}
+
+		slog.Info("file received and saved", "agent", agentID, "name", attachment.Name, "size", len(data), "path", containerPath)
+
+		cleanedMessage = fmt.Sprintf("%s\n\n[File received: %s (%s, %d bytes) saved to %s]",
+			cleanedMessage, attachment.Name, attachment.MimeType, len(data), containerPath)
+	}
+
 	meta := map[string]string{
 		"sender":  fmt.Sprintf("user:%s", senderID),
 		"chat_id": chatIDStr,
@@ -289,6 +333,101 @@ func (b *Bot) handleMessage(ctx context.Context, msg telego.Message) {
 		slog.Error("handle message failed", "agent", agentID, "error", err)
 		_ = b.SendMessage(ctx, chatID, "Sorry, I encountered an error processing your message.")
 	}
+}
+
+// attachment holds metadata about a file attached to a Telegram message.
+type attachment struct {
+	FileID   string
+	Name     string
+	MimeType string
+}
+
+// extractAttachment checks a Telegram message for file attachments and returns
+// the first one found, or nil if there are no attachments.
+func extractAttachment(msg telego.Message) *attachment {
+	if msg.Document != nil {
+		name := msg.Document.FileName
+		if name == "" {
+			name = "document"
+		}
+		mime := msg.Document.MimeType
+		if mime == "" {
+			mime = "application/octet-stream"
+		}
+		return &attachment{FileID: msg.Document.FileID, Name: name, MimeType: mime}
+	}
+
+	if len(msg.Photo) > 0 {
+		// Use the largest photo (last element)
+		photo := msg.Photo[len(msg.Photo)-1]
+		return &attachment{FileID: photo.FileID, Name: "photo.jpg", MimeType: "image/jpeg"}
+	}
+
+	if msg.Audio != nil {
+		name := msg.Audio.FileName
+		if name == "" {
+			name = "audio.mp3"
+		}
+		mime := msg.Audio.MimeType
+		if mime == "" {
+			mime = "audio/mpeg"
+		}
+		return &attachment{FileID: msg.Audio.FileID, Name: name, MimeType: mime}
+	}
+
+	if msg.Video != nil {
+		name := msg.Video.FileName
+		if name == "" {
+			name = "video.mp4"
+		}
+		mime := msg.Video.MimeType
+		if mime == "" {
+			mime = "video/mp4"
+		}
+		return &attachment{FileID: msg.Video.FileID, Name: name, MimeType: mime}
+	}
+
+	if msg.Voice != nil {
+		mime := msg.Voice.MimeType
+		if mime == "" {
+			mime = "audio/ogg"
+		}
+		return &attachment{FileID: msg.Voice.FileID, Name: "voice.ogg", MimeType: mime}
+	}
+
+	if msg.VideoNote != nil {
+		return &attachment{FileID: msg.VideoNote.FileID, Name: "videonote.mp4", MimeType: "video/mp4"}
+	}
+
+	if msg.Animation != nil {
+		name := msg.Animation.FileName
+		if name == "" {
+			name = "animation.mp4"
+		}
+		mime := msg.Animation.MimeType
+		if mime == "" {
+			mime = "video/mp4"
+		}
+		return &attachment{FileID: msg.Animation.FileID, Name: name, MimeType: mime}
+	}
+
+	return nil
+}
+
+// downloadFile downloads a file from Telegram by its FileID.
+func (b *Bot) downloadFile(ctx context.Context, fileID string) ([]byte, error) {
+	file, err := b.bot.GetFile(ctx, &telego.GetFileParams{FileID: fileID})
+	if err != nil {
+		return nil, fmt.Errorf("get file: %w", err)
+	}
+
+	url := b.bot.FileDownloadURL(file.FilePath)
+	data, err := tu.DownloadFile(url)
+	if err != nil {
+		return nil, fmt.Errorf("download file: %w", err)
+	}
+
+	return data, nil
 }
 
 func (b *Bot) SendMessage(ctx context.Context, chatID int64, text string) error {
