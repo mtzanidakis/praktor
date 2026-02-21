@@ -492,3 +492,66 @@ func (m *Manager) WriteVolumeFile(ctx context.Context, workspace, filePath, cont
 	}
 	return nil
 }
+
+// WriteVolumeBytes writes binary data into a Docker named volume. Same
+// temp-container pattern as WriteVolumeFile but accepts []byte and creates
+// parent directories with correct ownership (uid/gid 10321).
+func (m *Manager) WriteVolumeBytes(ctx context.Context, workspace, filePath string, data []byte, image string) error {
+	volName := fmt.Sprintf("praktor-wk-%s", sanitizeVolumeName(workspace))
+	containerName := fmt.Sprintf("praktor-vol-tmp-%s-%d", sanitizeVolumeName(workspace), time.Now().UnixNano())
+
+	resp, err := m.docker.ContainerCreate(ctx,
+		&dockercontainer.Config{Image: image, Entrypoint: []string{"true"}},
+		&dockercontainer.HostConfig{Binds: []string{volName + ":/vol"}},
+		nil, nil, containerName,
+	)
+	if err != nil {
+		return fmt.Errorf("create temp container: %w", err)
+	}
+	defer func() {
+		_ = m.docker.ContainerRemove(ctx, resp.ID, dockercontainer.RemoveOptions{Force: true})
+	}()
+
+	// Build tar archive with directory entries and the file
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+
+	targetPath := path.Join("/vol", filePath)
+	targetPath = strings.TrimPrefix(targetPath, "/")
+
+	// Create parent directory entries with correct ownership
+	parts := strings.Split(path.Dir(targetPath), "/")
+	for i := range parts {
+		dir := strings.Join(parts[:i+1], "/") + "/"
+		if err := tw.WriteHeader(&tar.Header{
+			Typeflag: tar.TypeDir,
+			Name:     dir,
+			Mode:     0o755,
+			Uid:      10321,
+			Gid:      10321,
+		}); err != nil {
+			return fmt.Errorf("write dir header %s: %w", dir, err)
+		}
+	}
+
+	if err := tw.WriteHeader(&tar.Header{
+		Name: targetPath,
+		Mode: 0o644,
+		Size: int64(len(data)),
+		Uid:  10321,
+		Gid:  10321,
+	}); err != nil {
+		return fmt.Errorf("write tar header: %w", err)
+	}
+	if _, err := tw.Write(data); err != nil {
+		return fmt.Errorf("write tar body: %w", err)
+	}
+	if err := tw.Close(); err != nil {
+		return fmt.Errorf("close tar: %w", err)
+	}
+
+	if err := m.docker.CopyToContainer(ctx, resp.ID, "/", &buf, dockercontainer.CopyToContainerOptions{}); err != nil {
+		return fmt.Errorf("copy to volume: %w", err)
+	}
+	return nil
+}
