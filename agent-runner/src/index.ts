@@ -316,6 +316,12 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
             args: ["/app/mcp-nix.mjs"],
             env: {},
           },
+          "praktor-file": {
+            type: "stdio",
+            command: "node",
+            args: ["/app/mcp-file.mjs"],
+            env: { NATS_URL, AGENT_ID },
+          },
           ...(SWARM_CHAT_TOPIC ? {
             "praktor-swarm": {
               type: "stdio",

@@ -53,6 +53,7 @@ agent-runner/src/                # TypeScript: NATS bridge + Claude Code SDK + M
   mcp-memory.ts                  # MCP server: memory_store/recall/list/delete/forget
   mcp-swarm.ts                   # MCP server: swarm_chat_send (conditional on SWARM_CHAT_TOPIC)
   mcp-nix.ts                     # MCP server: nix_search/add/list_installed/remove/upgrade
+  mcp-file.ts                    # MCP server: file_send (send files to Telegram)
 ui/                              # React/Vite SPA (dark theme, indigo accent)
   src/pages/                     # Dashboard, Agents, Conversations, Tasks, Secrets, Swarms
   src/components/SwarmGraph.tsx   # SVG-based visual graph editor for swarm topology
@@ -293,6 +294,7 @@ All agent containers include [playwright-cli](https://github.com/microsoft/playw
 - Scheduled tasks - Cron/interval/relative delay (+30s, +5m, +2h)/one-shot jobs that run Claude and deliver results
 - Web access - Agents can use WebSearch and WebFetch tools
 - Nix package manager - Agents with `nix_enabled: true` can install packages on demand via MCP tools (nix_search, nix_add, nix_list_installed, nix_remove, nix_upgrade). When nix-daemon is detected, the system prompt instructs agents to auto-install missing tools. The `/nix` Telegram command provides direct user control over agent packages.
+- File sending - Agents can send files (screenshots, PDFs, etc.) to Telegram via the `file_send` MCP tool. Images are sent as photos, other files as documents. Max 12MB per file.
 - Browser automation - [playwright-cli](https://github.com/microsoft/playwright-cli) pre-installed with system Chromium, skill auto-loaded into system prompt. Browser session persists across messages, shuts down with container.
 - Container isolation - Agents sandboxed in Docker containers with NATS communication
 - Agent swarms - Graph-based orchestration: fan-out (parallel), pipeline (sequential with context passing), and collaborative (real-time chat) execution patterns. Visual graph editor in Mission Control, `@swarm` Telegram integration

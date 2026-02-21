@@ -2,10 +2,12 @@ package agent
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -39,12 +41,14 @@ type Orchestrator struct {
 	queues     map[string]*AgentQueue
 	lastMeta   map[string]map[string]string // agentID → last message meta
 	mu         sync.RWMutex
-	listeners  []OutputListener
-	listenerMu sync.RWMutex
+	listeners     []OutputListener
+	fileListeners []FileListener
+	listenerMu    sync.RWMutex
 	swarmCoord SwarmCoordinator
 }
 
 type OutputListener func(agentID, content string, meta map[string]string)
+type FileListener func(agentID string, chatID int64, data []byte, name, mimeType, caption string)
 
 type IPCCommand struct {
 	Type    string          `json:"type"`
@@ -100,6 +104,12 @@ func (o *Orchestrator) OnOutput(listener OutputListener) {
 	o.listenerMu.Lock()
 	defer o.listenerMu.Unlock()
 	o.listeners = append(o.listeners, listener)
+}
+
+func (o *Orchestrator) OnFile(listener FileListener) {
+	o.listenerMu.Lock()
+	defer o.listenerMu.Unlock()
+	o.fileListeners = append(o.fileListeners, listener)
 }
 
 func (o *Orchestrator) HandleMessage(ctx context.Context, agentID, text string, meta map[string]string) error {
@@ -435,6 +445,8 @@ func (o *Orchestrator) handleIPC(msg *nats.Msg) {
 		o.ipcSwarmMessage(msg, agentID, cmd.Payload)
 	case "extension_status":
 		o.ipcExtensionStatus(msg, agentID, cmd.Payload)
+	case "send_file":
+		o.ipcSendFile(msg, agentID, cmd.Payload)
 	default:
 		slog.Warn("unknown IPC command", "type", cmd.Type)
 		o.respondIPC(msg, map[string]any{"error": "unknown command: " + cmd.Type})
@@ -641,6 +653,56 @@ func (o *Orchestrator) ipcExtensionStatus(msg *nats.Msg, agentID string, payload
 	}
 
 	slog.Info("extension status updated via IPC", "agent", agentID)
+	o.respondIPC(msg, map[string]any{"ok": true})
+}
+
+func (o *Orchestrator) ipcSendFile(msg *nats.Msg, agentID string, payload json.RawMessage) {
+	var req struct {
+		Name     string `json:"name"`
+		Data     string `json:"data"`
+		MimeType string `json:"mime_type"`
+		Caption  string `json:"caption"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil {
+		o.respondIPC(msg, map[string]any{"error": "invalid payload"})
+		return
+	}
+	if req.Name == "" || req.Data == "" {
+		o.respondIPC(msg, map[string]any{"error": "name and data are required"})
+		return
+	}
+
+	data, err := base64.StdEncoding.DecodeString(req.Data)
+	if err != nil {
+		o.respondIPC(msg, map[string]any{"error": fmt.Sprintf("base64 decode failed: %v", err)})
+		return
+	}
+
+	meta := o.getLastMeta(agentID)
+	chatIDStr := ""
+	if meta != nil {
+		chatIDStr = meta["chat_id"]
+	}
+	if chatIDStr == "" {
+		o.respondIPC(msg, map[string]any{"error": "no chat_id available for this agent"})
+		return
+	}
+
+	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
+	if err != nil {
+		o.respondIPC(msg, map[string]any{"error": "invalid chat_id"})
+		return
+	}
+
+	o.listenerMu.RLock()
+	listeners := o.fileListeners
+	o.listenerMu.RUnlock()
+
+	for _, l := range listeners {
+		l(agentID, chatID, data, req.Name, req.MimeType, req.Caption)
+	}
+
+	slog.Info("file sent via IPC", "agent", agentID, "name", req.Name, "size", len(data), "mime", req.MimeType)
 	o.respondIPC(msg, map[string]any{"ok": true})
 }
 

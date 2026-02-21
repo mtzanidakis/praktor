@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -111,6 +112,20 @@ func NewBot(cfg config.TelegramConfig, orch *agent.Orchestrator, rtr *router.Rou
 		}
 		if err := b.SendMessage(context.Background(), chatID, attributed); err != nil {
 			slog.Error("failed to send telegram message", "chat", chatID, "error", err)
+		}
+	})
+
+	// Register file listener to send files back to Telegram
+	orch.OnFile(func(agentID string, chatID int64, data []byte, name, mimeType, caption string) {
+		ctx := context.Background()
+		if strings.HasPrefix(mimeType, "image/") {
+			if err := b.SendPhoto(ctx, chatID, data, name, caption); err != nil {
+				slog.Error("failed to send photo", "chat", chatID, "name", name, "error", err)
+			}
+		} else {
+			if err := b.SendDocument(ctx, chatID, data, name, caption); err != nil {
+				slog.Error("failed to send document", "chat", chatID, "name", name, "error", err)
+			}
 		}
 	})
 
@@ -292,6 +307,36 @@ func (b *Bot) SendMessage(ctx context.Context, chatID int64, text string) error 
 		if err != nil {
 			return fmt.Errorf("send message: %w", err)
 		}
+	}
+	return nil
+}
+
+func (b *Bot) SendPhoto(ctx context.Context, chatID int64, data []byte, name, caption string) error {
+	params := &telego.SendPhotoParams{
+		ChatID: tu.ID(chatID),
+		Photo:  telego.InputFile{File: tu.NameReader(bytes.NewReader(data), name)},
+	}
+	if caption != "" {
+		params.Caption = caption
+	}
+	_, err := b.bot.SendPhoto(ctx, params)
+	if err != nil {
+		return fmt.Errorf("send photo: %w", err)
+	}
+	return nil
+}
+
+func (b *Bot) SendDocument(ctx context.Context, chatID int64, data []byte, name, caption string) error {
+	params := &telego.SendDocumentParams{
+		ChatID:   tu.ID(chatID),
+		Document: telego.InputFile{File: tu.NameReader(bytes.NewReader(data), name)},
+	}
+	if caption != "" {
+		params.Caption = caption
+	}
+	_, err := b.bot.SendDocument(ctx, params)
+	if err != nil {
+		return fmt.Errorf("send document: %w", err)
 	}
 	return nil
 }

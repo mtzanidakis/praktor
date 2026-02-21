@@ -32,11 +32,12 @@ func newBus(cfg config.NATSConfig, port int) (*Bus, error) {
 	}
 
 	opts := &natsserver.Options{
-		Port:      port,
-		NoLog:     true,
-		NoSigs:    true,
-		JetStream: true,
-		StoreDir:  cfg.DataDir,
+		Port:       port,
+		NoLog:      true,
+		NoSigs:     true,
+		JetStream:  true,
+		StoreDir:   cfg.DataDir,
+		MaxPayload: 16 << 20, // 16MB for file transfers
 	}
 
 	ns, err := natsserver.NewServer(opts)

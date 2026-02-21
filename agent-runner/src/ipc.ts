@@ -26,7 +26,7 @@ export async function sendIPC(
   const conn = await connect({ servers: NATS_URL });
   const topic = `host.ipc.${AGENT_ID}`;
   const data = sc.encode(JSON.stringify({ type, payload }));
-  const resp = await conn.request(topic, data, { timeout: 10000 });
+  const resp = await conn.request(topic, data, { timeout: 30000 });
   const result: IPCResponse = JSON.parse(sc.decode(resp.data));
   await conn.drain();
   return result;
