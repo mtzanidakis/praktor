@@ -27,7 +27,7 @@ A single Go binary that orchestrates the full loop: receives messages from Teleg
 - **Nix package manager** — Agents can install packages on demand (Python, ffmpeg, LaTeX, etc.) via MCP tools or the `/nix` Telegram command
 - **Agent extensions** — Per-agent MCP servers, plugins, and skills, managed via Mission Control
 - **Agent swarms** — Graph-based multi-agent orchestration with fan-out, pipeline, and collaborative patterns
-- **Web & browser access** — Agents can search the web and control Chromium
+- **Web & browser access** — Agents can search the web and automate browsers via [playwright-cli](https://github.com/microsoft/playwright-cli)
 - **Mission Control** — Real-time dashboard with WebSocket updates
 - **Telegram commands** — `/start`, `/stop`, `/reset`, `/nix`, `/agents`, `/commands`
 
@@ -258,6 +258,19 @@ When an agent needs a missing tool (e.g. Python, ffmpeg), it will automatically 
 /nix upgrade                 # Upgrade all packages
 /nix list @coder             # Target a specific agent
 ```
+
+## Browser Automation
+
+All agent containers come with [playwright-cli](https://github.com/microsoft/playwright-cli) pre-installed and configured to use system Chromium. Agents can navigate websites, fill forms, take screenshots, and extract data — no setup needed.
+
+The browser session persists across messages within the same agent session and shuts down with the container on idle timeout.
+
+```
+@general take a screenshot of https://example.com
+@general go to https://example.com/form, fill in the email field, and submit
+```
+
+The playwright-cli skill is automatically loaded into every agent's system prompt, teaching it the full command set (`open`, `goto`, `click`, `fill`, `screenshot`, `snapshot`, tabs, etc.).
 
 ## Development
 

@@ -1,7 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { NatsBridge } from "./nats-bridge.js";
 import { applyExtensions } from "./extensions.js";
-import { readFileSync, readdirSync, mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
+import { readFileSync, readdirSync, mkdirSync, writeFileSync, rmSync, symlinkSync, existsSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
 import { DatabaseSync } from "node:sqlite";
@@ -84,6 +84,30 @@ function ensureAgentMd(): void {
     } catch (err) {
       console.warn("[agent] could not create AGENT.md:", err);
     }
+  }
+}
+
+function setupPlaywrightCli(): void {
+  const optDir = "/opt/playwright-cli";
+  if (!existsSync(optDir)) return; // playwright-cli not baked into image
+
+  try {
+    // Symlink skill directory
+    const skillLink = "/home/praktor/.claude/skills/playwright-cli";
+    mkdirSync("/home/praktor/.claude/skills", { recursive: true });
+    if (existsSync(skillLink)) rmSync(skillLink, { recursive: true });
+    symlinkSync(join(optDir, "skill"), skillLink);
+
+    // Symlink cli.config.json (playwright-cli resolves config relative to cwd)
+    const configDir = "/workspace/agent/.playwright";
+    const configLink = join(configDir, "cli.config.json");
+    mkdirSync(configDir, { recursive: true });
+    if (existsSync(configLink)) rmSync(configLink);
+    symlinkSync(join(optDir, "cli.config.json"), configLink);
+
+    console.log("[agent] playwright-cli configured");
+  } catch (err) {
+    console.warn("[agent] could not configure playwright-cli:", err);
   }
 }
 
@@ -172,6 +196,18 @@ function loadSystemPrompt(includeIdentity = true): string {
     parts.push(memorySection);
   } catch (err) {
     console.warn("[agent] could not load memory keys:", err);
+  }
+
+  // playwright-cli: inform agent it's pre-installed with system chromium
+  if (existsSync("/opt/playwright-cli")) {
+    parts.push(
+      "PLAYWRIGHT-CLI — Pre-installed and configured. Do NOT install playwright or chromium via npm, npx, nix, or any other method.\n" +
+      "- `playwright-cli` is already in PATH and ready to use.\n" +
+      "- It is configured to use the system chromium at `/usr/bin/chromium-browser`.\n" +
+      "- Just run `playwright-cli open` to start a browser session.\n" +
+      "- The browser persists across messages. Reuse the existing session — use tabs (`tab-new`, `tab-close`) for multiple pages.\n" +
+      "- Do NOT run `playwright-cli close` or `playwright-cli close-all` — the browser will shut down with the container."
+    );
   }
 
   // Skills: load installed SKILL.md files into prompt
@@ -464,6 +500,7 @@ async function main(): Promise<void> {
 
   installGlobalInstructions();
   ensureAgentMd();
+  setupPlaywrightCli();
 
   // Apply agent extensions (MCP servers, plugins, skills, settings)
   const extResult = await applyExtensions();

@@ -42,7 +42,7 @@ internal/
   swarm/                         # Graph-based swarm orchestration (DAG execution, collaborative chat)
   web/                           # HTTP server, REST API, WebSocket hub, embedded SPA
 Dockerfile                       # Gateway image (multi-stage: UI + Go + scratch)
-Dockerfile.agent                 # Agent image (multi-stage: Go + esbuild + alpine)
+Dockerfile.agent                 # Agent image (multi-stage: Go + playwright-cli + esbuild + alpine)
 agent-runner/src/                # TypeScript: NATS bridge + Claude Code SDK + MCP servers (bundled with esbuild)
   index.ts                       # Main entrypoint: agent lifecycle, message handling, MCP server registration
   extensions.ts                  # Apply agent extensions on startup (MCP servers, plugins, skills)
@@ -264,6 +264,25 @@ Each MCP tool domain lives in its own file under `agent-runner/src/mcp-*.ts`. To
 4. Register it in `agent-runner/src/index.ts` under `mcpServers` with `command: "node", args: ["/app/mcp-{domain}.js"]`
 5. The `allowedTools` wildcard `"mcp__praktor-*"` covers all `praktor-*` named servers automatically
 
+## Browser Automation (playwright-cli)
+
+All agent containers include [playwright-cli](https://github.com/microsoft/playwright-cli) (`@playwright/cli`) pre-installed and configured to use the system Chromium on Alpine. Agents interact with browsers via Bash commands (more token-efficient than MCP).
+
+**Build-time setup** (`Dockerfile.agent`):
+- Separate `playwright-cli` build stage installs `@playwright/cli` globally and runs `playwright-cli install --skills --config` to extract the skill files without downloading browsers
+- The `@playwright` node_modules and skill directory are copied to the runtime image at `/usr/local/lib/node_modules/@playwright` and `/opt/playwright-cli/skill/`
+- A `cli.config.json` is generated at `/opt/playwright-cli/cli.config.json` pointing to `/usr/bin/chromium-browser` with `--no-sandbox`, `--disable-gpu`, `--disable-dev-shm-usage`
+- `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` and `PLAYWRIGHT_BROWSERS_PATH=/usr/bin` env vars prevent Playwright from downloading its own browsers
+
+**Runtime setup** (`agent-runner/src/index.ts` → `setupPlaywrightCli()`):
+- Symlinks `/opt/playwright-cli/skill` → `/home/praktor/.claude/skills/playwright-cli` (skill loaded into system prompt)
+- Symlinks `/opt/playwright-cli/cli.config.json` → `/workspace/agent/.playwright/cli.config.json` (playwright-cli resolves config relative to cwd)
+- Symlinks (not copies) ensure agents always use the image's version — updates come from rebuilding the image
+
+**Browser lifecycle:** The browser session persists across messages within the same agent session. Agents use tabs (`tab-new`, `tab-close`) for multiple pages. Everything shuts down with the container on idle timeout.
+
+**System prompt:** When `/opt/playwright-cli` exists, a prompt section tells agents that playwright-cli is pre-installed and to never install playwright/chromium via npm, npx, or nix.
+
 ## What it supports
 
 - Telegram I/O - Message Claude from your phone
@@ -274,7 +293,7 @@ Each MCP tool domain lives in its own file under `agent-runner/src/mcp-*.ts`. To
 - Scheduled tasks - Cron/interval/relative delay (+30s, +5m, +2h)/one-shot jobs that run Claude and deliver results
 - Web access - Agents can use WebSearch and WebFetch tools
 - Nix package manager - Agents with `nix_enabled: true` can install packages on demand via MCP tools (nix_search, nix_add, nix_list_installed, nix_remove, nix_upgrade). When nix-daemon is detected, the system prompt instructs agents to auto-install missing tools. The `/nix` Telegram command provides direct user control over agent packages.
-- Browser control - Chromium available in agent containers
+- Browser automation - [playwright-cli](https://github.com/microsoft/playwright-cli) pre-installed with system Chromium, skill auto-loaded into system prompt. Browser session persists across messages, shuts down with container.
 - Container isolation - Agents sandboxed in Docker containers with NATS communication
 - Agent swarms - Graph-based orchestration: fan-out (parallel), pipeline (sequential with context passing), and collaborative (real-time chat) execution patterns. Visual graph editor in Mission Control, `@swarm` Telegram integration
 - Secure vault - AES-256-GCM encrypted secrets, injected as env vars or files at container start (never exposed to LLM)

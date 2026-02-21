@@ -6,6 +6,15 @@ RUN go mod download
 RUN CGO_ENABLED=0 go build -o /ptask ./cmd/ptask
 RUN CGO_ENABLED=0 go run ./cmd/getcc -save /claude
 
+# Install playwright-cli and extract its skill
+FROM node:24-alpine AS playwright-cli
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+RUN npm install -g @playwright/cli@latest
+# Install skills only, skip browser download (--config flag skips ensureConfiguredBrowserInstalled)
+RUN mkdir -p /tmp/.playwright && cd /tmp && playwright-cli install --skills --config
+# Verify skill was created
+RUN test -f /tmp/.claude/skills/playwright-cli/SKILL.md
+
 # Bundle agent runner with esbuild (no node_modules needed at runtime)
 FROM node:24-alpine AS agent-builder
 WORKDIR /app
@@ -22,6 +31,7 @@ FROM alpine:3.23
 RUN apk add --no-cache \
     bash \
     ca-certificates \
+    chromium \
     curl \
     git \
     jq \
@@ -29,7 +39,11 @@ RUN apk add --no-cache \
     libstdc++ \
     nix \
     nodejs \
+    npm \
     ripgrep \
+    ttf-freefont \
+    font-noto-cjk \
+    font-noto-emoji \
     tzdata && \
     update-ca-certificates
 
@@ -49,12 +63,21 @@ RUN adduser \
 COPY --from=agent-builder /app/out/ /app/
 COPY --from=go-build /ptask /usr/local/bin/ptask
 COPY --from=go-build /claude /usr/local/bin/claude
+COPY --from=playwright-cli /usr/local/lib/node_modules/@playwright /usr/local/lib/node_modules/@playwright
+RUN ln -s ../lib/node_modules/@playwright/cli/playwright-cli.js /usr/local/bin/playwright-cli
+COPY --from=playwright-cli /tmp/.claude/skills/playwright-cli/ /opt/playwright-cli/skill/
+RUN echo '{"browser":{"browserName":"chromium","launchOptions":{"executablePath":"/usr/bin/chromium-browser","args":["--no-sandbox","--disable-gpu","--disable-dev-shm-usage"]}}}' \
+    > /opt/playwright-cli/cli.config.json
 
 # Pre-create volume mount points with correct ownership so Docker
 # populates new named volumes with the right permissions and structure.
 RUN mkdir -p /workspace/agent /workspace/global && \
     chown -R praktor:praktor /workspace/agent /workspace/global && \
     chmod 0700 /home/praktor
+
+# playwright-cli env vars (skip browser download — we use system chromium)
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV PLAYWRIGHT_BROWSERS_PATH=/usr/bin
 
 # Runtime config
 ENV USE_BUILTIN_RIPGREP=0
