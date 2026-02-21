@@ -214,7 +214,7 @@ Secret references (`secret:name`) in `env` and `headers` values are resolved fro
 
 Claude Code marketplace plugins, installed via `claude plugin install` on first container start. Persisted on the agent's home volume so installation is one-time.
 
-Plugin names use the `plugin-name@marketplace` format. The optional `requires` field declares nix packages the plugin depends on — these are auto-installed before the plugin runs. Plugins can be temporarily disabled without uninstalling.
+Plugin names use the `plugin-name@marketplace` format. Plugins can be temporarily disabled without uninstalling.
 
 **Marketplaces:** Plugins come from marketplaces. The `claude-plugins-official` marketplace is always available, but third-party marketplaces must be registered first. Add marketplace sources (`owner/repo`, git URLs, or URLs to `marketplace.json`) in the Marketplaces tab — they are registered via `claude plugin marketplace add` before plugin installation.
 
@@ -230,7 +230,7 @@ Saving extensions in Mission Control stops the running agent container. On the n
 
 1. The gateway loads extensions from the DB, resolves any `secret:` references from the vault
 2. The resolved extensions are passed to the container as the `AGENT_EXTENSIONS` env var
-3. The agent-runner collects nix dependencies from all extensions (stdio commands, plugin `requires`, skill `requires`) and auto-installs any that are missing
+3. The agent-runner collects nix dependencies from all extensions (stdio commands, skill `requires`) and auto-installs any that are missing
 4. MCP servers are merged into the SDK `query()` call; skills are written to disk; plugins are installed/enabled
 
 ## Agent Swarms
