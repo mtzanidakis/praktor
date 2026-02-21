@@ -42,9 +42,9 @@ interface ChatMessage {
 }
 const chatHistory: ChatMessage[] = [];
 
-function parseAllowedTools(): string[] | undefined {
-  if (!ALLOWED_TOOLS_ENV) return undefined;
-  const tools = ALLOWED_TOOLS_ENV.split(",").map((t) => t.trim()).filter(Boolean);
+export function parseAllowedTools(env: string): string[] | undefined {
+  if (!env) return undefined;
+  const tools = env.split(",").map((t) => t.trim()).filter(Boolean);
   return tools.length > 0 ? tools : undefined;
 }
 
@@ -232,7 +232,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
 
     console.log(`[agent] starting claude query, cwd=${cwd}`);
 
-    const configuredTools = parseAllowedTools();
+    const configuredTools = parseAllowedTools(ALLOWED_TOOLS_ENV);
     const allowedTools = configuredTools || [
       "Bash",
       "Read",
@@ -260,32 +260,32 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
           "praktor-tasks": {
             type: "stdio",
             command: "node",
-            args: ["/app/mcp-tasks.js"],
+            args: ["/app/mcp-tasks.mjs"],
             env: { NATS_URL, AGENT_ID },
           },
           "praktor-profile": {
             type: "stdio",
             command: "node",
-            args: ["/app/mcp-profile.js"],
+            args: ["/app/mcp-profile.mjs"],
             env: { NATS_URL, AGENT_ID },
           },
           "praktor-memory": {
             type: "stdio",
             command: "node",
-            args: ["/app/mcp-memory.js"],
+            args: ["/app/mcp-memory.mjs"],
             env: {},
           },
           "praktor-nix": {
             type: "stdio",
             command: "node",
-            args: ["/app/mcp-nix.js"],
+            args: ["/app/mcp-nix.mjs"],
             env: {},
           },
           ...(SWARM_CHAT_TOPIC ? {
             "praktor-swarm": {
               type: "stdio",
               command: "node",
-              args: ["/app/mcp-swarm.js"],
+              args: ["/app/mcp-swarm.mjs"],
               env: { NATS_URL, AGENT_ID, SWARM_CHAT_TOPIC },
             },
           } : {}),
