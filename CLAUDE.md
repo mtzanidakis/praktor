@@ -25,7 +25,7 @@ The gateway binary runs all core services: Telegram bot, message router, NATS me
 ## Project Structure
 
 ```
-cmd/praktor/main.go              # CLI: `gateway`, `vault`, and `version` subcommands
+cmd/praktor/main.go              # CLI: `gateway`, `vault`, `backup`, `restore`, and `version` subcommands
 cmd/ptask/main.go                # Task management CLI (Go, runs inside agent containers)
 internal/
   config/                        # YAML config + env var overrides
@@ -69,6 +69,8 @@ go run ./cmd/praktor gateway           # Start the gateway (needs config)
 CGO_ENABLED=0 go build ./cmd/praktor   # Build static binary
 CGO_ENABLED=0 go build ./cmd/ptask     # Build ptask CLI
 CGO_ENABLED=0 go test ./internal/...   # Run all tests
+./praktor backup -f backup.tar.zst     # Back up all praktor Docker volumes
+./praktor restore -f backup.tar.zst    # Restore volumes (-overwrite to replace)
 make containers                        # Build both Docker images (gateway + agent)
 docker compose up                      # Run full stack
 ```
@@ -210,6 +212,7 @@ The gateway uses `praktor-data` for SQLite/NATS and `praktor-global` for global 
 - `gorilla/websocket` - WebSocket connections
 - `google/uuid` - UUID generation
 - `adhocore/gronx` - Cron expression parsing
+- `klauspost/compress` - Zstd compression for backup/restore
 - `gopkg.in/yaml.v3` - YAML config parsing
 
 ## Swarm Orchestration
@@ -300,6 +303,7 @@ All agent containers include [playwright-cli](https://github.com/microsoft/playw
 - Container isolation - Agents sandboxed in Docker containers with NATS communication
 - Agent swarms - Graph-based orchestration: fan-out (parallel), pipeline (sequential with context passing), and collaborative (real-time chat) execution patterns. Visual graph editor in Mission Control, `@swarm` Telegram integration
 - Secure vault - AES-256-GCM encrypted secrets, injected as env vars or files at container start (never exposed to LLM)
+- Backup & restore - `praktor backup` and `praktor restore` create/restore zstd-compressed tarballs of all `praktor-*` Docker volumes
 - Hot config reload - Config file changes are detected automatically (file polling every 3s) or via SIGHUP; only affected agents are restarted
 - Mission Control UI - Real-time dashboard with WebSocket updates
 - Telegram slash commands — registered via `SetMyCommands` with `th.CommandEqual()` predicates. Agent resolved from arg or last-used agent for the chat (`/start` falls back to default agent). **When adding a new command, also add it to the `/commands` handler output and the list below.**

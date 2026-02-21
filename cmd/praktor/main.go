@@ -45,6 +45,16 @@ func main() {
 			slog.Error("vault command failed", "error", err)
 			os.Exit(1)
 		}
+	case "backup":
+		if err := runBackup(os.Args[2:]); err != nil {
+			slog.Error("backup failed", "error", err)
+			os.Exit(1)
+		}
+	case "restore":
+		if err := runRestore(os.Args[2:]); err != nil {
+			slog.Error("restore failed", "error", err)
+			os.Exit(1)
+		}
 	default:
 		printUsage()
 		os.Exit(1)
@@ -52,7 +62,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, "Usage: praktor <command>\n\nCommands:\n  gateway    Start the Praktor gateway service\n  vault      Manage encrypted secrets\n  version    Print version\n")
+	fmt.Fprintf(os.Stderr, "Usage: praktor <command>\n\nCommands:\n  gateway    Start the Praktor gateway service\n  vault      Manage encrypted secrets\n  backup     Back up all praktor Docker volumes\n  restore    Restore praktor Docker volumes from backup\n  version    Print version\n")
 }
 
 func runGateway() error {

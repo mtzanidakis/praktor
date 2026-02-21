@@ -28,6 +28,7 @@ A single Go binary that orchestrates the full loop: receives messages from Teleg
 - **Agent extensions** — Per-agent MCP servers, plugins, and skills, managed via Mission Control
 - **Agent swarms** — Graph-based multi-agent orchestration with fan-out, pipeline, and collaborative patterns
 - **Web & browser access** — Agents can search the web and automate browsers via [playwright-cli](https://github.com/microsoft/playwright-cli)
+- **Backup & restore** — Back up and restore all Docker volumes as zstd-compressed tarballs via CLI
 - **Mission Control** — Real-time dashboard with WebSocket updates
 - **Telegram commands** — `/start`, `/stop`, `/reset`, `/nix`, `/agents`, `/commands`
 
@@ -160,6 +161,29 @@ agents:
         target: /etc/gcp/sa.json
         mode: "0600"
 ```
+
+## Backup & Restore
+
+Back up all praktor state (SQLite, NATS, agent workspaces, home dirs, nix stores) into a single zstd-compressed tarball, and restore it later.
+
+### Backup
+
+```sh
+praktor backup -f /path/to/backup.tar.zst
+```
+
+Creates a tarball of all `praktor-*` Docker volumes. Each volume becomes a top-level directory in the archive.
+
+### Restore
+
+```sh
+praktor restore -f /path/to/backup.tar.zst              # Fails if volumes exist
+praktor restore -f /path/to/backup.tar.zst -overwrite    # Overwrites existing volumes
+```
+
+Restores volumes from a backup archive. Without `-overwrite`, refuses to restore if any target volume already exists.
+
+Both commands accept `-image <name>` to override the helper container image (default: `alpine:3`).
 
 ## Agent Extensions
 
