@@ -21,7 +21,6 @@ console.error = (...args: unknown[]) => origError(ts(), ...args);
 
 const NATS_URL = process.env.NATS_URL || "nats://localhost:4222";
 const AGENT_ID = process.env.AGENT_ID || process.env.GROUP_ID || "default";
-const SESSION_ID = process.env.SESSION_ID || undefined;
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || undefined;
 const ALLOWED_TOOLS_ENV = process.env.ALLOWED_TOOLS || "";
 const SWARM_CHAT_TOPIC = process.env.SWARM_CHAT_TOPIC || "";
@@ -29,7 +28,7 @@ const SWARM_ROLE = process.env.SWARM_ROLE || "";
 
 let bridge: NatsBridge;
 let isProcessing = false;
-let hasSession = false;
+let lastSessionId: string | undefined;
 let currentQueryIter: AsyncIterator<unknown> | null = null;
 let abortPending = false;
 let extensionMcpServers: Record<string, { type: string; command?: string; args?: string[]; url?: string; env?: Record<string, string>; headers?: Record<string, string> }> = {};
@@ -254,7 +253,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
         cwd,
         pathToClaudeCodeExecutable: "/usr/local/bin/claude",
         systemPrompt: systemPrompt || undefined,
-        continue: hasSession,
+        ...(lastSessionId ? { resume: lastSessionId } : {}),
         allowedTools,
         mcpServers: {
           "praktor-tasks": {
@@ -308,6 +307,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
         console.log(`[agent] event: type=${event.type}${"subtype" in event ? ` subtype=${event.subtype}` : ""}`);
         if (event.type === "result" && event.subtype === "success") {
           fullResponse = event.result;
+          lastSessionId = event.session_id;
         } else if (event.type === "assistant") {
           for (const block of event.message.content) {
             if (block.type === "text") {
@@ -334,13 +334,11 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
       await bridge.publishResult(fullResponse);
     }
 
-    hasSession = true;
-    console.log(`[agent] completed processing for agent ${AGENT_ID}`);
+    console.log(`[agent] completed processing for agent ${AGENT_ID} (session=${lastSessionId})`);
   } catch (err) {
     if ((err as Error)?.message === "aborted") {
       console.log("[agent] query aborted by user");
       await bridge.publishResult("Aborted.");
-      hasSession = true;
       return;
     }
     console.error(`[agent] error processing message:`, err);
@@ -441,7 +439,7 @@ async function handleControl(
       break;
     case "clear_session":
       console.log("[agent] clearing session...");
-      hasSession = false;
+      lastSessionId = undefined;
       for (const dir of [
         "/home/praktor/.claude/projects",
         "/home/praktor/.claude/sessions",
