@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
+import AgentExtensions from '../components/AgentExtensions';
 
 interface Agent {
   id: string;
@@ -236,6 +237,10 @@ function Agents() {
                 }}
               />
             )}
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <AgentExtensions agentId={selected.id} />
           </div>
         </div>
       )}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/mtzanidakis/praktor/internal/config"
 	"github.com/mtzanidakis/praktor/internal/container"
+	"github.com/mtzanidakis/praktor/internal/extensions"
 )
 
 const secretRefPrefix = "secret:"
@@ -101,6 +102,24 @@ func (o *Orchestrator) redactSecrets(agentID, content string) string {
 		}
 		for _, fm := range def.Files {
 			secretNames[fm.Secret] = true
+		}
+	}
+
+	// Source 3: Extension MCP server env/header secret refs
+	if extJSON, err := o.store.GetAgentExtensions(agentID); err == nil {
+		if ext, err := extensions.Parse(extJSON); err == nil {
+			for _, srv := range ext.MCPServers {
+				for _, v := range srv.Env {
+					if name, ok := strings.CutPrefix(v, secretRefPrefix); ok {
+						secretNames[name] = true
+					}
+				}
+				for _, v := range srv.Headers {
+					if name, ok := strings.CutPrefix(v, secretRefPrefix); ok {
+						secretNames[name] = true
+					}
+				}
+			}
 		}
 	}
 

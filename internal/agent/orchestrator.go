@@ -201,6 +201,7 @@ func (o *Orchestrator) executeMessage(ctx context.Context, agentID string, msg Q
 		}
 
 		o.resolveSecrets(&opts, agentID, def, hasDef)
+		o.resolveExtensions(&opts, agentID)
 
 		info, err = o.containers.StartAgent(ctx, opts)
 		if err != nil {
@@ -292,6 +293,7 @@ func (o *Orchestrator) RouteQuery(ctx context.Context, agentID string, message s
 		}
 
 		o.resolveSecrets(&opts, agentID, def, hasDef)
+		o.resolveExtensions(&opts, agentID)
 
 		info, err = o.containers.StartAgent(ctx, opts)
 		if err != nil {
@@ -431,6 +433,8 @@ func (o *Orchestrator) handleIPC(msg *nats.Msg) {
 		o.ipcUpdateUserMD(msg, cmd.Payload)
 	case "swarm_message":
 		o.ipcSwarmMessage(msg, agentID, cmd.Payload)
+	case "extension_status":
+		o.ipcExtensionStatus(msg, agentID, cmd.Payload)
 	default:
 		slog.Warn("unknown IPC command", "type", cmd.Type)
 		o.respondIPC(msg, map[string]any{"error": "unknown command: " + cmd.Type})
@@ -629,6 +633,17 @@ func (o *Orchestrator) ipcSwarmMessage(msg *nats.Msg, agentID string, payload js
 	o.respondIPC(msg, map[string]any{"ok": true})
 }
 
+func (o *Orchestrator) ipcExtensionStatus(msg *nats.Msg, agentID string, payload json.RawMessage) {
+	// Accept the payload as-is (marketplaces: string[], plugins: {name, enabled}[])
+	if err := o.store.SetExtensionStatus(agentID, string(payload)); err != nil {
+		o.respondIPC(msg, map[string]any{"error": fmt.Sprintf("save failed: %v", err)})
+		return
+	}
+
+	slog.Info("extension status updated via IPC", "agent", agentID)
+	o.respondIPC(msg, map[string]any{"ok": true})
+}
+
 func (o *Orchestrator) publishMessageEvent(msg *store.Message) {
 	if o.client == nil {
 		return
@@ -694,6 +709,7 @@ func (o *Orchestrator) EnsureAgent(ctx context.Context, agentID string) error {
 		opts.NixEnabled = def.NixEnabled
 	}
 	o.resolveSecrets(&opts, agentID, def, hasDef)
+	o.resolveExtensions(&opts, agentID)
 
 	info, err := o.containers.StartAgent(ctx, opts)
 	if err != nil {

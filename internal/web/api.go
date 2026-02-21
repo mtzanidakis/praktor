@@ -32,6 +32,8 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/agents/definitions/{id}/messages", s.getAgentMessages)
 	mux.HandleFunc("GET /api/agents/definitions/{id}/agent-md", s.getAgentMD)
 	mux.HandleFunc("PUT /api/agents/definitions/{id}/agent-md", s.updateAgentMD)
+	mux.HandleFunc("GET /api/agents/definitions/{id}/extensions", s.getAgentExtensions)
+	mux.HandleFunc("PUT /api/agents/definitions/{id}/extensions", s.updateAgentExtensions)
 
 	// Running agent containers
 	mux.HandleFunc("GET /api/agents", s.listRunningAgents)

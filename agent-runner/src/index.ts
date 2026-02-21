@@ -1,5 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { NatsBridge } from "./nats-bridge.js";
+import { applyExtensions } from "./extensions.js";
 import { readFileSync, mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
 import { execSync } from "child_process";
 import { DatabaseSync } from "node:sqlite";
@@ -30,6 +31,7 @@ let isProcessing = false;
 let hasSession = false;
 let currentQueryIter: AsyncIterator<unknown> | null = null;
 let abortPending = false;
+let extensionMcpServers: Record<string, { type: string; command?: string; args?: string[]; url?: string; env?: Record<string, string>; headers?: Record<string, string> }> = {};
 
 // Swarm collaborative chat buffer
 interface ChatMessage {
@@ -266,6 +268,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
               env: { NATS_URL, AGENT_ID, SWARM_CHAT_TOPIC },
             },
           } : {}),
+          ...extensionMcpServers,
         },
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
@@ -285,10 +288,11 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
         if (event.type === "result" && event.subtype === "success") {
           fullResponse = event.result;
         } else if (event.type === "assistant") {
-          // Extract text blocks from assistant messages
           for (const block of event.message.content) {
             if (block.type === "text") {
               await bridge.publishOutput(block.text, "text");
+            } else if (block.type === "tool_use" || block.type === "server_tool_use") {
+              console.log(`[agent] tool: ${block.name}`);
             }
           }
         }
@@ -442,6 +446,10 @@ async function main(): Promise<void> {
   installGlobalInstructions();
   ensureAgentMd();
 
+  // Apply agent extensions (MCP servers, plugins, skills, settings)
+  const extResult = await applyExtensions();
+  extensionMcpServers = extResult.mcpServers;
+
   // Clean up Claude Code internal files that accumulate over time
   for (const dir of ["/home/praktor/.claude/debug", "/home/praktor/.claude/todos"]) {
     try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
@@ -449,6 +457,13 @@ async function main(): Promise<void> {
 
   bridge = new NatsBridge(NATS_URL, AGENT_ID);
   await bridge.connect();
+
+  // Report any extension errors via NATS
+  if (extResult.errors.length > 0) {
+    const errMsg = `Extension errors:\n${extResult.errors.map((e) => `- ${e}`).join("\n")}`;
+    console.error(`[extensions] ${errMsg}`);
+    await bridge.publishOutput(errMsg, "text");
+  }
 
   bridge.subscribeInput(handleMessage);
   bridge.subscribeControl(handleControl);

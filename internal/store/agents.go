@@ -78,6 +78,68 @@ func (s *Store) ListAgents() ([]Agent, error) {
 	return agents, rows.Err()
 }
 
+// GetAgentExtensions returns the raw JSON extensions string for an agent.
+func (s *Store) GetAgentExtensions(agentID string) (string, error) {
+	var ext sql.NullString
+	err := s.db.QueryRow(`SELECT extensions FROM agents WHERE id = ?`, agentID).Scan(&ext)
+	if err == sql.ErrNoRows {
+		return "{}", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("get agent extensions: %w", err)
+	}
+	if !ext.Valid || ext.String == "" {
+		return "{}", nil
+	}
+	return ext.String, nil
+}
+
+// GetExtensionStatus returns the raw JSON extension status string for an agent.
+func (s *Store) GetExtensionStatus(agentID string) (string, error) {
+	var status sql.NullString
+	err := s.db.QueryRow(`SELECT extension_status FROM agents WHERE id = ?`, agentID).Scan(&status)
+	if err == sql.ErrNoRows {
+		return "{}", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("get extension status: %w", err)
+	}
+	if !status.Valid || status.String == "" {
+		return "{}", nil
+	}
+	return status.String, nil
+}
+
+// SetExtensionStatus updates the extension status JSON for an agent.
+func (s *Store) SetExtensionStatus(agentID, statusJSON string) error {
+	result, err := s.db.Exec(
+		`UPDATE agents SET extension_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		statusJSON, agentID)
+	if err != nil {
+		return fmt.Errorf("set extension status: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("agent not found: %s", agentID)
+	}
+	return nil
+}
+
+// SetAgentExtensions updates the extensions JSON for an agent.
+func (s *Store) SetAgentExtensions(agentID, extensionsJSON string) error {
+	result, err := s.db.Exec(
+		`UPDATE agents SET extensions = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		extensionsJSON, agentID)
+	if err != nil {
+		return fmt.Errorf("set agent extensions: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("agent not found: %s", agentID)
+	}
+	return nil
+}
+
 func (s *Store) DeleteAgent(id string) error {
 	_, err := s.db.Exec(`DELETE FROM agents WHERE id = ?`, id)
 	return err
