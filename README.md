@@ -222,7 +222,7 @@ Plugin names use the `plugin-name@marketplace` format. Plugins can be temporaril
 
 Custom instructions written to `~/.claude/skills/{name}/SKILL.md` on container start. Claude Code discovers them automatically.
 
-Each skill has a `description`, a `content` body (the SKILL.md text), and optional `requires` for nix dependencies. Skills can also include additional `files` (base64-encoded) written alongside the SKILL.md in the skill directory — useful for scripts or configs the skill references. Removed skills have their directories cleaned up on the next container start.
+Each skill has a `description` and a `content` body (the SKILL.md text). Skills can also include additional `files` (base64-encoded) written alongside the SKILL.md in the skill directory — useful for scripts or configs the skill references. Removed skills have their directories cleaned up on the next container start.
 
 ### How It Works
 
@@ -230,7 +230,7 @@ Saving extensions in Mission Control stops the running agent container. On the n
 
 1. The gateway loads extensions from the DB, resolves any `secret:` references from the vault
 2. The resolved extensions are passed to the container as the `AGENT_EXTENSIONS` env var
-3. The agent-runner collects nix dependencies from all extensions (stdio commands, skill `requires`) and auto-installs any that are missing
+3. The agent-runner auto-installs missing nix dependencies for stdio MCP server commands
 4. MCP servers are merged into the SDK `query()` call; skills are written to disk; plugins are installed/enabled
 
 ## Agent Swarms
