@@ -109,14 +109,41 @@ function Agents() {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)' }}>{agent.name}</span>
-              {agent.agent_status && (
-                <span style={badge(
-                  agent.agent_status === 'running' ? 'var(--green)' : 'var(--text-secondary)',
-                  agent.agent_status === 'running' ? 'var(--green-muted)' : 'var(--accent-muted)',
-                )}>
-                  {agent.agent_status}
-                </span>
-              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {agent.agent_status && (
+                  <span style={badge(
+                    agent.agent_status === 'running' ? 'var(--green)' : 'var(--text-secondary)',
+                    agent.agent_status === 'running' ? 'var(--green-muted)' : 'var(--accent-muted)',
+                  )}>
+                    {agent.agent_status}
+                  </span>
+                )}
+                {agent.agent_status === 'running' ? (
+                  <button
+                    data-agent-stop
+                    title="Stop agent"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fetch(`/api/agents/definitions/${agent.id}/stop`, { method: 'POST' }).then(() => fetchAgents());
+                    }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-muted)', lineHeight: 1 }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+                  </button>
+                ) : (
+                  <button
+                    data-agent-start
+                    title="Start agent"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fetch(`/api/agents/definitions/${agent.id}/start`, { method: 'POST' }).then(() => fetchAgents());
+                    }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-muted)', lineHeight: 1 }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="7,5 19,12 7,19" /></svg>
+                  </button>
+                )}
+              </div>
             </div>
             {agent.description && (
               <div style={{ fontSize: 15, color: 'var(--text-tertiary)', marginBottom: 4 }}>{agent.description}</div>

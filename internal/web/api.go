@@ -35,6 +35,10 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/agents/definitions/{id}/extensions", s.getAgentExtensions)
 	mux.HandleFunc("PUT /api/agents/definitions/{id}/extensions", s.updateAgentExtensions)
 
+	// Agent lifecycle
+	mux.HandleFunc("POST /api/agents/definitions/{id}/start", s.startAgent)
+	mux.HandleFunc("POST /api/agents/definitions/{id}/stop", s.stopAgent)
+
 	// Running agent containers
 	mux.HandleFunc("GET /api/agents", s.listRunningAgents)
 
@@ -157,6 +161,42 @@ func (s *Server) listRunningAgents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResponse(w, agents)
+}
+
+func (s *Server) startAgent(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	a, err := s.store.GetAgent(id)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if a == nil {
+		jsonError(w, "agent not found", http.StatusNotFound)
+		return
+	}
+	if err := s.orch.EnsureAgent(r.Context(), id); err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonResponse(w, map[string]string{"status": "started"})
+}
+
+func (s *Server) stopAgent(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	a, err := s.store.GetAgent(id)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if a == nil {
+		jsonError(w, "agent not found", http.StatusNotFound)
+		return
+	}
+	if err := s.orch.StopAgent(r.Context(), id); err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonResponse(w, map[string]string{"status": "stopped"})
 }
 
 func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
