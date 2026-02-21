@@ -162,29 +162,6 @@ agents:
         mode: "0600"
 ```
 
-## Backup & Restore
-
-Back up all praktor state (SQLite, NATS, agent workspaces, home dirs, nix stores) into a single zstd-compressed tarball, and restore it later.
-
-### Backup
-
-```sh
-praktor backup -f /path/to/backup.tar.zst
-```
-
-Creates a tarball of all `praktor-*` Docker volumes. Each volume becomes a top-level directory in the archive.
-
-### Restore
-
-```sh
-praktor restore -f /path/to/backup.tar.zst              # Fails if volumes exist
-praktor restore -f /path/to/backup.tar.zst -overwrite    # Overwrites existing volumes
-```
-
-Restores volumes from a backup archive. Without `-overwrite`, refuses to restore if any target volume already exists.
-
-Both commands accept `-image <name>` to override the helper container image (default: `alpine:3`).
-
 ## Agent Extensions
 
 Extend agents with MCP servers, plugins, and skills — all managed per-agent from Mission Control. Extensions are applied automatically when containers start.
@@ -282,6 +259,29 @@ When an agent needs a missing tool (e.g. Python, ffmpeg), it will automatically 
 /nix upgrade                 # Upgrade all packages
 /nix list @coder             # Target a specific agent
 ```
+
+## Backup & Restore
+
+Back up all praktor state (SQLite, NATS, agent workspaces, home dirs, nix stores) into a single zstd-compressed tarball, and restore it later.
+
+### Backup
+
+```sh
+praktor backup -f /path/to/backup.tar.zst
+```
+
+Creates a tarball of all `praktor-*` Docker volumes. Each volume becomes a top-level directory in the archive.
+
+### Restore
+
+```sh
+praktor restore -f /path/to/backup.tar.zst              # Fails if volumes exist
+praktor restore -f /path/to/backup.tar.zst -overwrite    # Overwrites existing volumes
+```
+
+Restores volumes from a backup archive. Without `-overwrite`, refuses to restore if any target volume already exists.
+
+Both commands accept `-image <name>` to override the helper container image (default: `alpine:3`).
 
 ## Browser Automation
 
