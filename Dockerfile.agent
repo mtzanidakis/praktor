@@ -13,18 +13,8 @@ COPY agent-runner/package.json agent-runner/package-lock.json* ./
 RUN npm ci 2>/dev/null || npm install
 COPY agent-runner/src/ src/
 COPY agent-runner/tsconfig.json .
-RUN npx esbuild --bundle --format=cjs --platform=node --target=node24 \
-      --outfile=out/index.js src/index.ts && \
-    npx esbuild --bundle --format=cjs --platform=node --target=node24 \
-      --outfile=out/mcp-tasks.js src/mcp-tasks.ts && \
-    npx esbuild --bundle --format=cjs --platform=node --target=node24 \
-      --outfile=out/mcp-profile.js src/mcp-profile.ts && \
-    npx esbuild --bundle --format=cjs --platform=node --target=node24 \
-      --outfile=out/mcp-memory.js src/mcp-memory.ts && \
-    npx esbuild --bundle --format=cjs --platform=node --target=node24 \
-      --outfile=out/mcp-swarm.js src/mcp-swarm.ts && \
-    npx esbuild --bundle --format=cjs --platform=node --target=node24 \
-      --outfile=out/mcp-nix.js src/mcp-nix.ts
+COPY agent-runner/esbuild.mjs .
+RUN node esbuild.mjs
 
 # Runtime image — no node_modules, just bundled JS files
 FROM alpine:3.23
@@ -74,4 +64,4 @@ ENV PATH="/home/praktor/.nix-profile/bin:/nix/var/nix/profiles/default/bin:${PAT
 
 USER praktor
 WORKDIR /workspace/agent
-ENTRYPOINT ["node", "/app/index.js"]
+ENTRYPOINT ["node", "/app/index.mjs"]
