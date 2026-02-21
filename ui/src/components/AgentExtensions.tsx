@@ -24,6 +24,7 @@ interface SkillConfig {
   description: string;
   content: string;
   requires?: string[];
+  files?: Record<string, string>; // relative path -> base64-encoded content
 }
 
 interface PluginStatus {
@@ -41,7 +42,6 @@ interface AgentExtensions {
   marketplaces?: MarketplaceConfig[];
   plugins?: PluginConfig[];
   skills?: Record<string, SkillConfig>;
-  settings?: Record<string, unknown>;
   _status?: ExtensionStatus;
 }
 
@@ -433,6 +433,12 @@ function PluginsTab({
   );
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 // Skills tab
 function SkillsTab({
   skills,
@@ -445,6 +451,7 @@ function SkillsTab({
   const [editing, setEditing] = useState<string | null>(null);
   const [editDesc, setEditDesc] = useState('');
   const [editContent, setEditContent] = useState('');
+  const [editFiles, setEditFiles] = useState<Record<string, string>>({});
 
   const addSkill = () => {
     if (!newName.trim()) return;
@@ -454,6 +461,7 @@ function SkillsTab({
     setEditing(name);
     setEditDesc('');
     setEditContent('');
+    setEditFiles({});
   };
 
   const removeSkill = (name: string) => {
@@ -465,8 +473,51 @@ function SkillsTab({
 
   const saveEdit = () => {
     if (!editing) return;
-    onChange({ ...skills, [editing]: { description: editDesc, content: editContent } });
+    const skill: SkillConfig = {
+      description: editDesc,
+      content: editContent,
+      ...(skills[editing]?.requires ? { requires: skills[editing].requires } : {}),
+      ...(Object.keys(editFiles).length > 0 ? { files: editFiles } : {}),
+    };
+    onChange({ ...skills, [editing]: skill });
     setEditing(null);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList) return;
+    const newFiles = { ...editFiles };
+    Array.from(fileList).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const arrayBuffer = reader.result as ArrayBuffer;
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const b64 = btoa(binary);
+        newFiles[file.name] = b64;
+        setEditFiles({ ...newFiles });
+      };
+      reader.readAsArrayBuffer(file);
+    });
+    e.target.value = '';
+  };
+
+  const removeFile = (path: string) => {
+    const next = { ...editFiles };
+    delete next[path];
+    setEditFiles(next);
+  };
+
+  const renameFile = (oldPath: string, newPath: string) => {
+    if (!newPath || newPath === oldPath) return;
+    const next: Record<string, string> = {};
+    for (const [k, v] of Object.entries(editFiles)) {
+      next[k === oldPath ? newPath : k] = v;
+    }
+    setEditFiles(next);
   };
 
   return (
@@ -496,14 +547,26 @@ function SkillsTab({
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{name}</span>
+            <div>
+              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{name}</span>
+              {skill.files && Object.keys(skill.files).length > 0 && (
+                <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--text-tertiary)' }}>
+                  {Object.keys(skill.files).length} file{Object.keys(skill.files).length !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
             <div style={{ display: 'flex', gap: 6 }}>
               <button
                 style={btnSmall}
                 onClick={() => {
-                  setEditing(editing === name ? null : name);
-                  setEditDesc(skill.description);
-                  setEditContent(skill.content);
+                  if (editing === name) {
+                    setEditing(null);
+                  } else {
+                    setEditing(name);
+                    setEditDesc(skill.description);
+                    setEditContent(skill.content);
+                    setEditFiles(skill.files ? { ...skill.files } : {});
+                  }
                 }}
               >
                 {editing === name ? 'Cancel' : 'Edit'}
@@ -530,6 +593,61 @@ function SkillsTab({
                 placeholder="Skill content (SKILL.md body)"
                 style={textareaStyle}
               />
+
+              <div style={{ marginTop: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>Files</span>
+                  <input
+                    type="file"
+                    multiple
+                    onChange={handleFileUpload}
+                    style={{ display: 'none' }}
+                    id={`skill-files-${name}`}
+                  />
+                  <label htmlFor={`skill-files-${name}`} style={{ ...btnSmall, display: 'inline-block' }}>
+                    Upload Files
+                  </label>
+                </div>
+
+                {Object.entries(editFiles).map(([path, b64]) => {
+                  const sizeBytes = Math.floor(b64.length * 3 / 4);
+                  return (
+                    <div
+                      key={path}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '6px 10px',
+                        border: '1px solid var(--border)',
+                        borderRadius: 6,
+                        marginBottom: 6,
+                        background: 'var(--bg-card)',
+                      }}
+                    >
+                      <input
+                        defaultValue={path}
+                        onBlur={(e) => renameFile(path, e.target.value.trim())}
+                        style={{ ...inputStyle, flex: 1, fontSize: 13, fontFamily: 'monospace' }}
+                        title="Relative file path (e.g. scripts/search.sh)"
+                      />
+                      <span style={{ fontSize: 12, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                        {formatFileSize(sizeBytes)}
+                      </span>
+                      <button style={btnDanger} onClick={() => removeFile(path)}>
+                        Remove
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {Object.keys(editFiles).length === 0 && (
+                  <div style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>
+                    No additional files. Upload scripts or config files to include alongside SKILL.md.
+                  </div>
+                )}
+              </div>
+
               <button style={{ ...btnPrimary, marginTop: 8 }} onClick={saveEdit}>
                 Apply
               </button>
@@ -545,53 +663,10 @@ function SkillsTab({
   );
 }
 
-// Settings tab (raw JSON editor)
-function SettingsTab({
-  settings,
-  onChange,
-}: {
-  settings: Record<string, unknown>;
-  onChange: (settings: Record<string, unknown>) => void;
-}) {
-  const [json, setJson] = useState(JSON.stringify(settings, null, 2));
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setJson(JSON.stringify(settings, null, 2));
-  }, [settings]);
-
-  const apply = () => {
-    try {
-      const parsed = JSON.parse(json);
-      setError(null);
-      onChange(parsed);
-    } catch (err) {
-      setError(String(err));
-    }
-  };
-
-  return (
-    <div>
-      <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 0, marginBottom: 12 }}>
-        Raw Claude Code settings JSON. These are merged into ~/.claude/settings.json on container start.
-      </p>
-      <textarea
-        value={json}
-        onChange={(e) => setJson(e.target.value)}
-        style={{ ...textareaStyle, minHeight: 200 }}
-      />
-      {error && <div style={{ color: 'var(--red-light)', fontSize: 13, marginTop: 4 }}>{error}</div>}
-      <button style={{ ...btnPrimary, marginTop: 8 }} onClick={apply}>
-        Apply
-      </button>
-    </div>
-  );
-}
-
 // Main component
 export default function AgentExtensionsPanel({ agentId }: { agentId: string }) {
   const [ext, setExt] = useState<AgentExtensions>({});
-  const [tab, setTab] = useState<'mcp' | 'plugins' | 'skills' | 'settings'>('mcp');
+  const [tab, setTab] = useState<'mcp' | 'plugins' | 'skills'>('mcp');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -637,7 +712,7 @@ export default function AgentExtensionsPanel({ agentId }: { agentId: string }) {
         <div>
           <h3 style={{ fontSize: 20, fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Extensions</h3>
           <p style={{ fontSize: 15, color: 'var(--text-secondary)', margin: '4px 0 0' }}>
-            MCP servers, plugins, skills, and Claude Code settings
+            MCP servers, plugins, and skills
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -665,7 +740,7 @@ export default function AgentExtensionsPanel({ agentId }: { agentId: string }) {
       )}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-        {(['mcp', 'plugins', 'skills', 'settings'] as const).map((t) => (
+        {(['mcp', 'plugins', 'skills'] as const).map((t) => (
           <button key={t} style={tabStyle(tab === t)} onClick={() => setTab(t)}>
             {t === 'mcp' ? 'MCP Servers' : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
@@ -689,9 +764,6 @@ export default function AgentExtensionsPanel({ agentId }: { agentId: string }) {
       )}
       {tab === 'skills' && (
         <SkillsTab skills={ext.skills || {}} onChange={(skills) => setExt({ ...ext, skills })} />
-      )}
-      {tab === 'settings' && (
-        <SettingsTab settings={ext.settings || {}} onChange={(settings) => setExt({ ...ext, settings })} />
       )}
     </div>
   );

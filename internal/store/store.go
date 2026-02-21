@@ -2,10 +2,13 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
+	"github.com/mtzanidakis/praktor/internal/extensions"
 	_ "modernc.org/sqlite"
 )
 
@@ -33,6 +36,7 @@ func New(path string) (*Store, error) {
 	pragmas := []string{
 		"PRAGMA journal_mode=WAL",
 		"PRAGMA busy_timeout=5000",
+		"PRAGMA foreign_keys=ON",
 	}
 	for _, p := range pragmas {
 		if _, err := db.Exec(p); err != nil {
@@ -147,5 +151,121 @@ func (s *Store) migrate() error {
 		_, _ = s.db.Exec(stmt)
 	}
 
+	// Normalized extension tables
+	extTables := []string{
+		`CREATE TABLE IF NOT EXISTS agent_mcp_servers (
+			agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+			name     TEXT NOT NULL,
+			config   TEXT NOT NULL,
+			PRIMARY KEY (agent_id, name)
+		)`,
+		`CREATE TABLE IF NOT EXISTS agent_marketplaces (
+			agent_id   TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+			source     TEXT NOT NULL,
+			name       TEXT DEFAULT '',
+			sort_order INTEGER DEFAULT 0,
+			PRIMARY KEY (agent_id, source)
+		)`,
+		`CREATE TABLE IF NOT EXISTS agent_plugins (
+			agent_id   TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+			name       TEXT NOT NULL,
+			disabled   INTEGER DEFAULT 0,
+			requires   TEXT DEFAULT '[]',
+			sort_order INTEGER DEFAULT 0,
+			PRIMARY KEY (agent_id, name)
+		)`,
+		`CREATE TABLE IF NOT EXISTS agent_skills (
+			agent_id    TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+			name        TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			content     TEXT NOT NULL DEFAULT '',
+			requires    TEXT DEFAULT '[]',
+			files       TEXT DEFAULT '{}',
+			PRIMARY KEY (agent_id, name)
+		)`,
+	}
+	for _, stmt := range extTables {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return fmt.Errorf("exec extension table migration: %w", err)
+		}
+	}
+
+	// One-time data migration from JSON blob to normalized tables
+	if err := s.migrateExtensionsToTables(); err != nil {
+		return fmt.Errorf("migrate extensions to tables: %w", err)
+	}
+
 	return nil
+}
+
+// migrateExtensionsToTables migrates extension data from the agents.extensions
+// JSON blob column into the normalized extension tables. It is idempotent —
+// uses INSERT OR IGNORE so it can safely run on every startup.
+func (s *Store) migrateExtensionsToTables() error {
+	rows, err := s.db.Query(`SELECT id, extensions FROM agents WHERE extensions IS NOT NULL AND extensions != '' AND extensions != '{}'`)
+	if err != nil {
+		return fmt.Errorf("query agents: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var agentID, extJSON string
+		if err := rows.Scan(&agentID, &extJSON); err != nil {
+			return fmt.Errorf("scan agent: %w", err)
+		}
+
+		ext, err := extensions.Parse(extJSON)
+		if err != nil {
+			slog.Warn("skipping malformed extensions during migration", "agent", agentID, "error", err)
+			continue
+		}
+
+		if ext.IsEmpty() {
+			continue
+		}
+
+		tx, err := s.db.Begin()
+		if err != nil {
+			return fmt.Errorf("begin tx: %w", err)
+		}
+
+		for name, srv := range ext.MCPServers {
+			cfgJSON, err := json.Marshal(srv)
+			if err != nil {
+				continue
+			}
+			_, _ = tx.Exec(`INSERT OR IGNORE INTO agent_mcp_servers (agent_id, name, config) VALUES (?, ?, ?)`,
+				agentID, name, string(cfgJSON))
+		}
+
+		for i, m := range ext.Marketplaces {
+			_, _ = tx.Exec(`INSERT OR IGNORE INTO agent_marketplaces (agent_id, source, name, sort_order) VALUES (?, ?, ?, ?)`,
+				agentID, m.Source, m.Name, i)
+		}
+
+		for i, p := range ext.Plugins {
+			reqJSON, _ := json.Marshal(p.Requires)
+			disabled := 0
+			if p.Disabled {
+				disabled = 1
+			}
+			_, _ = tx.Exec(`INSERT OR IGNORE INTO agent_plugins (agent_id, name, disabled, requires, sort_order) VALUES (?, ?, ?, ?, ?)`,
+				agentID, p.Name, disabled, string(reqJSON), i)
+		}
+
+		for name, skill := range ext.Skills {
+			reqJSON, _ := json.Marshal(skill.Requires)
+			filesJSON, _ := json.Marshal(skill.Files)
+			_, _ = tx.Exec(`INSERT OR IGNORE INTO agent_skills (agent_id, name, description, content, requires, files) VALUES (?, ?, ?, ?, ?, ?)`,
+				agentID, name, skill.Description, skill.Content, string(reqJSON), string(filesJSON))
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit tx for agent %s: %w", agentID, err)
+		}
+
+		slog.Info("migrated extensions to tables", "agent", agentID)
+	}
+
+	return rows.Err()
 }

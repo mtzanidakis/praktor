@@ -25,7 +25,7 @@ A single Go binary that orchestrates the full loop: receives messages from Teleg
 - **Secure vault** — AES-256-GCM encrypted secrets injected as env vars or files at container start, never exposed to the LLM
 - **Hot config reload** — Edit `praktor.yaml` and changes apply automatically, no restart needed
 - **Nix package manager** — Agents can install packages on demand (Python, ffmpeg, LaTeX, etc.) via MCP tools or the `/nix` Telegram command
-- **Agent extensions** — Per-agent MCP servers, plugins, skills, and Claude Code settings, managed via Mission Control
+- **Agent extensions** — Per-agent MCP servers, plugins, and skills, managed via Mission Control
 - **Agent swarms** — Graph-based multi-agent orchestration with fan-out, pipeline, and collaborative patterns
 - **Web & browser access** — Agents can search the web and control Chromium
 - **Mission Control** — Real-time dashboard with WebSocket updates
@@ -163,7 +163,7 @@ agents:
 
 ## Agent Extensions
 
-Extend agents with MCP servers, plugins, skills, and Claude Code settings — all managed per-agent from Mission Control. Extensions are applied automatically when containers start.
+Extend agents with MCP servers, plugins, and skills — all managed per-agent from Mission Control. Extensions are applied automatically when containers start.
 
 > Extensions require `nix_enabled: true` on the agent. Dependencies are auto-installed via nix.
 
@@ -193,11 +193,7 @@ Claude Code marketplace plugins, installed via `claude plugin install` on first 
 
 ### Skills
 
-Custom instructions written to `~/.claude/skills/{name}/SKILL.md` on container start. Claude Code discovers them automatically.
-
-### Settings
-
-Raw Claude Code settings (JSON) deep-merged into `~/.claude/settings.json` on container start. Useful for permissions, model overrides, and other preferences.
+Custom instructions written to `~/.claude/skills/{name}/SKILL.md` on container start. Claude Code discovers them automatically. Removed skills have their directories cleaned up on the next container start.
 
 ### How It Works
 
@@ -206,7 +202,7 @@ Saving extensions in Mission Control stops the running agent container. On the n
 1. The gateway loads extensions from the DB, resolves any `secret:` references from the vault
 2. The resolved extensions are passed to the container as the `AGENT_EXTENSIONS` env var
 3. The agent-runner detects missing dependencies and auto-installs them via nix
-4. MCP servers are merged into the SDK `query()` call; skills, settings, and plugins are written to disk
+4. MCP servers are merged into the SDK `query()` call; skills and plugins are written to disk
 
 ## Agent Swarms
 
