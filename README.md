@@ -328,3 +328,7 @@ cd ui && npm install && npm run dev    # Vite dev server on :5173, proxies /api 
 ## License
 
 See [LICENSE](LICENSE).
+
+## Third-Party Notice
+
+This project integrates with third-party tools that have their own licenses and terms of service. In particular, [Claude Code](https://github.com/anthropics/claude-code) and the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript) are proprietary software by Anthropic and subject to [Anthropic's Commercial Terms of Service](https://www.anthropic.com/legal/commercial-terms). They are not included in this repository — users must install them at build time and are responsible for complying with Anthropic's terms. Pre-built Docker images containing these components should not be redistributed without Anthropic's permission.
