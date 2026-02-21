@@ -28,7 +28,7 @@ function nixUnavailableResult() {
   };
 }
 
-function parseProfileList(stdout: string): string {
+export function parseProfileList(stdout: string): string {
   try {
     const data = JSON.parse(stdout);
     const elements = data.elements || {};
@@ -50,7 +50,7 @@ function parseProfileList(stdout: string): string {
   }
 }
 
-function parseSearchResults(stdout: string): string {
+export function parseSearchResults(stdout: string): string {
   try {
     const data = JSON.parse(stdout);
     const seen = new Set<string>();

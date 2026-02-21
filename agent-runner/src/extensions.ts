@@ -3,7 +3,7 @@ import { dirname, join } from "path";
 import { execSync } from "child_process";
 import { sendIPC } from "./ipc.js";
 
-interface MCPServerConfig {
+export interface MCPServerConfig {
   type: "stdio" | "http";
   command?: string;
   args?: string[];
@@ -12,25 +12,25 @@ interface MCPServerConfig {
   headers?: Record<string, string>;
 }
 
-interface MarketplaceConfig {
+export interface MarketplaceConfig {
   source: string;
   name?: string;
 }
 
-interface PluginConfig {
+export interface PluginConfig {
   name: string;
   disabled?: boolean;
   requires?: string[];
 }
 
-interface SkillConfig {
+export interface SkillConfig {
   description: string;
   content: string;
   requires?: string[];
   files?: Record<string, string>; // relative path -> base64-encoded content
 }
 
-interface AgentExtensions {
+export interface AgentExtensions {
   mcp_servers?: Record<string, MCPServerConfig>;
   marketplaces?: MarketplaceConfig[];
   plugins?: PluginConfig[];
@@ -76,7 +76,7 @@ function nixInstall(pkg: string): string | null {
   }
 }
 
-function collectDependencies(ext: AgentExtensions): string[] {
+export function collectDependencies(ext: AgentExtensions): string[] {
   const deps = new Set<string>();
 
   // MCP servers (stdio): command is the dependency
@@ -164,7 +164,7 @@ function applySkills(
   }
 }
 
-function deriveMarketplaceName(source: string): string {
+export function deriveMarketplaceName(source: string): string {
   return source.replace(/^https?:\/\//, "").replace(/[/.:]+/g, "-").replace(/-+$/, "");
 }
 
@@ -328,7 +328,7 @@ function applyPlugins(plugins: PluginConfig[], errors: string[]): void {
 }
 
 // Parse names from CLI output lines like "  ❯ name" or "  ❯ name (disabled)"
-function parseNames(output: string): string[] {
+export function parseNames(output: string): string[] {
   const names: string[] = [];
   for (const line of output.split("\n")) {
     const match = line.match(/❯\s+(\S+)/);
