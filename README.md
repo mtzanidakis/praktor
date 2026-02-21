@@ -14,7 +14,9 @@ A single Go binary that orchestrates the full loop: receives messages from Teleg
 
 ## Features
 
+- **Mission Control** — Real-time dashboard with WebSocket updates
 - **Telegram I/O** — Chat with your agents from your phone
+- **Telegram commands** — `/start`, `/stop`, `/reset`, `/nix`, `/agents`, `/commands`
 - **Named agents** — Multiple agents with distinct roles, models, and configurations
 - **Smart routing** — `@agent_name` prefix or AI-powered routing via the default agent
 - **Per-agent isolation** — Each agent runs in its own Docker container with its own filesystem
@@ -23,14 +25,12 @@ A single Go binary that orchestrates the full loop: receives messages from Teleg
 - **User profile** — Agents know who you are via `USER.md`, editable from Mission Control or by agents themselves
 - **Scheduled tasks** — Cron, interval, or one-shot jobs that run agents and deliver results via Telegram
 - **Secure vault** — AES-256-GCM encrypted secrets injected as env vars or files at container start, never exposed to the LLM
+- **Web & browser access** — Agents can search the web and automate browsers via [playwright-cli](https://github.com/microsoft/playwright-cli)
 - **Hot config reload** — Edit `praktor.yaml` and changes apply automatically, no restart needed
 - **Nix package manager** — Agents can install packages on demand (Python, ffmpeg, LaTeX, etc.) via MCP tools or the `/nix` Telegram command
 - **Agent extensions** — Per-agent MCP servers, plugins, and skills, managed via Mission Control
 - **Agent swarms** — Graph-based multi-agent orchestration with fan-out, pipeline, and collaborative patterns
-- **Web & browser access** — Agents can search the web and automate browsers via [playwright-cli](https://github.com/microsoft/playwright-cli)
 - **Backup & restore** — Back up and restore all Docker volumes as zstd-compressed tarballs via CLI
-- **Mission Control** — Real-time dashboard with WebSocket updates
-- **Telegram commands** — `/start`, `/stop`, `/reset`, `/nix`, `/agents`, `/commands`
 
 ## Prerequisites
 
