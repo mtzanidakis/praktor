@@ -1,8 +1,10 @@
 package extensions
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -13,7 +15,6 @@ type AgentExtensions struct {
 	Marketplaces []MarketplaceConfig        `json:"marketplaces,omitempty"`
 	Plugins      []PluginConfig             `json:"plugins,omitempty"`
 	Skills       map[string]SkillConfig     `json:"skills,omitempty"`
-	Settings     map[string]any             `json:"settings,omitempty"`
 }
 
 // MCPServerConfig defines an MCP server (stdio, http, or sse).
@@ -41,14 +42,15 @@ type PluginConfig struct {
 
 // SkillConfig defines a Claude Code skill (SKILL.md).
 type SkillConfig struct {
-	Description string   `json:"description"`
-	Content     string   `json:"content"`
-	Requires    []string `json:"requires,omitempty"` // nix packages needed
+	Description string            `json:"description"`
+	Content     string            `json:"content"`
+	Requires    []string          `json:"requires,omitempty"` // nix packages needed
+	Files       map[string]string `json:"files,omitempty"`    // relative path -> base64-encoded content
 }
 
 // IsEmpty returns true if no extensions are configured.
 func (e *AgentExtensions) IsEmpty() bool {
-	return len(e.MCPServers) == 0 && len(e.Marketplaces) == 0 && len(e.Plugins) == 0 && len(e.Skills) == 0 && len(e.Settings) == 0
+	return len(e.MCPServers) == 0 && len(e.Marketplaces) == 0 && len(e.Plugins) == 0 && len(e.Skills) == 0
 }
 
 var (
@@ -89,9 +91,23 @@ func (e *AgentExtensions) Validate() error {
 		}
 	}
 
-	for name := range e.Skills {
+	for name, skill := range e.Skills {
 		if !skillNameRegexp.MatchString(name) {
 			return fmt.Errorf("skill %q: name must be alphanumeric with hyphens/underscores", name)
+		}
+		for path, data := range skill.Files {
+			if path == "" {
+				return fmt.Errorf("skill %q: file path must not be empty", name)
+			}
+			if filepath.IsAbs(path) {
+				return fmt.Errorf("skill %q: file path %q must be relative", name, path)
+			}
+			if strings.Contains(path, "..") {
+				return fmt.Errorf("skill %q: file path %q must not contain '..'", name, path)
+			}
+			if _, err := base64.StdEncoding.DecodeString(data); err != nil {
+				return fmt.Errorf("skill %q: file %q has invalid base64: %w", name, path, err)
+			}
 		}
 	}
 

@@ -1,7 +1,8 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { NatsBridge } from "./nats-bridge.js";
 import { applyExtensions } from "./extensions.js";
-import { readFileSync, mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
+import { readFileSync, readdirSync, mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
+import { join } from "path";
 import { execSync } from "child_process";
 import { DatabaseSync } from "node:sqlite";
 
@@ -172,6 +173,26 @@ function loadSystemPrompt(includeIdentity = true): string {
     parts.push(memorySection);
   } catch (err) {
     console.warn("[agent] could not load memory keys:", err);
+  }
+
+  // Skills: load installed SKILL.md files into prompt
+  const skillsDir = "/home/praktor/.claude/skills";
+  try {
+    if (existsSync(skillsDir)) {
+      const entries = readdirSync(skillsDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const skillMd = join(skillsDir, entry.name, "SKILL.md");
+        try {
+          const content = readFileSync(skillMd, "utf-8");
+          parts.push(`SKILL: ${entry.name}\n\n${content}`);
+        } catch {
+          // SKILL.md not found in this directory, skip
+        }
+      }
+    }
+  } catch {
+    // skills directory not accessible, skip
   }
 
   return parts.join("\n\n---\n\n");

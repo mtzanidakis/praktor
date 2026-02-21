@@ -29,7 +29,7 @@ cmd/praktor/main.go              # CLI: `gateway`, `vault`, and `version` subcom
 cmd/ptask/main.go                # Task management CLI (Go, runs inside agent containers)
 internal/
   config/                        # YAML config + env var overrides
-  extensions/                    # Agent extension types (MCP servers, plugins, skills, settings)
+  extensions/                    # Agent extension types (MCP servers, plugins, skills)
   store/                         # SQLite (modernc.org/sqlite, pure Go) - agents, messages, tasks, swarms, secrets
   vault/                         # AES-256-GCM encryption with Argon2id key derivation
   natsbus/                       # Embedded NATS server + client helpers + topic naming
@@ -45,7 +45,7 @@ Dockerfile                       # Gateway image (multi-stage: UI + Go + scratch
 Dockerfile.agent                 # Agent image (multi-stage: Go + esbuild + alpine)
 agent-runner/src/                # TypeScript: NATS bridge + Claude Code SDK + MCP servers (bundled with esbuild)
   index.ts                       # Main entrypoint: agent lifecycle, message handling, MCP server registration
-  extensions.ts                  # Apply agent extensions on startup (MCP servers, plugins, skills, settings)
+  extensions.ts                  # Apply agent extensions on startup (MCP servers, plugins, skills)
   nats-bridge.ts                 # NATS pub/sub wrapper for agent ↔ host communication
   ipc.ts                         # Shared NATS IPC helper (sendIPC + IPCResponse)
   mcp-tasks.ts                   # MCP server: scheduled_task_create/list/delete
@@ -118,21 +118,23 @@ The `router.default_agent` must reference an existing agent.
 
 ### Agent Extensions
 
-Extensions are stored per-agent in the DB (not YAML config) and managed via the REST API + Mission Control UI. They allow adding MCP servers, plugins, skills, and Claude Code settings to individual agents. Extensions require `nix_enabled: true` on the agent.
+Extensions are stored per-agent in normalized DB tables (not YAML config) and managed via the REST API + Mission Control UI. They allow adding MCP servers, plugins, and skills to individual agents. Extensions require `nix_enabled: true` on the agent.
 
 **Key files:**
 - `internal/extensions/types.go` — `AgentExtensions`, `MCPServerConfig`, `MarketplaceConfig`, `PluginConfig`, `SkillConfig`
+- `internal/store/extensions.go` — Extension CRUD: reads/writes normalized tables (`agent_mcp_servers`, `agent_marketplaces`, `agent_plugins`, `agent_skills`), assembles `AgentExtensions` JSON
 - `internal/agent/extensions.go` — Loads extensions from DB, resolves secrets, passes as `AGENT_EXTENSIONS` env var
 - `internal/web/api_extensions.go` — GET/PUT `/api/agents/definitions/{id}/extensions`
-- `agent-runner/src/extensions.ts` — Applies extensions at container startup (nix deps, MCP servers, skills, settings, plugins)
+- `agent-runner/src/extensions.ts` — Applies extensions at container startup (nix deps, MCP servers, skills, plugins)
 - `ui/src/components/AgentExtensions.tsx` — UI component with tabs for each extension type
 
 **Extension types:**
 - `marketplaces` — Plugin marketplace sources registered via `claude plugin marketplace add` before plugin installation. `MarketplaceConfig`: `Source string` (required: `owner/repo`, git URL, or URL), `Name string` (optional override, derived from source if omitted).
 - `mcp_servers` — Merged into the `query()` SDK call alongside built-in MCP servers. Supports `secret:name` env/header references.
 - `plugins` — Installed via `claude plugin install` on container start. Requires marketplace to be registered first (except `claude-plugins-official` which is built-in). Persisted on home volume.
-- `skills` — Written to `~/.claude/skills/{name}/SKILL.md` on container start.
-- `settings` — Deep-merged into `~/.claude/settings.json` on container start.
+- `skills` — Written to `~/.claude/skills/{name}/SKILL.md` on container start. Removed skills have their directories cleaned up automatically.
+
+**DB tables:** Extensions are stored in four normalized tables (`agent_mcp_servers`, `agent_marketplaces`, `agent_plugins`, `agent_skills`) with `agent_id` as foreign key and `ON DELETE CASCADE`. A one-time idempotent migration populates these tables from the legacy `agents.extensions` JSON blob on startup.
 
 Updating extensions via PUT stops the running agent container so it picks up changes on the next message.
 
@@ -179,7 +181,7 @@ POST/DELETE    /api/agents/definitions/{id}/secrets/{secretId}  # Add/remove age
 GET/POST       /api/swarms                           # List/create swarm runs
 GET/DELETE     /api/swarms/{id}                      # Swarm status / delete
 GET/PUT        /api/agents/definitions/{id}/agent-md   # Read/update per-agent AGENT.md
-GET/PUT        /api/agents/definitions/{id}/extensions # Read/update agent extensions (MCP servers, plugins, skills, settings)
+GET/PUT        /api/agents/definitions/{id}/extensions # Read/update agent extensions (MCP servers, plugins, skills)
 GET/PUT        /api/user-profile                      # Read/update USER.md
 GET            /api/status                           # System health
 WS             /api/ws                               # WebSocket for real-time events
@@ -250,7 +252,7 @@ The lead agent always runs last and receives all prior results for synthesis.
 
 ## SQLite Schema
 
-Tables: `agents`, `messages` (with agent_id index), `scheduled_tasks` (with status+next_run index), `agent_sessions`, `swarm_runs`, `secrets`, `agent_secrets`. Migrations run automatically on startup.
+Tables: `agents`, `messages` (with agent_id index), `scheduled_tasks` (with status+next_run index), `agent_sessions`, `swarm_runs`, `secrets`, `agent_secrets`, `agent_mcp_servers`, `agent_marketplaces`, `agent_plugins`, `agent_skills`. Migrations run automatically on startup.
 
 ## MCP Server Convention
 

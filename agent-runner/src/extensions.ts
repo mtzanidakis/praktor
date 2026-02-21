@@ -1,4 +1,5 @@
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from "fs";
+import { mkdirSync, writeFileSync, readdirSync, rmSync, existsSync } from "fs";
+import { dirname, join } from "path";
 import { execSync } from "child_process";
 import { sendIPC } from "./ipc.js";
 
@@ -26,6 +27,7 @@ interface SkillConfig {
   description: string;
   content: string;
   requires?: string[];
+  files?: Record<string, string>; // relative path -> base64-encoded content
 }
 
 interface AgentExtensions {
@@ -33,7 +35,6 @@ interface AgentExtensions {
   marketplaces?: MarketplaceConfig[];
   plugins?: PluginConfig[];
   skills?: Record<string, SkillConfig>;
-  settings?: Record<string, unknown>;
 }
 
 interface ExtensionResult {
@@ -112,6 +113,24 @@ function applySkills(
   skills: Record<string, SkillConfig>,
   errors: string[]
 ): void {
+  // Remove skill directories that are no longer in config
+  const skillsDir = "/home/praktor/.claude/skills";
+  if (existsSync(skillsDir)) {
+    try {
+      for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+        if (entry.isDirectory() && !(entry.name in skills)) {
+          const dir = join(skillsDir, entry.name);
+          rmSync(dir, { recursive: true, force: true });
+          console.log(`[extensions] removed skill: ${entry.name}`);
+        }
+      }
+    } catch (err) {
+      const msg = `failed to clean up skills: ${err}`;
+      console.error(`[extensions] ${msg}`);
+      errors.push(msg);
+    }
+  }
+
   for (const [name, skill] of Object.entries(skills)) {
     try {
       const dir = `/home/praktor/.claude/skills/${name}`;
@@ -125,6 +144,17 @@ function applySkills(
         skill.content;
 
       writeFileSync(`${dir}/SKILL.md`, content);
+
+      // Write additional files
+      if (skill.files) {
+        for (const [relPath, b64] of Object.entries(skill.files)) {
+          const filePath = join(dir, relPath);
+          mkdirSync(dirname(filePath), { recursive: true });
+          writeFileSync(filePath, Buffer.from(b64, "base64"), { mode: 0o755 });
+          console.log(`[extensions] wrote skill file: ${name}/${relPath}`);
+        }
+      }
+
       console.log(`[extensions] installed skill: ${name}`);
     } catch (err) {
       const msg = `failed to install skill ${name}: ${err}`;
@@ -132,60 +162,6 @@ function applySkills(
       errors.push(msg);
     }
   }
-}
-
-function applySettings(
-  settings: Record<string, unknown>,
-  errors: string[]
-): void {
-  try {
-    const settingsPath = "/home/praktor/.claude/settings.json";
-    let existing: Record<string, unknown> = {};
-
-    if (existsSync(settingsPath)) {
-      try {
-        existing = JSON.parse(readFileSync(settingsPath, "utf-8"));
-      } catch {
-        // corrupt file, overwrite
-      }
-    }
-
-    // Deep merge: settings from extensions override existing
-    const merged = deepMerge(existing, settings);
-
-    mkdirSync("/home/praktor/.claude", { recursive: true });
-    writeFileSync(settingsPath, JSON.stringify(merged, null, 2));
-    console.log("[extensions] applied settings");
-  } catch (err) {
-    const msg = `failed to apply settings: ${err}`;
-    console.error(`[extensions] ${msg}`);
-    errors.push(msg);
-  }
-}
-
-function deepMerge(
-  target: Record<string, unknown>,
-  source: Record<string, unknown>
-): Record<string, unknown> {
-  const result = { ...target };
-  for (const [key, value] of Object.entries(source)) {
-    if (
-      value &&
-      typeof value === "object" &&
-      !Array.isArray(value) &&
-      result[key] &&
-      typeof result[key] === "object" &&
-      !Array.isArray(result[key])
-    ) {
-      result[key] = deepMerge(
-        result[key] as Record<string, unknown>,
-        value as Record<string, unknown>
-      );
-    } else {
-      result[key] = value;
-    }
-  }
-  return result;
 }
 
 function deriveMarketplaceName(source: string): string {
@@ -427,8 +403,7 @@ export async function applyExtensions(): Promise<ExtensionResult> {
     (ext.mcp_servers && Object.keys(ext.mcp_servers).length > 0) ||
     (ext.marketplaces && ext.marketplaces.length > 0) ||
     (ext.plugins && ext.plugins.length > 0) ||
-    (ext.skills && Object.keys(ext.skills).length > 0) ||
-    (ext.settings && Object.keys(ext.settings).length > 0);
+    (ext.skills && Object.keys(ext.skills).length > 0);
 
   // Even with no config, we need nix to clean up previously installed extensions
   if (!isNixRunning()) {
@@ -465,15 +440,8 @@ export async function applyExtensions(): Promise<ExtensionResult> {
     );
   }
 
-  // Skills
-  if (ext.skills && Object.keys(ext.skills).length > 0) {
-    applySkills(ext.skills, result.errors);
-  }
-
-  // Settings
-  if (ext.settings && Object.keys(ext.settings).length > 0) {
-    applySettings(ext.settings, result.errors);
-  }
+  // Skills — always run to remove previously installed skills
+  applySkills(ext.skills || {}, result.errors);
 
   // Marketplaces — always run to uninstall removed ones (must run before plugins)
   applyMarketplaces(ext.marketplaces || [], result.errors);
