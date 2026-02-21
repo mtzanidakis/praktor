@@ -185,8 +185,9 @@ Extend agents with MCP servers, plugins, and skills — all managed per-agent fr
 
 Connect agents to external tools via the Model Context Protocol. Supports **stdio** (local commands) and **HTTP** transports.
 
-In Mission Control, go to the agent's **Extensions** tab, add an MCP server, and configure the JSON. For example, to add [Context7](https://context7.com/):
+In Mission Control, go to the agent's **Extensions** tab, add an MCP server, and configure the JSON:
 
+**HTTP server** (e.g., [Context7](https://context7.com/)):
 ```json
 {
   "type": "http",
@@ -195,19 +196,33 @@ In Mission Control, go to the agent's **Extensions** tab, add an MCP server, and
 }
 ```
 
-Secret references (`secret:name`) in `env` and `headers` values are resolved from the vault at container start.
+**Stdio server:**
+```json
+{
+  "type": "stdio",
+  "command": "some-tool",
+  "args": ["--flag"],
+  "env": { "API_KEY": "secret:some-api-key" }
+}
+```
+
+Secret references (`secret:name`) in `env` and `headers` values are resolved from the vault at container start. Stdio commands that aren't already in `$PATH` are auto-installed via nix.
 
 > MCP servers are injected at runtime via the SDK `query()` call. They won't appear in `claude mcp list` — but agents can use their tools during conversations.
 
 ### Plugins
 
-Claude Code marketplace plugins, installed via `claude plugin install` on first container start. Persisted on the agent's home volume so installation is one-time. Use the optional `requires` field to declare nix packages the plugin needs.
+Claude Code marketplace plugins, installed via `claude plugin install` on first container start. Persisted on the agent's home volume so installation is one-time.
 
-**Marketplaces:** Plugins come from marketplaces. The `claude-plugins-official` marketplace is always available, but third-party marketplaces must be registered first. Add marketplace sources (e.g., `owner/repo`, git URLs, or URLs to `marketplace.json`) in the Plugins tab — they are registered via `claude plugin marketplace add` before plugin installation. Marketplace data persists on the agent's home volume.
+Plugin names use the `plugin-name@marketplace` format. The optional `requires` field declares nix packages the plugin depends on — these are auto-installed before the plugin runs. Plugins can be temporarily disabled without uninstalling.
+
+**Marketplaces:** Plugins come from marketplaces. The `claude-plugins-official` marketplace is always available, but third-party marketplaces must be registered first. Add marketplace sources (`owner/repo`, git URLs, or URLs to `marketplace.json`) in the Marketplaces tab — they are registered via `claude plugin marketplace add` before plugin installation.
 
 ### Skills
 
-Custom instructions written to `~/.claude/skills/{name}/SKILL.md` on container start. Claude Code discovers them automatically. Removed skills have their directories cleaned up on the next container start.
+Custom instructions written to `~/.claude/skills/{name}/SKILL.md` on container start. Claude Code discovers them automatically.
+
+Each skill has a `description`, a `content` body (the SKILL.md text), and optional `requires` for nix dependencies. Skills can also include additional `files` (base64-encoded) written alongside the SKILL.md in the skill directory — useful for scripts or configs the skill references. Removed skills have their directories cleaned up on the next container start.
 
 ### How It Works
 
@@ -215,8 +230,8 @@ Saving extensions in Mission Control stops the running agent container. On the n
 
 1. The gateway loads extensions from the DB, resolves any `secret:` references from the vault
 2. The resolved extensions are passed to the container as the `AGENT_EXTENSIONS` env var
-3. The agent-runner detects missing dependencies and auto-installs them via nix
-4. MCP servers are merged into the SDK `query()` call; skills and plugins are written to disk
+3. The agent-runner collects nix dependencies from all extensions (stdio commands, plugin `requires`, skill `requires`) and auto-installs any that are missing
+4. MCP servers are merged into the SDK `query()` call; skills are written to disk; plugins are installed/enabled
 
 ## Agent Swarms
 
