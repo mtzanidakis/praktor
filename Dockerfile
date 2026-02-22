@@ -22,7 +22,8 @@ WORKDIR /src
 COPY . .
 RUN go mod download
 COPY --from=ui-builder /ui/dist/ ./internal/web/static/
-RUN CGO_ENABLED=0 go build -ldflags "-X main.version=$(git describe --tags --always 2>/dev/null || echo dev)" -o /praktor ./cmd/praktor
+ARG VERSION
+RUN CGO_ENABLED=0 go build -ldflags "-X main.version=${VERSION:-$(git describe --tags --always 2>/dev/null || echo dev)}" -o /praktor ./cmd/praktor
 
 # Stage 4: Minimal runtime
 FROM scratch AS base
