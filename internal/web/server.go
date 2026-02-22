@@ -15,6 +15,7 @@ import (
 	"github.com/mtzanidakis/praktor/internal/config"
 	"github.com/mtzanidakis/praktor/internal/natsbus"
 	"github.com/mtzanidakis/praktor/internal/registry"
+	"github.com/mtzanidakis/praktor/internal/router"
 	"github.com/mtzanidakis/praktor/internal/store"
 	"github.com/mtzanidakis/praktor/internal/swarm"
 	"github.com/mtzanidakis/praktor/internal/vault"
@@ -30,6 +31,7 @@ type Server struct {
 	nats       *natsbus.Client
 	orch       *agent.Orchestrator
 	registry   *registry.Registry
+	router     *router.Router
 	swarmCoord *swarm.Coordinator
 	vault      *vault.Vault
 	hub        *Hub
@@ -38,12 +40,13 @@ type Server struct {
 	startedAt  time.Time
 }
 
-func NewServer(s *store.Store, bus *natsbus.Bus, orch *agent.Orchestrator, reg *registry.Registry, swarmCoord *swarm.Coordinator, cfg config.WebConfig, v *vault.Vault, version string) *Server {
+func NewServer(s *store.Store, bus *natsbus.Bus, orch *agent.Orchestrator, reg *registry.Registry, rtr *router.Router, swarmCoord *swarm.Coordinator, cfg config.WebConfig, v *vault.Vault, version string) *Server {
 	return &Server{
 		store:      s,
 		bus:        bus,
 		orch:       orch,
 		registry:   reg,
+		router:     rtr,
 		swarmCoord: swarmCoord,
 		vault:      v,
 		hub:        NewHub(),

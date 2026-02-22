@@ -97,13 +97,14 @@ func (s *Server) listAgentDefinitions(w http.ResponseWriter, r *http.Request) {
 		}
 
 		entry := map[string]any{
-			"id":           a.ID,
-			"name":         a.Name,
-			"description":  a.Description,
-			"model":        s.registry.ResolveModel(a.ID),
-			"image":        s.registry.ResolveImage(a.ID),
-			"workspace":    a.Workspace,
-			"agent_status": agentStatus,
+			"id":            a.ID,
+			"name":          a.Name,
+			"description":   a.Description,
+			"model":         s.registry.ResolveModel(a.ID),
+			"image":         s.registry.ResolveImage(a.ID),
+			"workspace":     a.Workspace,
+			"agent_status":  agentStatus,
+			"default_agent": a.ID == s.router.DefaultAgent(),
 		}
 
 		if stats, ok := msgStats[a.ID]; ok {

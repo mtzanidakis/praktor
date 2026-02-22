@@ -10,6 +10,7 @@ interface Agent {
   image?: string;
   workspace?: string;
   agent_status?: string;
+  default_agent?: boolean;
   message_count?: number;
   last_active?: string;
 }
@@ -97,7 +98,7 @@ function Agents() {
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
-        {agents.map((agent) => (
+        {[...agents].sort((a, b) => a.name.localeCompare(b.name)).map((agent) => (
           <div
             key={agent.id}
             data-hover
@@ -110,6 +111,11 @@ function Agents() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)' }}>{agent.name}</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {agent.default_agent && (
+                  <span style={badge('var(--accent)', 'var(--accent-muted)')}>
+                    default
+                  </span>
+                )}
                 {agent.agent_status && (
                   <span style={badge(
                     agent.agent_status === 'running' ? 'var(--green)' : 'var(--text-secondary)',
