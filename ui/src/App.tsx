@@ -141,6 +141,9 @@ function App() {
     return (localStorage.getItem('praktor-theme') as 'dark' | 'light') || 'dark';
   });
   const [authState, setAuthState] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -178,7 +181,52 @@ function App() {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
-      <aside style={{
+      {/* Hamburger button (mobile only) */}
+      <button
+        className="hamburger"
+        onClick={() => setSidebarOpen(true)}
+        style={{
+          display: 'none',
+          position: 'fixed',
+          top: 12,
+          left: 12,
+          zIndex: 30,
+          width: 40,
+          height: 40,
+          borderRadius: 8,
+          border: '1px solid var(--border)',
+          background: 'var(--bg-card)',
+          color: 'var(--text-primary)',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          boxShadow: 'var(--shadow)',
+        }}
+        aria-label="Open menu"
+      >
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <line x1="3" y1="5" x2="17" y2="5" />
+          <line x1="3" y1="10" x2="17" y2="10" />
+          <line x1="3" y1="15" x2="17" y2="15" />
+        </svg>
+      </button>
+
+      {/* Backdrop (mobile only) */}
+      {sidebarOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={closeSidebar}
+          style={{
+            display: 'none',
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 15,
+          }}
+        />
+      )}
+
+      <aside className={`sidebar${sidebarOpen ? ' open' : ''}`} style={{
         width: 232,
         background: 'var(--bg-sidebar)',
         borderRight: '1px solid var(--border)',
@@ -190,7 +238,7 @@ function App() {
         top: 0,
         left: 0,
         bottom: 0,
-        zIndex: 10,
+        zIndex: 20,
       }}>
         {/* Logo */}
         <NavLink to="/" style={{
@@ -230,6 +278,7 @@ function App() {
               key={to}
               to={to}
               end={to === '/'}
+              onClick={closeSidebar}
               style={({ isActive }) => ({
                 display: 'flex',
                 alignItems: 'center',
@@ -313,7 +362,7 @@ function App() {
         </div>
       </aside>
 
-      <main style={{
+      <main className="main-content" style={{
         flex: 1,
         marginLeft: 232,
         padding: 32,

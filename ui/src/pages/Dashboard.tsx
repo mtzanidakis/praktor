@@ -85,12 +85,12 @@ function Dashboard() {
             borderRadius: 6,
             border: '1px solid var(--border)',
           }}>
-            v{status.version}
+            {status.version}
           </span>
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 28 }}>
+      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 28 }}>
         {stats.map((s) => (
           <div key={s.label} style={card}>
             <div style={{

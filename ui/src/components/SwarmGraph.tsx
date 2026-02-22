@@ -291,9 +291,9 @@ export default function SwarmGraph({ onLaunch, initialData, launchLabel }: Props
   const selectedEdgeObj = selectedEdge !== null ? edges[selectedEdge] : null;
 
   return (
-    <div style={{ display: 'flex', gap: 16, height: 'calc(100vh - 180px)', minHeight: 500 }}>
+    <div className="conversations-layout" style={{ display: 'flex', gap: 16, height: 'calc(100vh - 180px)', minHeight: 500 }}>
       {/* Left: Agent palette */}
-      <div style={{ ...card, width: 200, overflowY: 'auto', flexShrink: 0 }}>
+      <div className="conversations-agents" style={{ ...card, width: 200, overflowY: 'auto', flexShrink: 0 }}>
         <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
           Agents
         </h3>

@@ -91,9 +91,9 @@ function Conversations() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 16, height: 'calc(100vh - 140px)' }}>
+      <div className="conversations-layout" style={{ display: 'flex', gap: 16, height: 'calc(100vh - 140px)' }}>
         {/* Agent list */}
-        <div style={{ ...card, width: 200, padding: 6, overflowY: 'auto', flexShrink: 0 }}>
+        <div className="conversations-agents" style={{ ...card, width: 200, padding: 6, overflowY: 'auto', flexShrink: 0 }}>
           {agents.map((agent) => (
             <div
               key={agent.id}
