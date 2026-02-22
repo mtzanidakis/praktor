@@ -315,7 +315,7 @@ function PluginsTab({
     <div>
       <h4 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 8px' }}>Marketplaces</h4>
       <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 12px' }}>
-        Add marketplace sources (e.g., owner/repo) before installing their plugins. The <code style={{ fontSize: 12 }}>claude-plugins-official</code> marketplace is always available.
+        Add marketplace sources (e.g., owner/repo) before installing their plugins. The <code style={{ fontSize: 12 }}>claude-plugins-official</code> marketplace is registered by default.
       </p>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>

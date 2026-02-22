@@ -168,10 +168,25 @@ export function deriveMarketplaceName(source: string): string {
   return source.replace(/^https?:\/\//, "").replace(/[/.:]+/g, "-").replace(/-+$/, "");
 }
 
+const DEFAULT_MARKETPLACE: MarketplaceConfig = {
+  source: "anthropics/claude-plugins-official",
+  name: "claude-plugins-official",
+};
+
 function applyMarketplaces(
   marketplaces: MarketplaceConfig[],
   errors: string[]
 ): void {
+  // Ensure the default marketplace is always included
+  const hasDefault = marketplaces.some(
+    (mp) =>
+      mp.source === DEFAULT_MARKETPLACE.source ||
+      mp.name === DEFAULT_MARKETPLACE.name
+  );
+  if (!hasDefault) {
+    marketplaces = [DEFAULT_MARKETPLACE, ...marketplaces];
+  }
+
   // Get currently registered marketplaces
   const registered = getInstalledMarketplaces();
 
@@ -207,15 +222,6 @@ function applyMarketplaces(
   // Register configured marketplaces
   for (const mp of marketplaces) {
     try {
-      // Skip if the official marketplace source is configured — it's always present
-      if (
-        mp.source === "anthropics/claude-plugins-official" ||
-        mp.name === "claude-plugins-official"
-      ) {
-        console.log(`[extensions] marketplace built-in, skipping: ${mp.source}`);
-        continue;
-      }
-
       const derivedName = mp.name || deriveMarketplaceName(mp.source);
 
       // Check both the derived name and if any registered name contains the source
