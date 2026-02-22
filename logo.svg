@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Abstracted Pi: angular top bar with forward cut, two bold tilted legs -->
+  <polygon fill="#6366f1" points="0,8 124,4 128,28 4,32"/>
+  <polygon fill="#6366f1" points="14,40 42,38 28,122 0,124"/>
+  <polygon fill="#6366f1" points="72,36 100,34 86,118 58,120"/>
+</svg>
