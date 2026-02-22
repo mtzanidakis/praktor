@@ -98,9 +98,9 @@ router:
 ### 2. Build and Run
 
 ```sh
-make containers          # Build gateway + agent images
-docker compose up -d     # Start the stack
-docker compose logs -f   # Watch logs
+docker compose build agent    # Build the agent image
+docker compose up -d          # Start the stack (pulls gateway from GHCR)
+docker compose logs -f        # Watch logs
 ```
 
 Mission Control is available at `http://localhost:8080`.
