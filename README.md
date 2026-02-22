@@ -98,10 +98,12 @@ router:
 ### 2. Build and Run
 
 ```sh
-docker compose build agent    # Build the agent image
+docker compose build agent    # Build the agent image locally
 docker compose up -d          # Start the stack (pulls gateway from GHCR)
 docker compose logs -f        # Watch logs
 ```
+
+The agent image must be built locally because it bundles proprietary third-party software that cannot be redistributed. See [Third-Party Notice](#third-party-notice) for details.
 
 Mission Control is available at `http://localhost:8080`.
 
