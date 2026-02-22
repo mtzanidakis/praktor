@@ -1,5 +1,5 @@
 services:
-  tsrp:
+  praktor-tsrp:
     container_name: praktor-tsrp
     image: ghcr.io/mtzanidakis/tsrp
     restart: always
