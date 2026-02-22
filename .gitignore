@@ -5,6 +5,7 @@ agent-runner/node_modules/
 agent-runner/dist/
 config/praktor.yaml
 .env
+docker-compose.override.yml
 *.exe
 *.dll
 *.so

@@ -1,4 +1,4 @@
-.PHONY: build run test clean ui containers
+.PHONY: build run test clean ui
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 
@@ -17,11 +17,6 @@ clean:
 # Build the React UI
 ui:
 	cd ui && npm install && npm run build
-
-# Build both container images (gateway + agent)
-containers:
-	docker build -t praktor:latest -f Dockerfile .
-	docker build -t praktor-agent:latest -f Dockerfile.agent .
 
 # Development: run without building UI
 dev:

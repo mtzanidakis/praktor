@@ -1,9 +1,7 @@
 services:
   praktor:
     container_name: praktor
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/mtzanidakis/praktor:latest
     ports:
       - "8080:8080"
     group_add:
@@ -24,6 +22,13 @@ services:
     networks:
       - praktor-net
     restart: unless-stopped
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    profiles:
+      - build
 
 volumes:
   praktor-data:

@@ -71,8 +71,8 @@ CGO_ENABLED=0 go build ./cmd/ptask     # Build ptask CLI
 CGO_ENABLED=0 go test ./internal/...   # Run all tests
 ./praktor backup -f backup.tar.zst     # Back up all praktor Docker volumes
 ./praktor restore -f backup.tar.zst    # Restore volumes (-overwrite to replace)
-make containers                        # Build both Docker images (gateway + agent)
-docker compose up                      # Run full stack
+docker compose build agent              # Build the agent image
+docker compose up -d                   # Run full stack (pulls gateway from GHCR)
 ```
 
 Note: On this system, binaries must be built with `CGO_ENABLED=0` due to the nix dynamic linker. The `modernc.org/sqlite` driver is pure Go and does not require CGO.
