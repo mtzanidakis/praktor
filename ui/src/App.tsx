@@ -148,13 +148,14 @@ function App() {
         zIndex: 10,
       }}>
         {/* Logo */}
-        <div style={{
+        <NavLink to="/" style={{
           padding: '4px 20px 20px',
           borderBottom: '1px solid var(--border)',
           marginBottom: 12,
           display: 'flex',
           alignItems: 'center',
           gap: 10,
+          textDecoration: 'none',
         }}>
           <div style={{
             width: 28,
@@ -166,17 +167,16 @@ function App() {
             justifyContent: 'center',
             flexShrink: 0,
           }}>
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M7 1l2 4h4l-3.2 2.5L11 12 7 9.2 3 12l1.2-4.5L1 5h4L7 1z" fill="#fff" />
+            <svg width="16" height="16" viewBox="0 0 128 128">
+              <polygon fill="#fff" points="0,8 124,4 128,28 4,32"/>
+              <polygon fill="#fff" points="14,40 42,38 28,122 0,124"/>
+              <polygon fill="#fff" points="72,36 100,34 86,118 58,120"/>
             </svg>
           </div>
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
-              Mission Control
-            </div>
-            <div style={{ fontSize: 14, color: 'var(--text-tertiary)', marginTop: 1 }}>Praktor</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
+            Mission Control
           </div>
-        </div>
+        </NavLink>
 
         {/* Navigation */}
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 1, padding: '0 8px', flex: 1 }}>
