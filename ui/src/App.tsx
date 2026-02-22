@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { Routes, Route, NavLink } from 'react-router-dom';
+import Login from './components/Login';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Agents = lazy(() => import('./pages/Agents'));
@@ -115,6 +116,16 @@ function IconMoon() {
   );
 }
 
+function IconLogout() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 14H3a1 1 0 01-1-1V3a1 1 0 011-1h3" />
+      <polyline points="10,11 14,8 10,5" />
+      <line x1="14" y1="8" x2="6" y2="8" />
+    </svg>
+  );
+}
+
 const navItems = [
   { to: '/', label: 'Dashboard', Icon: IconDashboard },
   { to: '/agents', label: 'Agents', Icon: IconAgents },
@@ -129,15 +140,41 @@ function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     return (localStorage.getItem('praktor-theme') as 'dark' | 'light') || 'dark';
   });
+  const [authState, setAuthState] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('praktor-theme', theme);
   }, [theme]);
 
+  useEffect(() => {
+    fetch('/api/auth/check').then((res) => {
+      if (res.status === 204) {
+        // No auth configured
+        setAuthState('authenticated');
+      } else if (res.ok) {
+        setAuthState('authenticated');
+      } else {
+        setAuthState('unauthenticated');
+      }
+    }).catch(() => {
+      setAuthState('unauthenticated');
+    });
+  }, []);
+
   const toggleTheme = useCallback(() => {
     setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
   }, []);
+
+  const handleLogout = useCallback(async () => {
+    await fetch('/api/logout', { method: 'POST' });
+    setAuthState('unauthenticated');
+  }, []);
+
+  if (authState === 'loading') return null;
+  if (authState === 'unauthenticated') {
+    return <Login onLogin={() => setAuthState('authenticated')} />;
+  }
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
@@ -252,6 +289,26 @@ function App() {
           >
             {theme === 'dark' ? <IconSun /> : <IconMoon />}
             {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          </button>
+          <button
+            onClick={handleLogout}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              width: '100%',
+              padding: '8px 12px',
+              borderRadius: 7,
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--text-secondary)',
+              fontSize: 16,
+              fontWeight: 500,
+              cursor: 'pointer',
+            }}
+          >
+            <IconLogout />
+            Sign out
           </button>
         </div>
       </aside>

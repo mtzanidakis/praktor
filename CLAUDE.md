@@ -56,6 +56,7 @@ agent-runner/src/                # TypeScript: NATS bridge + Claude Code SDK + M
   mcp-file.ts                    # MCP server: file_send (send files to Telegram)
 ui/                              # React/Vite SPA (dark theme, indigo accent)
   src/pages/                     # Dashboard, Agents, Conversations, Tasks, Secrets, Swarms
+  src/components/Login.tsx       # Session-based login form
   src/components/SwarmGraph.tsx   # SVG-based visual graph editor for swarm topology
   src/hooks/useWebSocket.ts      # Real-time WebSocket event hook
 config/praktor.example.yaml      # Example configuration
@@ -95,7 +96,7 @@ Loaded from YAML (default: `config/praktor.yaml`, override with `PRAKTOR_CONFIG`
 | `PRAKTOR_TELEGRAM_TOKEN` | `telegram.token` | Telegram bot token |
 | `ANTHROPIC_API_KEY` | `defaults.anthropic_api_key` | Anthropic API key for agents |
 | `CLAUDE_CODE_OAUTH_TOKEN` | `defaults.oauth_token` | Claude Code OAuth token |
-| `PRAKTOR_WEB_PASSWORD` | `web.auth` | Basic auth password for web UI |
+| `PRAKTOR_WEB_PASSWORD` | `web.auth` | Password for web UI (session-based + Basic Auth fallback) |
 | `PRAKTOR_WEB_PORT` | `web.port` | Web UI port (default: 8080) |
 | `PRAKTOR_AGENT_MODEL` | `defaults.model` | Override default Claude model |
 | `PRAKTOR_VAULT_PASSPHRASE` | `vault.passphrase` | Encryption passphrase for secrets vault |
@@ -153,6 +154,19 @@ Running agents whose config changed are stopped and lazily restarted on the next
 
 Key implementation files: `internal/config/diff.go` (config diffing), `cmd/praktor/main.go` (`watchConfigFile`, `reloadConfig`).
 
+### Web Authentication
+
+Mission Control uses cookie-based session auth with a login page. When `web.auth` is set:
+
+- **Login:** `POST /api/login` with `{"password":"..."}` creates a session (32-byte random token, hex-encoded) stored in-memory on the Server struct (`map[string]time.Time`, mutex-protected). Session cookie: `HttpOnly; SameSite=Strict; Path=/`, 30-day expiry, refreshed on each request.
+- **Auth check:** `GET /api/auth/check` returns 204 (no auth configured), 200 (valid session), or 401 (unauthenticated). Used by UI on load.
+- **Logout:** `POST /api/logout` clears cookie and deletes session from map.
+- **Middleware:** All `/api/*` routes require valid session cookie, except `/api/login` and `/api/auth/check` (public). WebSocket (`/api/ws`) is also protected — browsers send cookies on upgrade automatically.
+- **Basic Auth fallback:** `Authorization: Basic` header is accepted for programmatic API access (same password check, no session created).
+- **UI:** `App.tsx` checks auth on mount, shows `Login.tsx` if unauthenticated. Sidebar has a "Sign out" button.
+
+Key implementation: `internal/web/server.go` (session store, handlers, middleware), `ui/src/components/Login.tsx`, `ui/src/App.tsx` (auth gate).
+
 ## NATS Topics
 
 ```
@@ -170,6 +184,9 @@ events.>                        # System events (broadcast to WebSocket clients)
 ## REST API
 
 ```
+POST           /api/login                            # Session login (public)
+POST           /api/logout                           # Session logout
+GET            /api/auth/check                       # Session validation (public, 204=no auth, 200=valid, 401=invalid)
 GET            /api/agents/definitions              # List agent definitions
 GET            /api/agents/definitions/{id}          # Agent details
 GET            /api/agents/definitions/{id}/messages # Message history
