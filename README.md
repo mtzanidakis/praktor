@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="ui/public/favicon.svg" width="80" alt="Praktor logo" />
+</p>
+
 # Praktor
 
 Personal AI agent assistant. Define named agents with distinct roles and models, message them from Telegram, and monitor everything from Mission Control.
