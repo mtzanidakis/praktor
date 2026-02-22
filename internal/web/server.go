@@ -34,10 +34,11 @@ type Server struct {
 	vault      *vault.Vault
 	hub        *Hub
 	cfg        config.WebConfig
+	version    string
 	startedAt  time.Time
 }
 
-func NewServer(s *store.Store, bus *natsbus.Bus, orch *agent.Orchestrator, reg *registry.Registry, swarmCoord *swarm.Coordinator, cfg config.WebConfig, v *vault.Vault) *Server {
+func NewServer(s *store.Store, bus *natsbus.Bus, orch *agent.Orchestrator, reg *registry.Registry, swarmCoord *swarm.Coordinator, cfg config.WebConfig, v *vault.Vault, version string) *Server {
 	return &Server{
 		store:      s,
 		bus:        bus,
@@ -47,6 +48,7 @@ func NewServer(s *store.Store, bus *natsbus.Bus, orch *agent.Orchestrator, reg *
 		vault:      v,
 		hub:        NewHub(),
 		cfg:        cfg,
+		version:    version,
 		startedAt:  time.Now(),
 	}
 }

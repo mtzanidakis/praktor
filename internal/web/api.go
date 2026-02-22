@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -466,7 +465,7 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 		"recent_messages": recentOut,
 		"nats":            "ok",
 		"timestamp":       time.Now().UTC(),
-		"version":         strings.TrimSpace("dev"),
+		"version":         s.version,
 	}
 
 	jsonResponse(w, status)
