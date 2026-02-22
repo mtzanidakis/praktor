@@ -107,6 +107,8 @@ Hello!                              → routed to default agent
 @researcher find papers on RAG      → routed to researcher
 ```
 
+For a secure setup without exposed ports, see [Production Deployment with Tailscale](#production-deployment-with-tailscale).
+
 ## Hot Config Reload
 
 The gateway watches `praktor.yaml` for changes and applies them automatically within seconds. No restart required.
@@ -302,6 +304,29 @@ praktor restore -f /path/to/backup.tar.zst -overwrite    # Overwrites existing v
 Restores volumes from a backup archive. Without `-overwrite`, refuses to restore if any target volume already exists.
 
 Both commands accept `-image <name>` to override the helper container image (default: `alpine:3`).
+
+## Production Deployment with Tailscale
+
+For production, a `docker-compose.override.yml-prod` is included that adds a [tsrp](https://github.com/mtzanidakis/tsrp) (Tailscale Reverse Proxy) sidecar and removes the public port mapping. Mission Control becomes accessible only over your Tailscale network.
+
+```sh
+ln -s docker-compose.override.yml-prod docker-compose.override.yml
+```
+
+Add the following to your `.env`:
+
+```sh
+HOSTNAME=praktor              # Tailscale machine name
+TS_AUTHKEY=tskey-auth-...     # Tailscale auth key (https://login.tailscale.com/admin/settings/keys)
+```
+
+Then start as usual — the override is picked up automatically:
+
+```sh
+docker compose up -d
+```
+
+Mission Control will be available at `https://praktor.<your-tailnet>.ts.net`. The tsrp container stores its Tailscale state in `./state/`.
 
 ## Development
 
