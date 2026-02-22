@@ -1,0 +1,18 @@
+services:
+  tsrp:
+    container_name: praktor-tsrp
+    image: ghcr.io/mtzanidakis/tsrp
+    restart: always
+    environment:
+      - BACKEND=http://praktor:8080
+      - HOSTNAME=${HOSTNAME}
+      - TS_AUTHKEY=${TS_AUTHKEY}
+    volumes:
+      - ./state:/var/lib/tsrp
+
+  praktor:
+    networks:
+      - default
+    ports: !reset # Remove port mapping for praktor in production
+
+# vi: ft=yaml
