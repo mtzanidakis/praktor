@@ -46,23 +46,13 @@ A single Go binary that orchestrates the full loop: receives messages from Teleg
 git clone https://github.com/mtzanidakis/praktor.git
 cd praktor
 cp config/praktor.example.yaml config/praktor.yaml
+cp .env.example .env && chmod 0600 .env
 ```
 
-Create a `.env` file:
+Edit `.env` and fill in your credentials (see comments in the file for details). Set `DOCKER_GID` to the group ID of the `docker` group on your host so the non-root container user can access the Docker socket:
 
 ```sh
-# Telegram
-PRAKTOR_TELEGRAM_TOKEN=your-bot-token
-
-# Claude auth (pick one)
-ANTHROPIC_API_KEY=sk-ant-your-api-key
-# CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token
-
-# Mission Control password (optional)
-PRAKTOR_WEB_PASSWORD=your-password
-
-# Vault passphrase for encrypted secrets
-PRAKTOR_VAULT_PASSPHRASE=your-passphrase
+grep docker /etc/group    # look for the docker group GID
 ```
 
 Edit `config/praktor.yaml` to define your agents:
