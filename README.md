@@ -109,6 +109,20 @@ Hello!                              → routed to default agent
 
 For a secure setup without exposed ports, see [Production Deployment with Tailscale](#production-deployment-with-tailscale).
 
+## Upgrading
+
+Pull the latest code, images, and rebuild the agent:
+
+```sh
+./scripts/upgrade.sh
+```
+
+Then restart the stack:
+
+```sh
+docker compose up -d
+```
+
 ## Hot Config Reload
 
 The gateway watches `praktor.yaml` for changes and applies them automatically within seconds. No restart required.
