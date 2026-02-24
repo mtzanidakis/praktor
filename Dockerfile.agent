@@ -71,8 +71,8 @@ RUN echo '{"browser":{"browserName":"chromium","launchOptions":{"executablePath"
 
 # Pre-create volume mount points with correct ownership so Docker
 # populates new named volumes with the right permissions and structure.
-RUN mkdir -p /workspace/agent /workspace/global && \
-    chown -R praktor:praktor /workspace/agent /workspace/global && \
+RUN mkdir -p /workspace/agent /workspace/global /home/praktor/bin && \
+    chown -R praktor:praktor /workspace/agent /workspace/global /home/praktor/bin && \
     chmod 0700 /home/praktor
 
 # playwright-cli env vars (skip browser download — we use system chromium)
@@ -83,7 +83,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/usr/bin
 ENV USE_BUILTIN_RIPGREP=0
 ENV NIX_PROFILES="/nix/var/nix/profiles/default /home/praktor/.nix-profile"
 ENV NIX_SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-ENV PATH="/home/praktor/.nix-profile/bin:/nix/var/nix/profiles/default/bin:${PATH}"
+ENV PATH="/home/praktor/bin:/home/praktor/.nix-profile/bin:/nix/var/nix/profiles/default/bin:${PATH}"
 
 USER praktor
 WORKDIR /workspace/agent
