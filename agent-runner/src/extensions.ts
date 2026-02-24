@@ -60,7 +60,13 @@ function isCommandAvailable(cmd: string): boolean {
   }
 }
 
+// Map binary/command names to their actual nix package names.
+const packageAliases: Record<string, string> = {
+  uvx: "uv",
+};
+
 function nixInstall(pkg: string): string | null {
+  pkg = packageAliases[pkg] || pkg;
   try {
     console.log(`[extensions] installing nix package: ${pkg}`);
     execSync(`nix profile install nixpkgs#${pkg}`, {

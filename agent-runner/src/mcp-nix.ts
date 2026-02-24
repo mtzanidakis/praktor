@@ -17,6 +17,16 @@ function nixAvailable(): boolean {
   }
 }
 
+// Map binary/command names to their actual nix package names.
+// e.g. `uvx` is provided by the `uv` package.
+const packageAliases: Record<string, string> = {
+  uvx: "uv",
+};
+
+function resolvePackage(name: string): string {
+  return packageAliases[name] || name;
+}
+
 function nixUnavailableResult() {
   return {
     content: [
@@ -100,7 +110,7 @@ server.tool(
     console.error(`[mcp-nix] add packages=${pkgs.join(",")}`);
     if (!nixAvailable()) return nixUnavailableResult();
     try {
-      const args = ["profile", "add", ...pkgs.map((p) => `nixpkgs#${p}`)];
+      const args = ["profile", "add", ...pkgs.map((p) => `nixpkgs#${resolvePackage(p)}`)];
       const stdout = execFileSync("nix", args, {
         timeout: 120000,
         encoding: "utf-8",
