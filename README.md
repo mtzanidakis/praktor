@@ -42,6 +42,8 @@ A single Go binary that orchestrates the full loop: receives messages from Teleg
 - A Telegram bot token ([create one with @BotFather](https://t.me/BotFather))
 - A Claude authentication method: [Anthropic API key](https://console.anthropic.com/) or Claude Code OAuth token (`claude setup-token`)
 
+> **Note on OAuth tokens:** Using Claude Code OAuth tokens with third-party applications must comply with Anthropic's [authentication and credential use policy](https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use). Review the policy before using this method. OAuth token support is deprecated and will be removed in a future version.
+
 ## Getting Started
 
 ### 1. Clone and Configure
