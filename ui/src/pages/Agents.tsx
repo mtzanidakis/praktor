@@ -42,7 +42,7 @@ function Agents() {
   const [agentMdSaved, setAgentMdSaved] = useState(false);
   const [agentMdLoading, setAgentMdLoading] = useState(false);
   const { events } = useWebSocket();
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const fetchAgents = useCallback(() => {
     fetch('/api/agents/definitions')

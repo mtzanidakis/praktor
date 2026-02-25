@@ -88,7 +88,7 @@ function Secrets() {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { events } = useWebSocket();
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const fetchSecrets = useCallback(() => {
     fetch('/api/secrets')

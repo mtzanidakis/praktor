@@ -22,7 +22,7 @@ function Dashboard() {
   const [status, setStatus] = useState<StatusData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { events } = useWebSocket();
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const fetchStatus = useCallback(() => {
     fetch('/api/status')
