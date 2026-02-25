@@ -1,5 +1,5 @@
 # Stage 1: Build the React UI
-FROM node:24-alpine AS ui-builder
+FROM node:25-alpine AS ui-builder
 WORKDIR /ui
 COPY ui/ .
 RUN npm install && npm run build
