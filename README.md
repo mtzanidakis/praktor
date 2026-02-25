@@ -352,6 +352,22 @@ docker compose up -d
 
 Mission Control will be available at `https://praktor.<your-tailnet>.ts.net`. The tsrp container stores its Tailscale state in `./state/`.
 
+## Getting Help
+
+After cloning the repo, you can use [Claude Code](https://docs.anthropic.com/en/docs/claude-code) to get help with any aspect of Praktor. The project includes a detailed `CLAUDE.md` that gives Claude full context about the architecture, configuration, and available APIs.
+
+```sh
+git clone https://github.com/mtzanidakis/praktor.git
+cd praktor
+claude
+```
+
+For example, you can ask Claude Code things like:
+
+- "How do I install an MCP server on a Praktor agent?"
+- "How do I add a new agent to my configuration?"
+- "How do I set up secrets for an agent?"
+
 ## Development
 
 ```sh
