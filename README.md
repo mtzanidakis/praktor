@@ -323,6 +323,10 @@ Restores volumes from a backup archive. Without `-overwrite`, refuses to restore
 
 Both commands accept `-image <name>` to override the helper container image (default: `alpine:3`).
 
+### Scheduled Backups
+
+The included `docker-compose.override.yml-prod` configures hourly automated backups using [Ofelia](https://github.com/netresearch/ofelia), a Docker job scheduler. It runs `praktor backup` inside the container and writes to a `./dumps` bind mount. Adjust the schedule or add your own jobs via Ofelia labels.
+
 ## Production Deployment with Tailscale
 
 For production, a `docker-compose.override.yml-prod` is included that adds a [tsrp](https://github.com/mtzanidakis/tsrp) (Tailscale Reverse Proxy) sidecar and removes the public port mapping. Mission Control becomes accessible only over your Tailscale network.

@@ -14,5 +14,12 @@ services:
     networks:
       - default
     ports: !reset # Remove port mapping for praktor in production
+    volumes:
+      - ./dumps:/dumps
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-exec.praktor-backup.schedule: "@hourly"
+      ofelia.job-exec.praktor-backup.user: "10321"
+      ofelia.job-exec.praktor-backup.command: "/praktor backup -f /dumps/backup.tar.zst"
 
 # vi: ft=yaml
