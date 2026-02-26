@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.2.58",
+    "@anthropic-ai/claude-agent-sdk": "0.2.59",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "nats": "latest"
   },
