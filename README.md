@@ -4,7 +4,7 @@
 
 # Praktor
 
-Personal AI agent assistant. Define named agents with distinct roles and models, message them from Telegram, and monitor everything from Mission Control.
+Personal AI agent assistant. A lightweight, self-hosted alternative to [OpenClaw](https://github.com/openclaw/openclaw) focused on Telegram and Claude Code. Define named agents with distinct roles and models, message them from Telegram, and monitor everything from Mission Control.
 
 ```
 Telegram ──> Go Gateway ──> Router ──> Embedded NATS ──> Agent Containers (Docker)
