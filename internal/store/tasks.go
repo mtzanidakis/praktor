@@ -45,6 +45,7 @@ func (s *Store) SaveTask(t *ScheduledTask) error {
 		INSERT INTO scheduled_tasks (id, agent_id, name, schedule, prompt, context_mode, status, next_run_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
+			agent_id = excluded.agent_id,
 			name = excluded.name,
 			schedule = excluded.schedule,
 			prompt = excluded.prompt,
