@@ -26,7 +26,7 @@ func (o *Orchestrator) resolveExtensions(opts *container.AgentOpts, agentID stri
 	// Resolve secret:name references in MCP server env/headers
 	if !ext.IsEmpty() && o.vault != nil {
 		if err := ext.ResolveSecretRefs(func(name string) (string, error) {
-			plaintext, err := o.decryptSecret(name)
+			plaintext, err := o.decryptSecret(agentID, name)
 			if err != nil {
 				return "", err
 			}

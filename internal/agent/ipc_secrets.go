@@ -21,13 +21,27 @@ func (o *Orchestrator) resolveSecrets(opts *container.AgentOpts, agentID string,
 		return
 	}
 
+	// Build a set of accessible secret names for this agent (global + assigned)
+	accessible := make(map[string]bool)
+	if secrets, err := o.store.GetAgentSecrets(agentID); err == nil {
+		for _, sec := range secrets {
+			accessible[sec.Name] = true
+		}
+	}
+
 	// Resolve secret:name references in env vars
 	for k, v := range opts.Env {
 		if !strings.HasPrefix(v, secretRefPrefix) {
 			continue
 		}
 		secretName := strings.TrimPrefix(v, secretRefPrefix)
-		plaintext, err := o.decryptSecret(secretName)
+		if !accessible[secretName] {
+			slog.Error("secret access denied: agent not authorized",
+				"agent", agentID, "env", k, "secret", secretName)
+			delete(opts.Env, k)
+			continue
+		}
+		plaintext, err := o.decryptSecret(agentID, secretName)
 		if err != nil {
 			slog.Warn("failed to resolve env secret", "agent", agentID, "env", k, "secret", secretName, "error", err)
 			delete(opts.Env, k)
@@ -38,7 +52,12 @@ func (o *Orchestrator) resolveSecrets(opts *container.AgentOpts, agentID string,
 
 	// Prepare file secrets
 	for _, fm := range def.Files {
-		plaintext, err := o.decryptSecret(fm.Secret)
+		if !accessible[fm.Secret] {
+			slog.Error("secret access denied: agent not authorized",
+				"agent", agentID, "secret", fm.Secret, "target", fm.Target)
+			continue
+		}
+		plaintext, err := o.decryptSecret(agentID, fm.Secret)
 		if err != nil {
 			slog.Warn("failed to resolve file secret", "agent", agentID, "secret", fm.Secret, "target", fm.Target, "error", err)
 			continue
@@ -59,13 +78,13 @@ func (o *Orchestrator) resolveSecrets(opts *container.AgentOpts, agentID string,
 	}
 }
 
-func (o *Orchestrator) decryptSecret(name string) ([]byte, error) {
-	sec, err := o.store.GetSecret(name)
+func (o *Orchestrator) decryptSecret(agentID, name string) ([]byte, error) {
+	sec, err := o.store.GetAgentSecretByName(agentID, name)
 	if err != nil {
 		return nil, err
 	}
 	if sec == nil {
-		return nil, fmt.Errorf("secret %q not found", name)
+		return nil, fmt.Errorf("secret %q not found or not accessible by agent %q", name, agentID)
 	}
 	return o.vault.Decrypt(sec.Value, sec.Nonce)
 }
@@ -125,7 +144,7 @@ func (o *Orchestrator) redactSecrets(agentID, content string) string {
 
 	// Decrypt and redact vault secrets
 	for name := range secretNames {
-		plaintext, err := o.decryptSecret(name)
+		plaintext, err := o.decryptSecret(agentID, name)
 		if err != nil || len(plaintext) < 8 {
 			continue
 		}

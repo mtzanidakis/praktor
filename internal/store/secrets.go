@@ -101,6 +101,22 @@ func (s *Store) GetAgentSecrets(agentID string) ([]Secret, error) {
 	return secrets, rows.Err()
 }
 
+func (s *Store) GetAgentSecretByName(agentID, name string) (*Secret, error) {
+	row := s.db.QueryRow(`
+		SELECT s.id, s.name, s.description, s.kind, s.filename, s.value, s.nonce, s.global, s.created_at, s.updated_at
+		FROM secrets s
+		WHERE s.name = ? AND (s.global = 1 OR s.id IN (SELECT secret_id FROM agent_secrets WHERE agent_id = ?))`,
+		name, agentID)
+	sec, err := scanSecret(row, true)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get agent secret by name: %w", err)
+	}
+	return sec, nil
+}
+
 func (s *Store) GetAgentSecret(agentID, secretID string) (*Secret, error) {
 	row := s.db.QueryRow(`
 		SELECT s.id, s.name, s.description, s.kind, s.filename, s.value, s.nonce, s.global, s.created_at, s.updated_at
