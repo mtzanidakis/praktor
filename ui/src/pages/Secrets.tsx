@@ -179,6 +179,7 @@ function Secrets() {
   };
 
   const handleEdit = (secret: Secret) => {
+    const validAgentIds = new Set(agents.map((a) => a.id));
     setForm({
       name: secret.name,
       description: secret.description || '',
@@ -186,7 +187,7 @@ function Secrets() {
       filename: secret.filename || '',
       value: '',
       global: secret.global,
-      agent_ids: secret.agent_ids || [],
+      agent_ids: (secret.agent_ids || []).filter((id) => validAgentIds.has(id)),
     });
     setEditing(secret.id);
     setShowForm(true);
