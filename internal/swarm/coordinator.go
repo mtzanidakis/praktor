@@ -411,12 +411,26 @@ func (c *Coordinator) resolveSecrets(opts *container.AgentOpts, agentID string, 
 		return
 	}
 
+	// Build a set of accessible secret IDs for this agent (global + assigned)
+	accessible := make(map[string]bool)
+	if secrets, err := c.store.GetAgentSecrets(agentID); err == nil {
+		for _, sec := range secrets {
+			accessible[sec.Name] = true
+		}
+	}
+
 	for k, v := range opts.Env {
 		if !strings.HasPrefix(v, "secret:") {
 			continue
 		}
 		secretName := strings.TrimPrefix(v, "secret:")
-		sec, err := c.store.GetSecret(secretName)
+		if !accessible[secretName] {
+			slog.Error("swarm: secret access denied: agent not authorized",
+				"agent", agentID, "env", k, "secret", secretName)
+			delete(opts.Env, k)
+			continue
+		}
+		sec, err := c.store.GetAgentSecretByName(agentID, secretName)
 		if err != nil || sec == nil {
 			slog.Warn("swarm: failed to resolve env secret", "agent", agentID, "env", k, "secret", secretName)
 			delete(opts.Env, k)
@@ -432,7 +446,12 @@ func (c *Coordinator) resolveSecrets(opts *container.AgentOpts, agentID string, 
 	}
 
 	for _, fm := range def.Files {
-		sec, err := c.store.GetSecret(fm.Secret)
+		if !accessible[fm.Secret] {
+			slog.Error("swarm: secret access denied: agent not authorized",
+				"agent", agentID, "secret", fm.Secret, "target", fm.Target)
+			continue
+		}
+		sec, err := c.store.GetAgentSecretByName(agentID, fm.Secret)
 		if err != nil || sec == nil {
 			slog.Warn("swarm: failed to resolve file secret", "agent", agentID, "secret", fm.Secret)
 			continue
