@@ -1,6 +1,6 @@
 module github.com/mtzanidakis/praktor
 
-go 1.26
+go 1.26.1
 
 require (
 	github.com/adhocore/gronx v1.19.6
