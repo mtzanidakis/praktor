@@ -41,6 +41,10 @@ type Bot struct {
 	chatAgentMu sync.RWMutex
 	chatAgent   map[int64]string // chatID → agentID that last handled a message
 
+	// Track Telegram message_id → agentID so replies route to the right agent
+	msgAgentMu sync.RWMutex
+	msgAgent   map[int]string // messageID → agentID
+
 	// Track swarm → chat_id for result delivery
 	swarmChatMu sync.RWMutex
 	swarmChat   map[string]int64 // swarmID → chatID
@@ -62,6 +66,7 @@ func NewBot(cfg config.TelegramConfig, orch *agent.Orchestrator, rtr *router.Rou
 		registry:   reg,
 		bus:        bus,
 		chatAgent:  make(map[int64]string),
+		msgAgent:   make(map[int]string),
 		swarmChat:  make(map[string]int64),
 	}
 
@@ -111,7 +116,7 @@ func NewBot(cfg config.TelegramConfig, orch *agent.Orchestrator, rtr *router.Rou
 		if agentID != rtr.DefaultAgent() {
 			attributed = fmt.Sprintf("_%s:_ %s", agentID, content)
 		}
-		if err := b.SendMessage(context.Background(), chatID, attributed); err != nil {
+		if err := b.sendAgentMessage(context.Background(), chatID, attributed, agentID); err != nil {
 			slog.Error("failed to send telegram message", "chat", chatID, "error", err)
 		}
 	})
@@ -265,16 +270,31 @@ func (b *Bot) handleMessage(ctx context.Context, msg telego.Message) {
 	senderID := strconv.FormatInt(userID, 10)
 	chatIDStr := strconv.FormatInt(chatID, 10)
 
-	// Route message to appropriate agent
-	agentID, cleanedMessage, err := b.router.Route(ctx, text)
-	if err != nil {
-		slog.Error("routing failed", "error", err)
-		_ = b.SendMessage(ctx, chatID, "Sorry, I couldn't route your message to an agent.")
-		return
+	// If the user is replying to an agent's message, route directly to that agent.
+	var agentID, cleanedMessage string
+	if msg.ReplyToMessage != nil {
+		b.msgAgentMu.RLock()
+		replyAgent, ok := b.msgAgent[msg.ReplyToMessage.MessageID]
+		b.msgAgentMu.RUnlock()
+		if ok {
+			agentID = replyAgent
+			cleanedMessage = text
+			slog.Debug("routing via reply", "chat", chatID, "agent", agentID, "reply_to", msg.ReplyToMessage.MessageID)
+		}
 	}
 
-	if cleanedMessage == "" {
-		cleanedMessage = text
+	// Fall back to normal routing
+	if agentID == "" {
+		var err error
+		agentID, cleanedMessage, err = b.router.Route(ctx, text)
+		if err != nil {
+			slog.Error("routing failed", "error", err)
+			_ = b.SendMessage(ctx, chatID, "Sorry, I couldn't route your message to an agent.")
+			return
+		}
+		if cleanedMessage == "" {
+			cleanedMessage = text
+		}
 	}
 
 	// Handle @swarm command
@@ -431,22 +451,57 @@ func (b *Bot) downloadFile(ctx context.Context, fileID string) ([]byte, error) {
 }
 
 func (b *Bot) SendMessage(ctx context.Context, chatID int64, text string) error {
+	_, err := b.sendMessage(ctx, chatID, text)
+	return err
+}
+
+// sendMessage sends a (possibly chunked) message and returns the IDs of the sent Telegram messages.
+func (b *Bot) sendMessage(ctx context.Context, chatID int64, text string) ([]int, error) {
 	text = toTelegramMarkdown(text)
 	chunks := chunkMessage(text, 4096)
+	var ids []int
 	for _, chunk := range chunks {
 		msg := tu.Message(tu.ID(chatID), chunk)
 		msg.ParseMode = telego.ModeMarkdown
-		_, err := b.bot.SendMessage(ctx, msg)
+		sent, err := b.bot.SendMessage(ctx, msg)
 		if err != nil {
 			// Markdown parsing can fail on unescaped characters;
 			// retry as plain text so the message still gets delivered.
 			msg.ParseMode = ""
-			_, err = b.bot.SendMessage(ctx, msg)
+			sent, err = b.bot.SendMessage(ctx, msg)
 		}
 		if err != nil {
-			return fmt.Errorf("send message: %w", err)
+			return ids, fmt.Errorf("send message: %w", err)
+		}
+		if sent != nil {
+			ids = append(ids, sent.MessageID)
 		}
 	}
+	return ids, nil
+}
+
+// sendAgentMessage sends a message and tracks the sent message IDs → agentID
+// so that Telegram replies to these messages route back to the same agent.
+// Keeps at most 1000 entries to bound memory usage.
+func (b *Bot) sendAgentMessage(ctx context.Context, chatID int64, text, agentID string) error {
+	ids, err := b.sendMessage(ctx, chatID, text)
+	if err != nil {
+		return err
+	}
+	b.msgAgentMu.Lock()
+	for _, id := range ids {
+		b.msgAgent[id] = agentID
+	}
+	// Evict old entries if map grows too large
+	if len(b.msgAgent) > 1000 {
+		for k := range b.msgAgent {
+			delete(b.msgAgent, k)
+			if len(b.msgAgent) <= 800 {
+				break
+			}
+		}
+	}
+	b.msgAgentMu.Unlock()
 	return nil
 }
 
