@@ -30,6 +30,7 @@ let bridge: NatsBridge;
 let isProcessing = false;
 let lastSessionId: string | undefined;
 let currentQueryIter: AsyncIterator<unknown> | null = null;
+let aborted = false;
 let extensionMcpServers: Record<string, { type: string; command?: string; args?: string[]; url?: string; env?: Record<string, string>; headers?: Record<string, string> }> = {};
 const pendingMessages: Array<Record<string, unknown>> = [];
 
@@ -244,6 +245,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
   }
 
   isProcessing = true;
+  aborted = false;
   console.log(`[agent] processing message for agent ${AGENT_ID}: ${text.substring(0, 100)}...`);
 
   try {
@@ -366,20 +368,19 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
       }
     }
 
-    // Send final result
-    if (fullResponse) {
+    // Send final result (skip if aborted — orchestrator already notified the user)
+    if (fullResponse && !aborted) {
       await bridge.publishResult(fullResponse);
     }
 
     console.log(`[agent] completed processing for agent ${AGENT_ID} (session=${lastSessionId})`);
   } catch (err) {
-    if ((err as Error)?.message === "aborted") {
+    if (aborted) {
       console.log("[agent] query aborted by user");
-      await bridge.publishResult("Aborted.");
       return;
     }
-    console.error(`[agent] error processing message:`, err);
     const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[agent] error processing message:`, err);
     await bridge.publishResult(`Error: ${errorMsg}`);
   } finally {
     currentQueryIter = null;
@@ -470,6 +471,7 @@ async function handleControl(
       break;
     case "abort":
       console.log("[agent] aborting current run...");
+      aborted = true;
       if (currentQueryIter) {
         currentQueryIter.return?.(undefined);
         currentQueryIter = null;
