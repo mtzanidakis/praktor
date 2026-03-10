@@ -32,6 +32,7 @@ let lastSessionId: string | undefined;
 let currentQueryIter: AsyncIterator<unknown> | null = null;
 let abortPending = false;
 let extensionMcpServers: Record<string, { type: string; command?: string; args?: string[]; url?: string; env?: Record<string, string>; headers?: Record<string, string> }> = {};
+const pendingMessages: Array<Record<string, unknown>> = [];
 
 // Swarm collaborative chat buffer
 interface ChatMessage {
@@ -244,7 +245,8 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
   }
 
   if (isProcessing) {
-    console.log("[agent] already processing, queuing message");
+    pendingMessages.push(data);
+    console.log(`[agent] already processing, queued message (${pendingMessages.length} pending)`);
     return;
   }
 
@@ -389,6 +391,13 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
   } finally {
     currentQueryIter = null;
     isProcessing = false;
+
+    // Process next queued message if any
+    if (pendingMessages.length > 0) {
+      const next = pendingMessages.shift()!;
+      console.log(`[agent] dequeuing next message (${pendingMessages.length} remaining)`);
+      handleMessage(next);
+    }
   }
 }
 
@@ -475,6 +484,11 @@ async function handleControl(
       }
       // Kill any running claude processes as backstop
       try { execSync("pkill -f /usr/local/bin/claude", { timeout: 3000 }); } catch { /* ignore */ }
+      // Drain pending message queue
+      if (pendingMessages.length > 0) {
+        console.log(`[agent] discarding ${pendingMessages.length} queued message(s)`);
+        pendingMessages.length = 0;
+      }
       isProcessing = false;
       msg.respond(new TextEncoder().encode(JSON.stringify({ status: "ok" })));
       console.log("[agent] run aborted");
