@@ -901,21 +901,38 @@ func (o *Orchestrator) StartNixGC(ctx context.Context) {
 				continue
 			}
 
+			// Stagger agents 10-15 minutes apart
+			stagger := time.Duration(rand.Int64N(int64(5*time.Minute))) + 10*time.Minute
+			slog.Info("nix-gc: next agent scheduled", "agent", ag.ID, "in", stagger.Round(time.Minute))
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(stagger):
+			}
+
 			if err := o.EnsureAgent(ctx, ag.ID); err != nil {
 				slog.Warn("nix-gc: failed to start agent", "agent", ag.ID, "error", err)
 				continue
 			}
 
-			output, err := o.containers.Exec(ctx, ag.ID, []string{"nix-collect-garbage", "-d"})
+			// Upgrade all nix packages first
+			output, err := o.containers.Exec(ctx, ag.ID, []string{"nix", "profile", "upgrade", "--all"})
+			if err != nil {
+				slog.Warn("nix-upgrade failed, skipping agent", "agent", ag.ID, "error", err)
+				continue
+			}
+			if lines := strings.Split(strings.TrimSpace(output), "\n"); len(lines) > 0 && lines[len(lines)-1] != "" {
+				slog.Info("nix-upgrade: [" + ag.ID + "] " + lines[len(lines)-1])
+			}
+
+			// Garbage collect old generations
+			output, err = o.containers.Exec(ctx, ag.ID, []string{"nix-collect-garbage", "-d"})
 			if err != nil {
 				slog.Warn("nix-collect-garbage failed", "agent", ag.ID, "error", err)
 				continue
 			}
-
-			// Log last non-empty line
-			lines := strings.Split(strings.TrimSpace(output), "\n")
-			if len(lines) > 0 {
-				slog.Info("nix-collect-garbage: ["+ag.ID+"] "+lines[len(lines)-1])
+			if lines := strings.Split(strings.TrimSpace(output), "\n"); len(lines) > 0 && lines[len(lines)-1] != "" {
+				slog.Info("nix-collect-garbage: [" + ag.ID + "] " + lines[len(lines)-1])
 			}
 		}
 	}
