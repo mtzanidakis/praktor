@@ -34,7 +34,7 @@ IMPORTANT: For relative delays ("in 30 seconds", "in 5 minutes") ALWAYS use the 
     prompt: z
       .string()
       .describe(
-        "Instruction sent to the agent when the task fires. Write as a directive, e.g. 'Reply to the user with: Hello!'"
+        "Instruction sent to the agent when the task fires. The agent's text reply is delivered to the user as a Telegram message automatically — no send tool needed. Write as a directive, e.g. 'Reply with: Hello!' Do NOT write 'send a message to the user' — just say what to reply with."
       ),
   },
   async ({ name, schedule, prompt }) => {

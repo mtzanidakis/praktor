@@ -41,7 +41,7 @@ const server = new McpServer({
 
 server.tool(
   "file_send",
-  "Send a file to the user via Telegram. Supports images (sent as photos), documents, PDFs, etc. Max file size: 12MB.",
+  "Send a binary file to the user via Telegram (images, PDFs, documents, etc.). NOT for text messages — your text replies are already delivered to Telegram automatically. Never create .txt files to send text content. Max file size: 12MB.",
   {
     path: z.string().describe("Absolute path to the file in the container"),
     caption: z.string().optional().describe("Optional caption for the file"),

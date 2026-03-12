@@ -161,6 +161,15 @@ function loadSystemPrompt(includeIdentity = true): string {
     // nix-daemon not running, skip
   }
 
+  // Messaging: explain how agent responses reach the user
+  parts.push(
+    "MESSAGING — Your text responses are automatically delivered to the user via Telegram.\n" +
+    "- To send a message, simply reply with text — no special tool is needed.\n" +
+    "- The file_send tool is ONLY for sending binary files (images, PDFs, etc.), NOT for text messages. NEVER create .txt files to deliver text content.\n" +
+    "- When executing scheduled tasks, your text reply IS the notification the user receives.\n" +
+    "- Keep scheduled task replies short and direct — the user sees them as Telegram messages."
+  );
+
   // Security: prevent agents from revealing secret values
   parts.push(
     "SECURITY — MANDATORY RULES:\n" +
