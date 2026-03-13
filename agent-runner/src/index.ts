@@ -221,7 +221,8 @@ function loadSystemPrompt(includeIdentity = true): string {
       "- `agent-browser` is already in PATH and ready to use.\n" +
       "- It is configured to use the system Chromium at `/usr/bin/chromium-browser`.\n" +
       "- Run `agent-browser open <url>` to start a browser session, then `agent-browser snapshot -i` to see the page.\n" +
-      "- The browser persists across messages. Reuse the existing session."
+      "- The browser persists across messages. Reuse the existing session.\n" +
+      "- When executing a scheduled task, ALWAYS run `agent-browser close` when done to free resources."
     );
   }
 
