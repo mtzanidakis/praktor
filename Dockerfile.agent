@@ -39,6 +39,7 @@ RUN apk add --no-cache \
     nodejs \
     npm \
     ripgrep \
+    tini \
     ttf-freefont \
     font-noto-cjk \
     font-noto-emoji \
@@ -81,4 +82,4 @@ ENV PATH="/home/praktor/bin:/home/praktor/.nix-profile/bin:/nix/var/nix/profiles
 
 USER praktor
 WORKDIR /workspace/agent
-ENTRYPOINT ["node", "/app/index.mjs"]
+ENTRYPOINT ["tini", "--", "node", "/app/index.mjs"]
