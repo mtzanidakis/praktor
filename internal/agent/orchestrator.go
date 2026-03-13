@@ -38,8 +38,9 @@ type Orchestrator struct {
 	vault      *vault.Vault
 	cfg        config.DefaultsConfig
 	sessions   *SessionTracker
-	queues     map[string]*AgentQueue
-	lastMeta   map[string]map[string]string // agentID → last message meta
+	queues      map[string]*AgentQueue
+	lastMeta    map[string]map[string]string // agentID → last message meta (fallback for IPC)
+	pendingMeta map[string]map[string]string // msgID → message meta
 	mu         sync.RWMutex
 	listeners     []OutputListener
 	fileListeners []FileListener
@@ -64,8 +65,9 @@ func NewOrchestrator(bus *natsbus.Bus, ctr *container.Manager, s *store.Store, r
 		vault:      v,
 		cfg:        cfg,
 		sessions:   NewSessionTracker(),
-		queues:     make(map[string]*AgentQueue),
-		lastMeta:   make(map[string]map[string]string),
+		queues:      make(map[string]*AgentQueue),
+		lastMeta:    make(map[string]map[string]string),
+		pendingMeta: make(map[string]map[string]string),
 	}
 
 	client, err := natsbus.NewClient(bus)
@@ -256,9 +258,11 @@ func (o *Orchestrator) executeMessage(ctx context.Context, agentID string, msg Q
 	}
 
 	// Send message to container via NATS
+	msgID := uuid.New().String()
 	payload := map[string]string{
 		"text":    msg.Text,
 		"agentID": agentID,
+		"msg_id":  msgID,
 	}
 	for k, v := range msg.Meta {
 		payload[k] = v
@@ -267,6 +271,7 @@ func (o *Orchestrator) executeMessage(ctx context.Context, agentID string, msg Q
 	// Store meta so output handler can route responses back
 	o.mu.Lock()
 	o.lastMeta[agentID] = msg.Meta
+	o.pendingMeta[msgID] = msg.Meta
 	o.mu.Unlock()
 
 	data, _ := json.Marshal(payload)
@@ -377,6 +382,7 @@ func (o *Orchestrator) handleAgentOutput(msg *nats.Msg) {
 	var output struct {
 		Type    string `json:"type"`
 		Content string `json:"content"`
+		MsgID   string `json:"msg_id"`
 	}
 	if err := json.Unmarshal(msg.Data, &output); err != nil {
 		return
@@ -395,8 +401,11 @@ func (o *Orchestrator) handleAgentOutput(msg *nats.Msg) {
 		_ = o.store.SaveMessage(agentMsg)
 		o.publishMessageEvent(agentMsg)
 
-		// Get metadata from the latest queued message for this agent
-		meta := o.getLastMeta(agentID)
+		// Get metadata: try msg_id first (parallel-safe), fall back to per-agent lastMeta
+		meta := o.popPendingMeta(output.MsgID)
+		if meta == nil {
+			meta = o.getLastMeta(agentID)
+		}
 
 		o.listenerMu.RLock()
 		for _, l := range o.listeners {
@@ -410,6 +419,19 @@ func (o *Orchestrator) getLastMeta(agentID string) map[string]string {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 	return o.lastMeta[agentID]
+}
+
+func (o *Orchestrator) popPendingMeta(msgID string) map[string]string {
+	if msgID == "" {
+		return nil
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	meta, ok := o.pendingMeta[msgID]
+	if ok {
+		delete(o.pendingMeta, msgID)
+	}
+	return meta
 }
 
 func (o *Orchestrator) handleIPC(msg *nats.Msg) {
