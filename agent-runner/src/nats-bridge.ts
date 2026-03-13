@@ -26,14 +26,15 @@ export class NatsBridge {
     this.conn.publish(topic, sc.encode(JSON.stringify(data)));
   }
 
-  async publishOutput(content: string, type: string = "text"): Promise<void> {
-    await this.publish(`agent.${this.agentId}.output`, { type, content });
+  async publishOutput(content: string, type: string = "text", msgId?: string): Promise<void> {
+    await this.publish(`agent.${this.agentId}.output`, { type, content, ...(msgId ? { msg_id: msgId } : {}) });
   }
 
-  async publishResult(content: string): Promise<void> {
+  async publishResult(content: string, msgId?: string): Promise<void> {
     await this.publish(`agent.${this.agentId}.output`, {
       type: "result",
       content,
+      ...(msgId ? { msg_id: msgId } : {}),
     });
   }
 

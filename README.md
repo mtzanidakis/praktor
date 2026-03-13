@@ -27,7 +27,7 @@ A single Go binary that orchestrates the full loop: receives messages from Teleg
 - **Persistent memory** — Per-agent SQLite memory database with MCP tools for storing and recalling facts across sessions
 - **Agent identity** — Each agent has an `AGENT.md` for personality and expertise, editable from Mission Control or by agents themselves
 - **User profile** — Agents know who you are via `USER.md`, editable from Mission Control or by agents themselves
-- **Scheduled tasks** — Cron, interval, or one-shot jobs that run agents and deliver results via Telegram
+- **Scheduled tasks** — Cron, interval, or one-shot jobs that run agents and deliver results via Telegram. Multiple tasks execute in parallel (up to 3 concurrent) with independent sessions
 - **Secure vault** — AES-256-GCM encrypted secrets injected as env vars or files at container start, never exposed to the LLM
 - **Web & browser access** — Agents can search the web and automate browsers via [playwright-cli](https://github.com/microsoft/playwright-cli)
 - **Hot config reload** — Edit `praktor.yaml` and changes apply automatically, no restart needed

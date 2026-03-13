@@ -34,6 +34,12 @@ let aborted = false;
 let extensionMcpServers: Record<string, { type: string; command?: string; args?: string[]; url?: string; env?: Record<string, string>; headers?: Record<string, string> }> = {};
 const pendingMessages: Array<Record<string, unknown>> = [];
 
+// Parallel task execution
+const MAX_PARALLEL_TASKS = parseInt(process.env.MAX_PARALLEL_TASKS || "3", 10);
+let activeTaskCount = 0;
+const activeQueries = new Map<string, AsyncIterator<unknown>>();
+const pendingTasks: Array<Record<string, unknown>> = [];
+
 // Swarm collaborative chat buffer
 interface ChatMessage {
   from: string;
@@ -243,10 +249,164 @@ function loadSystemPrompt(includeIdentity = true): string {
   return parts.join("\n\n---\n\n");
 }
 
+function buildQueryOptions(prompt: string, sessionId?: string) {
+  const systemPrompt = loadSystemPrompt();
+  const cwd = "/workspace/agent";
+  const configuredTools = parseAllowedTools(ALLOWED_TOOLS_ENV);
+  const allowedTools = configuredTools || [
+    "Bash",
+    "Read",
+    "Write",
+    "Edit",
+    "Glob",
+    "Grep",
+    "WebSearch",
+    "WebFetch",
+    "Task",
+    "TaskOutput",
+    "mcp__praktor-*",
+  ];
+
+  return {
+    prompt,
+    options: {
+      model: CLAUDE_MODEL,
+      cwd,
+      pathToClaudeCodeExecutable: "/usr/local/bin/claude",
+      systemPrompt: systemPrompt || undefined,
+      ...(sessionId ? { resume: sessionId } : {}),
+      allowedTools,
+      mcpServers: {
+        "praktor-tasks": {
+          type: "stdio",
+          command: "node",
+          args: ["/app/mcp-tasks.mjs"],
+          env: { NATS_URL, AGENT_ID },
+        },
+        "praktor-profile": {
+          type: "stdio",
+          command: "node",
+          args: ["/app/mcp-profile.mjs"],
+          env: { NATS_URL, AGENT_ID },
+        },
+        "praktor-memory": {
+          type: "stdio",
+          command: "node",
+          args: ["/app/mcp-memory.mjs"],
+          env: {},
+        },
+        "praktor-nix": {
+          type: "stdio",
+          command: "node",
+          args: ["/app/mcp-nix.mjs"],
+          env: {},
+        },
+        "praktor-file": {
+          type: "stdio",
+          command: "node",
+          args: ["/app/mcp-file.mjs"],
+          env: { NATS_URL, AGENT_ID },
+        },
+        ...(SWARM_CHAT_TOPIC ? {
+          "praktor-swarm": {
+            type: "stdio",
+            command: "node",
+            args: ["/app/mcp-swarm.mjs"],
+            env: { NATS_URL, AGENT_ID, SWARM_CHAT_TOPIC },
+          },
+        } : {}),
+        ...extensionMcpServers,
+      },
+      permissionMode: "bypassPermissions",
+      allowDangerouslySkipPermissions: true,
+      stderr: (data: string) => {
+        console.error(`[claude-stderr] ${data.trimEnd()}`);
+      },
+    },
+  };
+}
+
+// Execute a scheduled task in parallel (fresh session, no resume)
+async function executeTask(data: Record<string, unknown>): Promise<void> {
+  const text = data.text as string;
+  const msgId = data.msg_id as string | undefined;
+  console.log(`[task] executing parallel task: ${text.substring(0, 100)}...`);
+
+  try {
+    const opts = buildQueryOptions(text);
+    const result = query(opts);
+
+    let fullResponse = "";
+    const iter = result[Symbol.asyncIterator]();
+    if (msgId) activeQueries.set(msgId, iter);
+
+    try {
+      for await (const event of { [Symbol.asyncIterator]: () => iter }) {
+        if (event.type === "result" && event.subtype === "success") {
+          fullResponse = event.result;
+        } else if (event.type === "assistant") {
+          for (const block of event.message.content) {
+            if (block.type === "text") {
+              await bridge.publishOutput(block.text, "text", msgId);
+            } else if (block.type === "tool_use" || block.type === "server_tool_use") {
+              console.log(`[task] tool: ${block.name}`);
+            }
+          }
+        }
+      }
+    } catch (streamErr) {
+      if (fullResponse) {
+        console.warn(`[task] claude process exited with error after successful result, ignoring:`, streamErr);
+      } else {
+        throw streamErr;
+      }
+    }
+
+    if (fullResponse && !aborted) {
+      await bridge.publishResult(fullResponse, msgId);
+    }
+    console.log(`[task] completed`);
+  } catch (err) {
+    if (aborted) {
+      console.log("[task] aborted");
+      return;
+    }
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[task] error:`, err);
+    await bridge.publishResult(`Error: ${errorMsg}`, msgId);
+  } finally {
+    if (msgId) activeQueries.delete(msgId);
+    activeTaskCount--;
+    // Dequeue next pending task
+    if (pendingTasks.length > 0) {
+      const next = pendingTasks.shift()!;
+      activeTaskCount++;
+      console.log(`[task] dequeuing next task (${pendingTasks.length} remaining)`);
+      executeTask(next);
+    }
+  }
+}
+
 async function handleMessage(data: Record<string, unknown>): Promise<void> {
   const text = data.text as string;
   if (!text) return;
 
+  const sender = data.sender as string | undefined;
+  const msgId = data.msg_id as string | undefined;
+
+  // Scheduled tasks run in parallel with fresh sessions
+  if (sender === "scheduler") {
+    if (activeTaskCount >= MAX_PARALLEL_TASKS) {
+      pendingTasks.push(data);
+      console.log(`[task] at capacity (${activeTaskCount}/${MAX_PARALLEL_TASKS}), queued (${pendingTasks.length} pending)`);
+      return;
+    }
+    activeTaskCount++;
+    executeTask(data);
+    return;
+  }
+
+  // Regular messages: sequential with session continuity
   if (isProcessing) {
     pendingMessages.push(data);
     console.log(`[agent] already processing, queued message (${pendingMessages.length} pending)`);
@@ -258,9 +418,6 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
   console.log(`[agent] processing message for agent ${AGENT_ID}: ${text.substring(0, 100)}...`);
 
   try {
-    const systemPrompt = loadSystemPrompt();
-    const cwd = "/workspace/agent";
-
     // Prepend swarm chat context if in collaborative mode
     let augmentedText = text;
     if (SWARM_CHAT_TOPIC && chatHistory.length > 0) {
@@ -271,80 +428,10 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
       console.log(`[agent] prepended ${chatHistory.length} chat messages to prompt`);
     }
 
-    console.log(`[agent] starting claude query, cwd=${cwd}`);
+    console.log(`[agent] starting claude query`);
 
-    const configuredTools = parseAllowedTools(ALLOWED_TOOLS_ENV);
-    const allowedTools = configuredTools || [
-      "Bash",
-      "Read",
-      "Write",
-      "Edit",
-      "Glob",
-      "Grep",
-      "WebSearch",
-      "WebFetch",
-      "Task",
-      "TaskOutput",
-      "mcp__praktor-*",
-    ];
-
-    const result = query({
-      prompt: augmentedText,
-      options: {
-        model: CLAUDE_MODEL,
-        cwd,
-        pathToClaudeCodeExecutable: "/usr/local/bin/claude",
-        systemPrompt: systemPrompt || undefined,
-        ...(lastSessionId ? { resume: lastSessionId } : {}),
-        allowedTools,
-        mcpServers: {
-          "praktor-tasks": {
-            type: "stdio",
-            command: "node",
-            args: ["/app/mcp-tasks.mjs"],
-            env: { NATS_URL, AGENT_ID },
-          },
-          "praktor-profile": {
-            type: "stdio",
-            command: "node",
-            args: ["/app/mcp-profile.mjs"],
-            env: { NATS_URL, AGENT_ID },
-          },
-          "praktor-memory": {
-            type: "stdio",
-            command: "node",
-            args: ["/app/mcp-memory.mjs"],
-            env: {},
-          },
-          "praktor-nix": {
-            type: "stdio",
-            command: "node",
-            args: ["/app/mcp-nix.mjs"],
-            env: {},
-          },
-          "praktor-file": {
-            type: "stdio",
-            command: "node",
-            args: ["/app/mcp-file.mjs"],
-            env: { NATS_URL, AGENT_ID },
-          },
-          ...(SWARM_CHAT_TOPIC ? {
-            "praktor-swarm": {
-              type: "stdio",
-              command: "node",
-              args: ["/app/mcp-swarm.mjs"],
-              env: { NATS_URL, AGENT_ID, SWARM_CHAT_TOPIC },
-            },
-          } : {}),
-          ...extensionMcpServers,
-        },
-        permissionMode: "bypassPermissions",
-        allowDangerouslySkipPermissions: true,
-        stderr: (data: string) => {
-          console.error(`[claude-stderr] ${data.trimEnd()}`);
-        },
-      },
-    });
+    const opts = buildQueryOptions(augmentedText, lastSessionId);
+    const result = query(opts);
 
     // Process streaming result
     let fullResponse = "";
@@ -359,7 +446,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
         } else if (event.type === "assistant") {
           for (const block of event.message.content) {
             if (block.type === "text") {
-              await bridge.publishOutput(block.text, "text");
+              await bridge.publishOutput(block.text, "text", msgId);
             } else if (block.type === "tool_use" || block.type === "server_tool_use") {
               console.log(`[agent] tool: ${block.name}`);
             }
@@ -367,9 +454,6 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
         }
       }
     } catch (streamErr) {
-      // Claude Code native binary may exit with code 1 after streaming
-      // a successful result. If we already have the result, treat it as
-      // a non-fatal warning rather than a failure.
       if (fullResponse) {
         console.warn(`[agent] claude process exited with error after successful result, ignoring:`, streamErr);
       } else {
@@ -379,7 +463,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
 
     // Send final result (skip if aborted — orchestrator already notified the user)
     if (fullResponse && !aborted) {
-      await bridge.publishResult(fullResponse);
+      await bridge.publishResult(fullResponse, msgId);
     }
 
     console.log(`[agent] completed processing for agent ${AGENT_ID} (session=${lastSessionId})`);
@@ -390,7 +474,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
     }
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error(`[agent] error processing message:`, err);
-    await bridge.publishResult(`Error: ${errorMsg}`);
+    await bridge.publishResult(`Error: ${errorMsg}`, msgId);
   } finally {
     currentQueryIter = null;
     isProcessing = false;
@@ -481,16 +565,27 @@ async function handleControl(
     case "abort":
       console.log("[agent] aborting current run...");
       aborted = true;
+      // Abort conversational query
       if (currentQueryIter) {
         currentQueryIter.return?.(undefined);
         currentQueryIter = null;
       }
+      // Abort all parallel task queries
+      for (const [id, iter] of activeQueries) {
+        iter.return?.(undefined);
+      }
+      activeQueries.clear();
+      activeTaskCount = 0;
       // Kill any running claude processes as backstop
       try { execSync("pkill -f /usr/local/bin/claude", { timeout: 3000 }); } catch { /* ignore */ }
-      // Drain pending message queue
+      // Drain all queues
       if (pendingMessages.length > 0) {
         console.log(`[agent] discarding ${pendingMessages.length} queued message(s)`);
         pendingMessages.length = 0;
+      }
+      if (pendingTasks.length > 0) {
+        console.log(`[agent] discarding ${pendingTasks.length} queued task(s)`);
+        pendingTasks.length = 0;
       }
       isProcessing = false;
       msg.respond(new TextEncoder().encode(JSON.stringify({ status: "ok" })));

@@ -44,7 +44,7 @@ internal/
 Dockerfile                       # Gateway image (multi-stage: UI + Go + scratch)
 Dockerfile.agent                 # Agent image (multi-stage: Go + playwright-cli + esbuild + alpine)
 agent-runner/src/                # TypeScript: NATS bridge + Claude Code SDK + MCP servers (bundled with esbuild)
-  index.ts                       # Main entrypoint: agent lifecycle, message handling, MCP server registration
+  index.ts                       # Main entrypoint: agent lifecycle, message handling (sequential user messages + parallel scheduled tasks), MCP server registration
   extensions.ts                  # Apply agent extensions on startup (MCP servers, plugins, skills)
   nats-bridge.ts                 # NATS pub/sub wrapper for agent ↔ host communication
   ipc.ts                         # Shared NATS IPC helper (sendIPC + IPCResponse)
@@ -170,8 +170,8 @@ Key implementation: `internal/web/server.go` (session store, handlers, middlewar
 ## NATS Topics
 
 ```
-agent.{agentID}.input           # Host → Container: user messages
-agent.{agentID}.output          # Container → Host: agent responses (text, result)
+agent.{agentID}.input           # Host → Container: user messages (includes msg_id for correlation)
+agent.{agentID}.output          # Container → Host: agent responses (text, result) with msg_id
 agent.{agentID}.control         # Host → Container: shutdown, ping
 agent.{agentID}.route           # Host → Container: routing classification queries
 host.ipc.{agentID}              # Container → Host: IPC commands
@@ -311,7 +311,7 @@ All agent containers include [playwright-cli](https://github.com/microsoft/playw
 - Smart routing - `@agent_name` prefix or AI-powered routing via default agent
 - Isolated agent context - Each agent has its own CLAUDE.md memory, isolated filesystem, and runs in its own container sandbox
 - Persistent memory - SQLite-backed per-agent memory (`/workspace/agent/memory.db`) with MCP tools (memory_store, memory_recall, memory_list, memory_delete, memory_forget). Existing memory keys are listed in the system prompt so agents know what's stored.
-- Scheduled tasks - Cron/interval/relative delay (+30s, +5m, +2h)/one-shot jobs that run Claude and deliver results
+- Scheduled tasks - Cron/interval/relative delay (+30s, +5m, +2h)/one-shot jobs that run Claude and deliver results. Tasks execute in parallel (up to `MAX_PARALLEL_TASKS`, default 3) with fresh sessions, while regular user messages remain sequential with conversation continuity
 - Web access - Agents can use WebSearch and WebFetch tools
 - Nix package manager - Agents with `nix_enabled: true` can install packages on demand via MCP tools (nix_search, nix_add, nix_list_installed, nix_remove, nix_upgrade). When nix-daemon is detected, the system prompt instructs agents to auto-install missing tools. The `/nix` Telegram command provides direct user control over agent packages.
 - File sending - Agents can send files (screenshots, PDFs, etc.) to Telegram via the `file_send` MCP tool. Images are sent as photos, other files as documents. Max 12MB per file.
