@@ -29,7 +29,7 @@ A single Go binary that orchestrates the full loop: receives messages from Teleg
 - **User profile** — Agents know who you are via `USER.md`, editable from Mission Control or by agents themselves
 - **Scheduled tasks** — Cron, interval, or one-shot jobs that run agents and deliver results via Telegram. Multiple tasks execute in parallel (up to 3 concurrent) with independent sessions
 - **Secure vault** — AES-256-GCM encrypted secrets injected as env vars or files at container start, never exposed to the LLM
-- **Web & browser access** — Agents can search the web and automate browsers via [playwright-cli](https://github.com/microsoft/playwright-cli)
+- **Web & browser access** — Agents can search the web and automate browsers via [agent-browser](https://github.com/vercel-labs/agent-browser)
 - **Hot config reload** — Edit `praktor.yaml` and changes apply automatically, no restart needed
 - **Nix package manager** — Agents can install packages on demand (Python, ffmpeg, LaTeX, etc.) via MCP tools or the `/nix` Telegram command
 - **Agent extensions** — Per-agent MCP servers, plugins, and skills, managed via Mission Control
@@ -178,16 +178,16 @@ agents:
 
 ## Browser Automation
 
-All agent containers come with [playwright-cli](https://github.com/microsoft/playwright-cli) pre-installed and configured to use system Chromium. Agents can navigate websites, fill forms, take screenshots, and extract data — no setup needed.
+All agent containers come with [agent-browser](https://github.com/vercel-labs/agent-browser) pre-installed and configured to use system Chromium. The native Rust CLI is built from source during the Docker build for musl/Alpine compatibility. Agents can navigate websites, fill forms, take screenshots, and extract data — no setup needed.
 
 The browser session persists across messages within the same agent session and shuts down with the container on idle timeout.
 
 ```
-@general take a screenshot of https://example.com
+@general open https://example.com and tell me what you see
 @general go to https://example.com/form, fill in the email field, and submit
 ```
 
-The playwright-cli skill is automatically loaded into every agent's system prompt, teaching it the full command set (`open`, `goto`, `click`, `fill`, `screenshot`, `snapshot`, tabs, etc.).
+The agent-browser skill is automatically loaded into every agent's system prompt, teaching it the full command set (`open`, `snapshot`, `click`, `fill`, `screenshot`, sessions, etc.).
 
 ## Agent Extensions
 

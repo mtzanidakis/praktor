@@ -94,27 +94,27 @@ function ensureAgentMd(): void {
   }
 }
 
-function setupPlaywrightCli(): void {
-  const optDir = "/opt/playwright-cli";
-  if (!existsSync(optDir)) return; // playwright-cli not baked into image
+function setupAgentBrowser(): void {
+  const optDir = "/opt/agent-browser";
+  if (!existsSync(optDir)) return; // agent-browser not baked into image
 
   try {
     // Symlink skill directory
-    const skillLink = "/home/praktor/.claude/skills/playwright-cli";
+    const skillLink = "/home/praktor/.claude/skills/agent-browser";
     mkdirSync("/home/praktor/.claude/skills", { recursive: true });
     if (existsSync(skillLink)) rmSync(skillLink, { recursive: true });
     symlinkSync(join(optDir, "skill"), skillLink);
 
-    // Symlink cli.config.json (playwright-cli resolves config relative to cwd)
-    const configDir = "/workspace/agent/.playwright";
-    const configLink = join(configDir, "cli.config.json");
+    // Symlink config.json (agent-browser resolves from ~/.agent-browser/config.json)
+    const configDir = "/home/praktor/.agent-browser";
     mkdirSync(configDir, { recursive: true });
+    const configLink = join(configDir, "config.json");
     if (existsSync(configLink)) rmSync(configLink);
-    symlinkSync(join(optDir, "cli.config.json"), configLink);
+    symlinkSync(join(optDir, "config.json"), configLink);
 
-    console.log("[agent] playwright-cli configured");
+    console.log("[agent] agent-browser configured");
   } catch (err) {
-    console.warn("[agent] could not configure playwright-cli:", err);
+    console.warn("[agent] could not configure agent-browser:", err);
   }
 }
 
@@ -214,15 +214,15 @@ function loadSystemPrompt(includeIdentity = true): string {
     console.warn("[agent] could not load memory keys:", err);
   }
 
-  // playwright-cli: inform agent it's pre-installed with system chromium
-  if (existsSync("/opt/playwright-cli")) {
+  // agent-browser: inform agent it's pre-installed with system chromium
+  if (existsSync("/opt/agent-browser")) {
     parts.push(
-      "PLAYWRIGHT-CLI — Pre-installed and configured. Do NOT install playwright or chromium via npm, npx, nix, or any other method.\n" +
-      "- `playwright-cli` is already in PATH and ready to use.\n" +
-      "- It is configured to use the system chromium at `/usr/bin/chromium-browser`.\n" +
-      "- Just run `playwright-cli open` to start a browser session.\n" +
-      "- The browser persists across messages. Reuse the existing session — use tabs (`tab-new`, `tab-close`) for multiple pages.\n" +
-      "- Do NOT run `playwright-cli close` or `playwright-cli close-all` — the browser will shut down with the container."
+      "AGENT-BROWSER — Pre-installed and configured. Do NOT install browsers via npm, npx, nix, or any other method.\n" +
+      "- `agent-browser` is already in PATH and ready to use.\n" +
+      "- It is configured to use the system Chromium at `/usr/bin/chromium-browser`.\n" +
+      "- Run `agent-browser open <url>` to start a browser session, then `agent-browser snapshot -i` to see the page.\n" +
+      "- The browser persists across messages. Reuse the existing session.\n" +
+      "- When executing a scheduled task, ALWAYS run `agent-browser close` when done to free resources."
     );
   }
 
@@ -618,7 +618,7 @@ async function main(): Promise<void> {
 
   installGlobalInstructions();
   ensureAgentMd();
-  setupPlaywrightCli();
+  setupAgentBrowser();
 
   // Apply agent extensions (MCP servers, plugins, skills, settings)
   const extResult = await applyExtensions();

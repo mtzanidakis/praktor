@@ -285,24 +285,23 @@ Each MCP tool domain lives in its own file under `agent-runner/src/mcp-*.ts`. To
 4. Register it in `agent-runner/src/index.ts` under `mcpServers` with `command: "node", args: ["/app/mcp-{domain}.js"]`
 5. The `allowedTools` wildcard `"mcp__praktor-*"` covers all `praktor-*` named servers automatically
 
-## Browser Automation (playwright-cli)
+## Browser Automation (agent-browser)
 
-All agent containers include [playwright-cli](https://github.com/microsoft/playwright-cli) (`@playwright/cli`) pre-installed and configured to use the system Chromium on Alpine. Agents interact with browsers via Bash commands (more token-efficient than MCP).
+All agent containers include [agent-browser](https://github.com/vercel-labs/agent-browser) built from source and configured to use the system Chromium on Alpine. Agents interact with browsers via Bash commands (more token-efficient than MCP).
 
 **Build-time setup** (`Dockerfile.agent`):
-- Separate `playwright-cli` build stage installs `@playwright/cli` globally and runs `playwright-cli install --skills --config` to extract the skill files without downloading browsers
-- The `@playwright` node_modules and skill directory are copied to the runtime image at `/usr/local/lib/node_modules/@playwright` and `/opt/playwright-cli/skill/`
-- A `cli.config.json` is generated at `/opt/playwright-cli/cli.config.json` pointing to `/usr/bin/chromium-browser` with `--no-sandbox`, `--disable-gpu`, `--disable-dev-shm-usage`
-- `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` and `PLAYWRIGHT_BROWSERS_PATH=/usr/bin` env vars prevent Playwright from downloading its own browsers
+- Separate `rust-build` stage clones the repo and compiles the native Rust CLI via `cargo build --release` on Alpine (musl-compatible binary)
+- The compiled binary is copied to `/usr/local/bin/agent-browser` and the skill directory to `/opt/agent-browser/skill/`
+- A `config.json` is generated at `/opt/agent-browser/config.json` pointing to system Chromium at `/usr/bin/chromium-browser`
 
-**Runtime setup** (`agent-runner/src/index.ts` → `setupPlaywrightCli()`):
-- Symlinks `/opt/playwright-cli/skill` → `/home/praktor/.claude/skills/playwright-cli` (skill loaded into system prompt)
-- Symlinks `/opt/playwright-cli/cli.config.json` → `/workspace/agent/.playwright/cli.config.json` (playwright-cli resolves config relative to cwd)
+**Runtime setup** (`agent-runner/src/index.ts` → `setupAgentBrowser()`):
+- Symlinks `/opt/agent-browser/skill` → `/home/praktor/.claude/skills/agent-browser` (skill loaded into system prompt)
+- Symlinks `/opt/agent-browser/config.json` → `/home/praktor/.agent-browser/config.json` (agent-browser resolves config from `~/.agent-browser/`)
 - Symlinks (not copies) ensure agents always use the image's version — updates come from rebuilding the image
 
-**Browser lifecycle:** The browser session persists across messages within the same agent session. Agents use tabs (`tab-new`, `tab-close`) for multiple pages. Everything shuts down with the container on idle timeout.
+**Browser lifecycle:** The browser session persists across messages within the same agent session. Everything shuts down with the container on idle timeout.
 
-**System prompt:** When `/opt/playwright-cli` exists, a prompt section tells agents that playwright-cli is pre-installed and to never install playwright/chromium via npm, npx, or nix.
+**System prompt:** When `/opt/agent-browser` exists, a prompt section tells agents that agent-browser is pre-installed and to never install browsers via npm, npx, or nix.
 
 ## What it supports
 
@@ -316,7 +315,7 @@ All agent containers include [playwright-cli](https://github.com/microsoft/playw
 - Nix package manager - Agents with `nix_enabled: true` can install packages on demand via MCP tools (nix_search, nix_add, nix_list_installed, nix_remove, nix_upgrade). When nix-daemon is detected, the system prompt instructs agents to auto-install missing tools. The `/nix` Telegram command provides direct user control over agent packages.
 - File sending - Agents can send files (screenshots, PDFs, etc.) to Telegram via the `file_send` MCP tool. Images are sent as photos, other files as documents. Max 12MB per file.
 - File receiving - Files sent to the bot in Telegram (documents, photos, audio, video, voice, video notes, animations) are downloaded and saved to the agent's workspace at `/workspace/agent/uploads/{timestamp}_{filename}`. The agent receives the file path in the message. Supports Telegram's 20MB download limit.
-- Browser automation - [playwright-cli](https://github.com/microsoft/playwright-cli) pre-installed with system Chromium, skill auto-loaded into system prompt. Browser session persists across messages, shuts down with container.
+- Browser automation - [agent-browser](https://github.com/vercel-labs/agent-browser) pre-installed with system Chromium, skill auto-loaded into system prompt. Browser session persists across messages, shuts down with container.
 - Container isolation - Agents sandboxed in Docker containers with NATS communication
 - Agent swarms - Graph-based orchestration: fan-out (parallel), pipeline (sequential with context passing), and collaborative (real-time chat) execution patterns. Visual graph editor in Mission Control, `@swarm` Telegram integration
 - Secure vault - AES-256-GCM encrypted secrets, injected as env vars or files at container start (never exposed to LLM)
