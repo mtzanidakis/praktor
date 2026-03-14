@@ -55,7 +55,7 @@ RUN adduser \
 COPY --from=agent-builder /app/out/ /app/
 COPY --from=go-build /ptask /usr/local/bin/ptask
 COPY --from=go-build /claude /usr/local/bin/claude
-RUN npm install -g agent-browser
+RUN npm install -g agent-browser@0.20.5
 RUN mkdir -p /usr/local/share/agent-browser && \
     echo '{"contentBoundaries":true,"downloadPath":"/workspace/agent/Downloads","executable-path":"/usr/bin/chromium-browser","args":"--no-sandbox,--disable-gpu,--disable-dev-shm-usage"}' \
     > /usr/local/share/agent-browser/config.json
