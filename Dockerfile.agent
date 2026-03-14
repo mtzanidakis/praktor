@@ -9,7 +9,7 @@ RUN CGO_ENABLED=0 go run ./cmd/getcc -save /claude
 # Build agent-browser from source (produces musl-compatible Rust binary)
 FROM rust:1.94-alpine AS rust-build
 RUN apk add --no-cache git
-RUN git clone https://github.com/vercel-labs/agent-browser /agent-browser
+RUN git clone --branch v0.19.0 --depth 1 https://github.com/vercel-labs/agent-browser /agent-browser
 WORKDIR /agent-browser
 RUN cargo build --release --manifest-path cli/Cargo.toml
 
