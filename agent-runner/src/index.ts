@@ -1,7 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { NatsBridge } from "./nats-bridge.js";
 import { applyExtensions } from "./extensions.js";
-import { readFileSync, readdirSync, mkdirSync, writeFileSync, rmSync, symlinkSync, existsSync } from "fs";
+import { readFileSync, readdirSync, mkdirSync, writeFileSync, rmSync, symlinkSync, existsSync, lstatSync, readlinkSync, unlinkSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
 import { DatabaseSync } from "node:sqlite";
@@ -95,22 +95,34 @@ function ensureAgentMd(): void {
 }
 
 function setupAgentBrowser(): void {
-  const optDir = "/opt/agent-browser";
-  if (!existsSync(optDir)) return; // agent-browser not baked into image
+  const skillSource = "/usr/local/lib/node_modules/agent-browser/skills/agent-browser";
+  const configSource = "/usr/local/share/agent-browser/config.json";
+  if (!existsSync(skillSource)) return; // agent-browser not installed
 
   try {
-    // Symlink skill directory
-    const skillLink = "/home/praktor/.claude/skills/agent-browser";
-    mkdirSync("/home/praktor/.claude/skills", { recursive: true });
-    if (existsSync(skillLink)) rmSync(skillLink, { recursive: true });
-    symlinkSync(join(optDir, "skill"), skillLink);
+    const skillsDir = "/home/praktor/.claude/skills";
+    mkdirSync(skillsDir, { recursive: true });
 
-    // Symlink config.json (agent-browser resolves from ~/.agent-browser/config.json)
+    // Remove stale playwright-cli symlink from previous image versions
+    const staleLink = join(skillsDir, "playwright-cli");
+    try {
+      if (lstatSync(staleLink).isSymbolicLink() && readlinkSync(staleLink) === "/opt/playwright-cli/skill") {
+        unlinkSync(staleLink);
+        console.log("[agent] removed stale playwright-cli skill symlink");
+      }
+    } catch { /* doesn't exist */ }
+
+    // Force-update skill symlink
+    const skillLink = join(skillsDir, "agent-browser");
+    try { unlinkSync(skillLink); } catch { /* doesn't exist */ }
+    symlinkSync(skillSource, skillLink);
+
+    // Force-update config symlink
     const configDir = "/home/praktor/.agent-browser";
     mkdirSync(configDir, { recursive: true });
     const configLink = join(configDir, "config.json");
-    if (existsSync(configLink)) rmSync(configLink);
-    symlinkSync(join(optDir, "config.json"), configLink);
+    try { unlinkSync(configLink); } catch { /* doesn't exist */ }
+    symlinkSync(configSource, configLink);
 
     console.log("[agent] agent-browser configured");
   } catch (err) {
@@ -215,7 +227,7 @@ function loadSystemPrompt(includeIdentity = true): string {
   }
 
   // agent-browser: inform agent it's pre-installed with system chromium
-  if (existsSync("/opt/agent-browser")) {
+  if (existsSync("/usr/local/lib/node_modules/agent-browser")) {
     parts.push(
       "AGENT-BROWSER — Pre-installed and configured. Do NOT install browsers via npm, npx, nix, or any other method.\n" +
       "- `agent-browser` is already in PATH and ready to use.\n" +
