@@ -32,13 +32,67 @@ func chunkMessage(text string, maxLen int) []string {
 	return chunks
 }
 
-var reBold = regexp.MustCompile(`\*\*(.+?)\*\*`)
+var (
+	reBold     = regexp.MustCompile(`\*\*(.+?)\*\*`)
+	reHeader   = regexp.MustCompile(`^#{1,6}\s+(.+)$`)
+	reHR       = regexp.MustCompile(`^-{3,}$`)
+	reBullet   = regexp.MustCompile(`^(\s*)[-*]\s+`)
+	reImageEmb = regexp.MustCompile(`!\[([^\]]*)\]\(([^)]+)\)`)
+)
 
 // toTelegramMarkdown converts standard Markdown to Telegram Markdown v1.
-// It converts bold (**text** → *text*) and renders tables as monospace blocks.
+// It converts bold, headers, horizontal rules, bullet lists, and image embeds,
+// while preserving content inside code blocks (``` ... ```).
 func toTelegramMarkdown(text string) string {
 	text = convertMarkdownTables(text)
-	return reBold.ReplaceAllString(text, "*$1*")
+
+	// Split text into code blocks and non-code segments to protect code blocks.
+	parts := strings.Split(text, "```")
+	for i := 0; i < len(parts); i++ {
+		if i%2 == 1 {
+			// Inside a code block — leave untouched
+			continue
+		}
+		parts[i] = convertMarkdownSegment(parts[i])
+	}
+	return strings.Join(parts, "```")
+}
+
+// convertMarkdownSegment applies Markdown-to-Telegram conversions on a
+// segment that is known to be outside code blocks.
+func convertMarkdownSegment(text string) string {
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Headers: ## Title → *Title*
+		if m := reHeader.FindStringSubmatch(trimmed); m != nil {
+			lines[i] = "*" + m[1] + "*"
+			continue
+		}
+
+		// Horizontal rules: --- → empty line
+		if reHR.MatchString(trimmed) {
+			lines[i] = ""
+			continue
+		}
+
+		// Bullet lists: - item / * item → • item (preserve indentation)
+		if loc := reBullet.FindStringSubmatchIndex(line); loc != nil {
+			indent := line[loc[2]:loc[3]]
+			rest := line[loc[1]:]
+			lines[i] = indent + "• " + rest
+		}
+	}
+	text = strings.Join(lines, "\n")
+
+	// Image embeds: ![alt](url) → [alt](url)
+	text = reImageEmb.ReplaceAllString(text, "[$1]($2)")
+
+	// Bold: **text** → *text*
+	text = reBold.ReplaceAllString(text, "*$1*")
+
+	return text
 }
 
 // convertMarkdownTables finds Markdown tables and converts them to

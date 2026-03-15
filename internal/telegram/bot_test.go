@@ -52,19 +52,36 @@ func TestChunkMessage(t *testing.T) {
 
 func TestToTelegramMarkdown(t *testing.T) {
 	tests := []struct {
+		name     string
 		in, want string
 	}{
-		{"**bold**", "*bold*"},
-		{"hello **world**!", "hello *world*!"},
-		{"**a** and **b**", "*a* and *b*"},
-		{"no bold here", "no bold here"},
-		{"*already single*", "*already single*"},
+		{"bold", "**bold**", "*bold*"},
+		{"bold inline", "hello **world**!", "hello *world*!"},
+		{"multiple bold", "**a** and **b**", "*a* and *b*"},
+		{"no bold", "no bold here", "no bold here"},
+		{"already single", "*already single*", "*already single*"},
+		{"h1 header", "# Title", "*Title*"},
+		{"h2 header", "## Section", "*Section*"},
+		{"h3 header", "### Subsection", "*Subsection*"},
+		{"header with bold", "## **Bold Title**", "**Bold Title**"},
+		{"horizontal rule", "---", ""},
+		{"long horizontal rule", "-----", ""},
+		{"hr between text", "above\n---\nbelow", "above\n\nbelow"},
+		{"bullet dash", "- item one\n- item two", "• item one\n• item two"},
+		{"bullet asterisk", "* item one\n* item two", "• item one\n• item two"},
+		{"indented bullet", "  - nested item", "  • nested item"},
+		{"image embed", "![screenshot](https://example.com/img.png)", "[screenshot](https://example.com/img.png)"},
+		{"image no alt", "![](https://example.com/img.png)", "[](https://example.com/img.png)"},
+		{"code block protected", "```\n## header\n- bullet\n**bold**\n---\n```", "```\n## header\n- bullet\n**bold**\n---\n```"},
+		{"mixed with code block", "## Title\n```\n## not a header\n```\n- bullet", "*Title*\n```\n## not a header\n```\n• bullet"},
 	}
 	for _, tt := range tests {
-		got := toTelegramMarkdown(tt.in)
-		if got != tt.want {
-			t.Errorf("toTelegramMarkdown(%q) = %q, want %q", tt.in, got, tt.want)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			got := toTelegramMarkdown(tt.in)
+			if got != tt.want {
+				t.Errorf("toTelegramMarkdown(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
 	}
 }
 

@@ -188,6 +188,20 @@ function loadSystemPrompt(includeIdentity = true): string {
     "- Keep scheduled task replies short and direct — the user sees them as Telegram messages."
   );
 
+  // Telegram formatting: instruct agent to use Telegram-compatible Markdown
+  parts.push(
+    "TELEGRAM FORMATTING — Your messages are rendered in Telegram, which only supports MarkdownV1.\n" +
+    "- Bold: *text* (single asterisks, NOT **double**)\n" +
+    "- Italic: _text_\n" +
+    "- Inline code: `code`\n" +
+    "- Code blocks: ```code```\n" +
+    "- Links: [text](url)\n" +
+    "- DO NOT use: # headers, - bullet lists, --- horizontal rules, ![]()" +
+    " image embeds — these render as raw text in Telegram.\n" +
+    "- Instead of headers, use *bold text* on its own line.\n" +
+    "- Instead of bullet lists with - or *, use • (bullet character) or numbered lists."
+  );
+
   // Security: prevent agents from revealing secret values
   parts.push(
     "SECURITY — MANDATORY RULES:\n" +
