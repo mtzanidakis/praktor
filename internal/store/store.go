@@ -190,6 +190,31 @@ func (s *Store) migrate() error {
 		}
 	}
 
+	// FTS5 full-text search on messages
+	ftsStmts := []string{
+		`CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+			content,
+			content=messages,
+			content_rowid=id
+		)`,
+		`CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
+			INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
+			INSERT INTO messages_fts(messages_fts, rowid, content) VALUES ('delete', old.id, old.content);
+		END`,
+	}
+	for _, stmt := range ftsStmts {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return fmt.Errorf("exec fts migration: %w", err)
+		}
+	}
+
+	// Populate FTS index for any pre-existing messages
+	if _, err := s.db.Exec(`INSERT OR IGNORE INTO messages_fts(rowid, content) SELECT id, content FROM messages`); err != nil {
+		return fmt.Errorf("populate fts: %w", err)
+	}
+
 	// One-time data migration from JSON blob to normalized tables
 	if err := s.migrateExtensionsToTables(); err != nil {
 		return fmt.Errorf("migrate extensions to tables: %w", err)

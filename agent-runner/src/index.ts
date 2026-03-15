@@ -333,6 +333,12 @@ function buildQueryOptions(prompt: string, sessionId?: string) {
           args: ["/app/mcp-file.mjs"],
           env: { NATS_URL, AGENT_ID },
         },
+        "praktor-history": {
+          type: "stdio",
+          command: "node",
+          args: ["/app/mcp-history.mjs"],
+          env: { NATS_URL, AGENT_ID },
+        },
         ...(SWARM_CHAT_TOPIC ? {
           "praktor-swarm": {
             type: "stdio",

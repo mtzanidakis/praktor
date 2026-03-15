@@ -25,6 +25,9 @@ function Conversations() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchActive, setSearchActive] = useState(false);
   const { events, status: wsStatus } = useWebSocket();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -43,6 +46,8 @@ function Conversations() {
 
   useEffect(() => {
     if (!selectedAgentId) return;
+    setSearchQuery('');
+    setSearchActive(false);
     setLoadingMessages(true);
     fetch(`/api/agents/definitions/${selectedAgentId}/messages`)
       .then((res) => res.json())
@@ -52,7 +57,7 @@ function Conversations() {
   }, [selectedAgentId]);
 
   useEffect(() => {
-    if (!selectedAgentId) return;
+    if (!selectedAgentId || searchActive) return;
     const relevant = events.filter(
       (e) => e.agent_id === selectedAgentId && e.type === 'message'
     );
@@ -65,11 +70,34 @@ function Conversations() {
         return [...prev, msg];
       });
     }
-  }, [events, selectedAgentId]);
+  }, [events, selectedAgentId, searchActive]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const handleSearch = () => {
+    if (!selectedAgentId || !searchQuery.trim()) return;
+    setIsSearching(true);
+    setSearchActive(true);
+    fetch(`/api/agents/definitions/${selectedAgentId}/messages/search?q=${encodeURIComponent(searchQuery.trim())}`)
+      .then((res) => res.json())
+      .then((data) => setMessages(Array.isArray(data) ? data : []))
+      .catch(() => setMessages([]))
+      .finally(() => setIsSearching(false));
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setSearchActive(false);
+    if (!selectedAgentId) return;
+    setLoadingMessages(true);
+    fetch(`/api/agents/definitions/${selectedAgentId}/messages`)
+      .then((res) => res.json())
+      .then((data) => setMessages(Array.isArray(data) ? data : []))
+      .catch(() => setMessages([]))
+      .finally(() => setLoadingMessages(false));
+  };
 
   const selectedAgent = agents.find((a) => a.id === selectedAgentId);
 
@@ -123,16 +151,82 @@ function Conversations() {
           <div style={{
             padding: '14px 20px',
             borderBottom: '1px solid var(--border)',
-            fontWeight: 600,
-            fontSize: 17,
-            color: 'var(--text-primary)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
           }}>
-            {selectedAgent?.name ?? 'Select an agent'}
+            <span style={{ fontWeight: 600, fontSize: 17, color: 'var(--text-primary)' }}>
+              {selectedAgent?.name ?? 'Select an agent'}
+            </span>
+            {selectedAgentId && (
+              <form
+                onSubmit={(e) => { e.preventDefault(); handleSearch(); }}
+                style={{ display: 'flex', gap: 6, alignItems: 'center' }}
+              >
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search messages..."
+                  style={{
+                    padding: '5px 10px',
+                    borderRadius: 6,
+                    border: '1px solid var(--border)',
+                    background: 'var(--bg-elevated)',
+                    color: 'var(--text-primary)',
+                    fontSize: 14,
+                    width: 200,
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={isSearching || !searchQuery.trim()}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: 6,
+                    border: '1px solid var(--border)',
+                    background: 'var(--accent)',
+                    color: '#fff',
+                    fontSize: 14,
+                    cursor: 'pointer',
+                    opacity: isSearching || !searchQuery.trim() ? 0.5 : 1,
+                  }}
+                >
+                  {isSearching ? '...' : 'Search'}
+                </button>
+                {searchActive && (
+                  <button
+                    type="button"
+                    onClick={clearSearch}
+                    style={{
+                      padding: '5px 10px',
+                      borderRadius: 6,
+                      border: '1px solid var(--border)',
+                      background: 'var(--bg-elevated)',
+                      color: 'var(--text-secondary)',
+                      fontSize: 14,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Clear
+                  </button>
+                )}
+              </form>
+            )}
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {loadingMessages && <div style={{ color: 'var(--text-tertiary)', fontSize: 16 }}>Loading...</div>}
-            {!loadingMessages && messages.length === 0 && (
-              <div style={{ color: 'var(--text-tertiary)', fontSize: 16 }}>No messages yet</div>
+            {searchActive && (
+              <div style={{ color: 'var(--text-tertiary)', fontSize: 14, marginBottom: 8 }}>
+                Search results for "{searchQuery}" ({messages.length} found)
+              </div>
+            )}
+            {(loadingMessages || isSearching) && <div style={{ color: 'var(--text-tertiary)', fontSize: 16 }}>Loading...</div>}
+            {!loadingMessages && !isSearching && messages.length === 0 && (
+              <div style={{ color: 'var(--text-tertiary)', fontSize: 16 }}>
+                {searchActive ? 'No messages found' : 'No messages yet'}
+              </div>
             )}
             {messages.map((msg) => {
               const isAssistant = msg.role === 'assistant';

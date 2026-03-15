@@ -469,6 +469,8 @@ func (o *Orchestrator) handleIPC(msg *nats.Msg) {
 		o.ipcExtensionStatus(msg, agentID, cmd.Payload)
 	case "send_file":
 		o.ipcSendFile(msg, agentID, cmd.Payload)
+	case "search_history":
+		o.ipcSearchHistory(msg, agentID, cmd.Payload)
 	default:
 		slog.Warn("unknown IPC command", "type", cmd.Type)
 		o.respondIPC(msg, map[string]any{"error": "unknown command: " + cmd.Type})
@@ -726,6 +728,40 @@ func (o *Orchestrator) ipcSendFile(msg *nats.Msg, agentID string, payload json.R
 
 	slog.Info("file sent via IPC", "agent", agentID, "name", req.Name, "size", len(data), "mime", req.MimeType)
 	o.respondIPC(msg, map[string]any{"ok": true})
+}
+
+func (o *Orchestrator) ipcSearchHistory(msg *nats.Msg, agentID string, payload json.RawMessage) {
+	var req struct {
+		Query string `json:"query"`
+		Limit int    `json:"limit"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil || req.Query == "" {
+		o.respondIPC(msg, map[string]any{"error": "query is required"})
+		return
+	}
+
+	messages, err := o.store.SearchMessages(agentID, req.Query, req.Limit)
+	if err != nil {
+		o.respondIPC(msg, map[string]any{"error": fmt.Sprintf("search failed: %v", err)})
+		return
+	}
+
+	type messageEntry struct {
+		Sender    string `json:"sender"`
+		Content   string `json:"content"`
+		CreatedAt string `json:"created_at"`
+	}
+	out := make([]messageEntry, 0, len(messages))
+	for _, m := range messages {
+		out = append(out, messageEntry{
+			Sender:    m.Sender,
+			Content:   m.Content,
+			CreatedAt: m.CreatedAt.Format(time.RFC3339),
+		})
+	}
+
+	slog.Info("history search via IPC", "agent", agentID, "query", req.Query, "results", len(out))
+	o.respondIPC(msg, map[string]any{"ok": true, "messages": out})
 }
 
 func (o *Orchestrator) publishMessageEvent(msg *store.Message) {

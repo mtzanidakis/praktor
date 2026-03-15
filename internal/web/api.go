@@ -29,6 +29,7 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/agents/definitions", s.listAgentDefinitions)
 	mux.HandleFunc("GET /api/agents/definitions/{id}", s.getAgentDefinition)
 	mux.HandleFunc("GET /api/agents/definitions/{id}/messages", s.getAgentMessages)
+	mux.HandleFunc("GET /api/agents/definitions/{id}/messages/search", s.searchAgentMessages)
 	mux.HandleFunc("GET /api/agents/definitions/{id}/agent-md", s.getAgentMD)
 	mux.HandleFunc("PUT /api/agents/definitions/{id}/agent-md", s.updateAgentMD)
 	mux.HandleFunc("GET /api/agents/definitions/{id}/extensions", s.getAgentExtensions)
@@ -142,6 +143,39 @@ func (s *Server) getAgentMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Transform to frontend Message interface: {id, role, text, time}
+	out := make([]map[string]string, 0, len(messages))
+	for _, m := range messages {
+		out = append(out, map[string]string{
+			"id":   fmt.Sprintf("%d", m.ID),
+			"role": mapSenderToRole(m.Sender),
+			"text": m.Content,
+			"time": formatMessageTime(m.CreatedAt),
+		})
+	}
+	jsonResponse(w, out)
+}
+
+func (s *Server) searchAgentMessages(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	q := r.URL.Query().Get("q")
+	if q == "" {
+		jsonError(w, "q parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	limit := 20
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := fmt.Sscanf(l, "%d", &limit); n != 1 || err != nil {
+			limit = 20
+		}
+	}
+
+	messages, err := s.store.SearchMessages(id, q, limit)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	out := make([]map[string]string, 0, len(messages))
 	for _, m := range messages {
 		out = append(out, map[string]string{

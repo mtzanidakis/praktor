@@ -98,6 +98,37 @@ type AgentMessageStats struct {
 	LastActive   time.Time
 }
 
+func (s *Store) SearchMessages(agentID, query string, limit int) ([]Message, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.db.Query(`
+		SELECT m.id, m.agent_id, m.sender, m.content, m.metadata, m.created_at
+		FROM messages_fts f
+		JOIN messages m ON m.id = f.rowid
+		WHERE f.content MATCH ? AND m.agent_id = ?
+		ORDER BY f.rank
+		LIMIT ?`, query, agentID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("search messages: %w", err)
+	}
+	defer rows.Close()
+
+	var messages []Message
+	for rows.Next() {
+		var m Message
+		var metadata *string
+		if err := rows.Scan(&m.ID, &m.AgentID, &m.Sender, &m.Content, &metadata, &m.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan message: %w", err)
+		}
+		if metadata != nil {
+			m.Metadata = json.RawMessage(*metadata)
+		}
+		messages = append(messages, m)
+	}
+	return messages, rows.Err()
+}
+
 func (s *Store) GetAgentMessageStats() (map[string]AgentMessageStats, error) {
 	rows, err := s.db.Query(`
 		SELECT agent_id, COUNT(*) as cnt, COALESCE(MAX(created_at), '') as last_active
