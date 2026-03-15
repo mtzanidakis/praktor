@@ -15,7 +15,7 @@ agents:
   general:
     description: "General-purpose assistant for everyday tasks"
     workspace: general
-    # agentmail_inbox_id: "inb_xxx"       # AgentMail inbox (optional)
+    # agentmail_inbox_id: "general@agentmail.to"  # AgentMail inbox (optional)
   coder:
     description: "Software engineering specialist"
     model: "claude-opus-4-6"
