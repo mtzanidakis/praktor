@@ -222,17 +222,31 @@ function loadSystemPrompt(includeIdentity = true): string {
 
     if (existsSync(MEMORY_DB_PATH)) {
       const db = new DatabaseSync(MEMORY_DB_PATH);
-      const rows = db.prepare(
-        "SELECT key, tags FROM memories ORDER BY updated_at DESC"
-      ).all() as Array<{ key: string; tags: string }>;
+      // access_count may not exist yet on older databases
+      let rows: Array<{ key: string; tags: string; access_count?: number }>;
+      try {
+        rows = db.prepare(
+          "SELECT key, tags, access_count FROM memories ORDER BY updated_at DESC"
+        ).all() as typeof rows;
+      } catch {
+        rows = db.prepare(
+          "SELECT key, tags FROM memories ORDER BY updated_at DESC"
+        ).all() as typeof rows;
+      }
       db.close();
 
       if (rows.length > 0) {
         memorySection += `\n\nYou currently have ${rows.length} stored memories:\n`;
         memorySection += rows
-          .map((r) => `- ${r.key}${r.tags ? ` [${r.tags}]` : ""}`)
+          .map((r) => {
+            let line = `- ${r.key}`;
+            if (r.tags) line += ` [${r.tags}]`;
+            if (r.access_count) line += ` (${r.access_count}x)`;
+            return line;
+          })
           .join("\n");
         memorySection += "\n\nCall memory_recall with a relevant keyword to retrieve full content before answering.";
+        memorySection += " memory_recall now uses full-text search with relevance ranking — use natural keywords, not exact strings.";
       }
     }
     parts.push(memorySection);
