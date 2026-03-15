@@ -1,7 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { createRequire } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
+
+// Use CJS require for @huggingface/transformers — its ESM exports don't resolve on Node 24 Alpine
+const _require = createRequire(import.meta.url);
 
 const MEMORY_DB_PATH = "/workspace/agent/memory.db";
 const memoryDb = new DatabaseSync(MEMORY_DB_PATH);
@@ -24,6 +28,7 @@ memoryDb.exec(`
 for (const col of [
   "ALTER TABLE memories ADD COLUMN access_count INTEGER DEFAULT 0",
   "ALTER TABLE memories ADD COLUMN last_accessed INTEGER DEFAULT 0",
+  "ALTER TABLE memories ADD COLUMN embedding BLOB",
 ]) {
   try { memoryDb.exec(col); } catch { /* column already exists */ }
 }
@@ -61,6 +66,62 @@ memoryDb.exec(`
 // Populate FTS index for pre-existing memories
 memoryDb.exec(`INSERT OR IGNORE INTO memories_fts(rowid, key, content, tags) SELECT id, key, content, tags FROM memories`);
 
+// --- Embedding support ---
+
+type Pipeline = (text: string, opts?: { pooling: string; normalize: boolean }) => Promise<{ data: Float32Array }>;
+let embeddingPipeline: Pipeline | null = null;
+let embeddingFailed = false;
+
+async function getEmbeddingPipeline(): Promise<Pipeline | null> {
+  if (embeddingFailed) return null;
+  if (embeddingPipeline) return embeddingPipeline;
+
+  try {
+    const { pipeline, env } = _require("@huggingface/transformers");
+    env.cacheDir = process.env.TRANSFORMERS_CACHE || "/opt/models";
+    embeddingPipeline = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", {
+      dtype: "q8",
+      cache_dir: env.cacheDir,
+      local_files_only: true,
+    }) as unknown as Pipeline;
+    console.error("[mcp-memory] embedding model loaded");
+    return embeddingPipeline;
+  } catch (err) {
+    console.error("[mcp-memory] embedding model failed to load, falling back to FTS-only:", err);
+    embeddingFailed = true;
+    return null;
+  }
+}
+
+async function computeEmbedding(text: string): Promise<Float32Array | null> {
+  const pipe = await getEmbeddingPipeline();
+  if (!pipe) return null;
+  const result = await pipe(text, { pooling: "mean", normalize: true });
+  return result.data;
+}
+
+function cosineSimilarity(a: Float32Array, b: Float32Array): number {
+  let dot = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+  }
+  return dot; // vectors are already normalized
+}
+
+function storeEmbeddingAsync(key: string, content: string, tags: string): void {
+  const text = `${key} ${tags} ${content}`;
+  computeEmbedding(text).then((embedding) => {
+    if (!embedding) return;
+    const stmt = memoryDb.prepare(`UPDATE memories SET embedding = ? WHERE key = ?`);
+    stmt.run(Buffer.from(embedding.buffer), key);
+    console.error(`[mcp-memory] embedding stored for key=${key}`);
+  }).catch((err) => {
+    console.error(`[mcp-memory] embedding failed for key=${key}:`, err);
+  });
+}
+
+// --- MCP Server ---
+
 const server = new McpServer({
   name: "praktor-memory",
   version: "1.0.0",
@@ -82,6 +143,10 @@ server.tool(
        ON CONFLICT(key) DO UPDATE SET content=excluded.content, tags=excluded.tags, updated_at=unixepoch()`
     );
     stmt.run(key, content, tags || "");
+
+    // Compute and store embedding async (don't block response)
+    storeEmbeddingAsync(key, content, tags || "");
+
     return {
       content: [{ type: "text" as const, text: `Memory stored: ${key}` }],
     };
@@ -90,53 +155,104 @@ server.tool(
 
 server.tool(
   "memory_recall",
-  "Search memories by keyword. Uses full-text search with relevance ranking across keys, content, and tags. Returns the most relevant memories first.",
+  "Search memories by keyword or natural language. Uses hybrid search combining full-text keyword matching with semantic similarity for best results. Returns the most relevant memories first.",
   {
-    query: z.string().describe("Search query (supports words, \"phrases\", OR, NOT operators)"),
+    query: z.string().describe("Search query — use natural language for semantic search, or keywords/phrases for exact matching"),
   },
   async ({ query }) => {
     console.error(`[mcp-memory] recall query=${query}`);
 
-    // Try FTS5 first, fall back to LIKE if the query syntax is invalid
-    let rows: Array<{
+    type MemoryRow = {
+      id: number; key: string; content: string; tags: string;
+      access_count: number; created_at: number; updated_at: number;
+      embedding: Buffer | null;
+    };
+
+    // 1. FTS5 keyword search
+    let ftsResults: Array<{ key: string; rank: number }> = [];
+    try {
+      const stmt = memoryDb.prepare(
+        `SELECT m.key, f.rank
+         FROM memories_fts f
+         JOIN memories m ON m.id = f.rowid
+         WHERE memories_fts MATCH ?
+         ORDER BY f.rank`
+      );
+      ftsResults = stmt.all(query) as typeof ftsResults;
+    } catch {
+      // FTS5 query syntax error — try LIKE fallback for FTS ranking
+      const pattern = `%${query}%`;
+      const stmt = memoryDb.prepare(
+        `SELECT key, 0 as rank FROM memories
+         WHERE key LIKE ? OR content LIKE ? OR tags LIKE ?
+         ORDER BY updated_at DESC`
+      );
+      ftsResults = stmt.all(pattern, pattern, pattern) as typeof ftsResults;
+    }
+
+    // 2. Vector search
+    let vecResults: Array<{ key: string; similarity: number }> = [];
+    const queryEmbedding = await computeEmbedding(query);
+    if (queryEmbedding) {
+      const allRows = memoryDb.prepare(
+        `SELECT key, embedding FROM memories WHERE embedding IS NOT NULL`
+      ).all() as Array<{ key: string; embedding: Buffer }>;
+
+      for (const row of allRows) {
+        const emb = new Float32Array(row.embedding.buffer, row.embedding.byteOffset, row.embedding.byteLength / 4);
+        const sim = cosineSimilarity(queryEmbedding, emb);
+        vecResults.push({ key: row.key, similarity: sim });
+      }
+      vecResults.sort((a, b) => b.similarity - a.similarity);
+    }
+
+    // 3. Reciprocal Rank Fusion (k=60)
+    const K = 60;
+    const scores = new Map<string, number>();
+
+    for (let i = 0; i < ftsResults.length; i++) {
+      const key = ftsResults[i].key;
+      scores.set(key, (scores.get(key) || 0) + 1 / (K + i + 1));
+    }
+    for (let i = 0; i < vecResults.length; i++) {
+      const key = vecResults[i].key;
+      scores.set(key, (scores.get(key) || 0) + 1 / (K + i + 1));
+    }
+
+    // If no results from either source
+    if (scores.size === 0) {
+      return { content: [{ type: "text" as const, text: "No memories found matching that query." }] };
+    }
+
+    // Sort by RRF score descending
+    const rankedKeys = [...scores.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([key]) => key);
+
+    // Fetch full rows for ranked keys
+    const placeholders = rankedKeys.map(() => "?").join(",");
+    const rows = memoryDb.prepare(
+      `SELECT key, content, tags, access_count, created_at, updated_at
+       FROM memories WHERE key IN (${placeholders})`
+    ).all(...rankedKeys) as Array<{
       key: string; content: string; tags: string;
       access_count: number; created_at: number; updated_at: number;
     }>;
 
-    try {
-      const stmt = memoryDb.prepare(
-        `SELECT m.key, m.content, m.tags, m.access_count, m.created_at, m.updated_at
-         FROM memories_fts f
-         JOIN memories m ON m.id = f.rowid
-         WHERE memories_fts MATCH ?
-         ORDER BY f.rank
-         LIMIT 20`
-      );
-      rows = stmt.all(query) as typeof rows;
-    } catch {
-      // FTS5 query syntax error — fall back to LIKE
-      const pattern = `%${query}%`;
-      const stmt = memoryDb.prepare(
-        `SELECT key, content, tags, access_count, created_at, updated_at FROM memories
-         WHERE key LIKE ? OR content LIKE ? OR tags LIKE ?
-         ORDER BY updated_at DESC`
-      );
-      rows = stmt.all(pattern, pattern, pattern) as typeof rows;
-    }
+    // Maintain RRF order
+    const rowMap = new Map(rows.map((r) => [r.key, r]));
+    const orderedRows = rankedKeys.map((k) => rowMap.get(k)).filter(Boolean) as typeof rows;
 
-    if (rows.length === 0) {
-      return { content: [{ type: "text" as const, text: "No memories found matching that query." }] };
-    }
-
-    // Update access tracking for matched memories
+    // Update access tracking
     const updateStmt = memoryDb.prepare(
       `UPDATE memories SET access_count = access_count + 1, last_accessed = unixepoch() WHERE key = ?`
     );
-    for (const r of rows) {
+    for (const r of orderedRows) {
       updateStmt.run(r.key);
     }
 
-    const result = rows.map((r) =>
+    const result = orderedRows.map((r) =>
       `## ${r.key}${r.tags ? ` [${r.tags}]` : ""}\n${r.content}\n_(updated: ${new Date(r.updated_at * 1000).toISOString()}, accessed: ${r.access_count + 1}x)_`
     ).join("\n\n");
     return { content: [{ type: "text" as const, text: result }] };
@@ -223,9 +339,41 @@ server.tool(
   }
 );
 
+// Lazy backfill: compute embeddings for memories missing them
+async function backfillEmbeddings(): Promise<void> {
+  const rows = memoryDb.prepare(
+    `SELECT key, content, tags FROM memories WHERE embedding IS NULL`
+  ).all() as Array<{ key: string; content: string; tags: string }>;
+
+  if (rows.length === 0) return;
+
+  console.error(`[mcp-memory] backfilling embeddings for ${rows.length} memories`);
+  const pipe = await getEmbeddingPipeline();
+  if (!pipe) return;
+
+  const updateStmt = memoryDb.prepare(`UPDATE memories SET embedding = ? WHERE key = ?`);
+  for (const row of rows) {
+    try {
+      const text = `${row.key} ${row.tags} ${row.content}`;
+      const embedding = await computeEmbedding(text);
+      if (embedding) {
+        updateStmt.run(Buffer.from(embedding.buffer), row.key);
+      }
+    } catch (err) {
+      console.error(`[mcp-memory] backfill failed for key=${row.key}:`, err);
+    }
+  }
+  console.error(`[mcp-memory] backfill complete`);
+}
+
 async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
+
+  // Start backfill after 2s delay to avoid blocking startup
+  setTimeout(() => backfillEmbeddings().catch((err) =>
+    console.error("[mcp-memory] backfill error:", err)
+  ), 2000);
 }
 
 main().catch((err) => {

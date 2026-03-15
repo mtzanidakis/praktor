@@ -246,7 +246,7 @@ function loadSystemPrompt(includeIdentity = true): string {
           })
           .join("\n");
         memorySection += "\n\nCall memory_recall with a relevant keyword to retrieve full content before answering.";
-        memorySection += " memory_recall now uses full-text search with relevance ranking — use natural keywords, not exact strings.";
+        memorySection += " memory_recall uses hybrid search combining keyword matching with semantic similarity — use natural language queries for best results.";
       }
     }
     parts.push(memorySection);

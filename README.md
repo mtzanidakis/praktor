@@ -24,7 +24,7 @@ A single Go binary that orchestrates the full loop: receives messages from Teleg
 - **Named agents** — Multiple agents with distinct roles, models, and configurations
 - **Smart routing** — `@agent_name` prefix or AI-powered routing via the default agent
 - **Per-agent isolation** — Each agent runs in its own Docker container with its own filesystem
-- **Persistent memory** — Per-agent SQLite memory database with MCP tools for storing and recalling facts across sessions
+- **Persistent memory** — Per-agent SQLite memory database with hybrid search (FTS5 keyword + vector semantic similarity via all-MiniLM-L6-v2) for storing and recalling facts across sessions
 - **Agent identity** — Each agent has an `AGENT.md` for personality and expertise, editable from Mission Control or by agents themselves
 - **User profile** — Agents know who you are via `USER.md`, editable from Mission Control or by agents themselves
 - **Scheduled tasks** — Cron, interval, or one-shot jobs that run agents and deliver results via Telegram. Multiple tasks execute in parallel (up to 3 concurrent) with independent sessions

@@ -55,10 +55,28 @@ RUN adduser \
 COPY --from=agent-builder /app/out/ /app/
 COPY --from=go-build /ptask /usr/local/bin/ptask
 COPY --from=go-build /claude /usr/local/bin/claude
-RUN npm install -g agent-browser@0.20.5
+RUN npm install --loglevel=error -g agent-browser@0.20.5 @huggingface/transformers@3 && \
+    cd /usr/local/lib/node_modules/@huggingface/transformers/node_modules && \
+    rm -rf onnxruntime-node && mkdir -p onnxruntime-node && \
+    echo '{"name":"onnxruntime-node","main":"index.js"}' > onnxruntime-node/package.json && \
+    printf '%s\n' \
+      'const ort=require("onnxruntime-web");' \
+      'const path=require("path");' \
+      'const wasmDir=path.join(__dirname,"..","onnxruntime-web","dist");' \
+      'ort.env.wasm.wasmPaths="file://"+wasmDir+"/";' \
+      'ort.env.wasm.numThreads=1;' \
+      'module.exports=ort;' \
+      > onnxruntime-node/index.js
 RUN mkdir -p /usr/local/share/agent-browser && \
     echo '{"contentBoundaries":true,"downloadPath":"/workspace/agent/Downloads","executable-path":"/usr/bin/chromium-browser","args":"--no-sandbox,--disable-gpu,--disable-dev-shm-usage"}' \
     > /usr/local/share/agent-browser/config.json
+
+# Pre-download embedding model for semantic memory search
+ENV TRANSFORMERS_CACHE=/opt/models
+ENV NODE_PATH=/usr/local/lib/node_modules
+RUN mkdir -p /opt/models && \
+    node -e "const{pipeline}=require('@huggingface/transformers');pipeline('feature-extraction','Xenova/all-MiniLM-L6-v2',{dtype:'q8',cache_dir:'/opt/models'}).then(()=>console.log('model downloaded'))" && \
+    chown -R praktor:praktor /opt/models
 
 # Pre-create volume mount points with correct ownership so Docker
 # populates new named volumes with the right permissions and structure.

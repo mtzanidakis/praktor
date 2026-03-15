@@ -50,7 +50,7 @@ agent-runner/src/                # TypeScript: NATS bridge + Claude Code SDK + M
   ipc.ts                         # Shared NATS IPC helper (sendIPC + IPCResponse)
   mcp-tasks.ts                   # MCP server: scheduled_task_create/list/delete
   mcp-profile.ts                 # MCP server: user_profile_read/update
-  mcp-memory.ts                  # MCP server: memory_store/recall/list/delete/forget
+  mcp-memory.ts                  # MCP server: memory_store/recall/list/delete/forget + vector embeddings
   mcp-swarm.ts                   # MCP server: swarm_chat_send (conditional on SWARM_CHAT_TOPIC)
   mcp-nix.ts                     # MCP server: nix_search/add/list_installed/remove/upgrade
   mcp-file.ts                    # MCP server: file_send (send files to Telegram)
@@ -309,7 +309,7 @@ All agent containers include [agent-browser](https://github.com/vercel-labs/agen
 - Named agents - Multiple agents with distinct roles, models, and configurations
 - Smart routing - `@agent_name` prefix or AI-powered routing via default agent
 - Isolated agent context - Each agent has its own CLAUDE.md memory, isolated filesystem, and runs in its own container sandbox
-- Persistent memory - SQLite-backed per-agent memory (`/workspace/agent/memory.db`) with MCP tools (memory_store, memory_recall, memory_list, memory_delete, memory_forget). Existing memory keys are listed in the system prompt so agents know what's stored.
+- Persistent memory - SQLite-backed per-agent memory (`/workspace/agent/memory.db`) with MCP tools (memory_store, memory_recall, memory_list, memory_delete, memory_forget). Uses hybrid search combining FTS5 keyword matching with vector semantic similarity (all-MiniLM-L6-v2, 384 dims, quantized int8 via `@huggingface/transformers`) using Reciprocal Rank Fusion. Embeddings are computed async on store and backfilled on first MCP server start for existing memories. Existing memory keys are listed in the system prompt so agents know what's stored.
 - Scheduled tasks - Cron/interval/relative delay (+30s, +5m, +2h)/one-shot jobs that run Claude and deliver results. Tasks execute in parallel (up to `MAX_PARALLEL_TASKS`, default 3) with fresh sessions, while regular user messages remain sequential with conversation continuity
 - Web access - Agents can use WebSearch and WebFetch tools
 - Nix package manager - Agents with `nix_enabled: true` can install packages on demand via MCP tools (nix_search, nix_add, nix_list_installed, nix_remove, nix_upgrade). When nix-daemon is detected, the system prompt instructs agents to auto-install missing tools. The `/nix` Telegram command provides direct user control over agent packages.

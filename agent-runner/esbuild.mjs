@@ -3,24 +3,25 @@ import { build } from "esbuild";
 const banner = 'import{createRequire as __cr}from"module";var require=__cr(import.meta.url);';
 
 const entries = [
-  ["src/index.ts", "out/index.mjs"],
-  ["src/mcp-tasks.ts", "out/mcp-tasks.mjs"],
-  ["src/mcp-profile.ts", "out/mcp-profile.mjs"],
-  ["src/mcp-memory.ts", "out/mcp-memory.mjs"],
-  ["src/mcp-swarm.ts", "out/mcp-swarm.mjs"],
-  ["src/mcp-nix.ts", "out/mcp-nix.mjs"],
-  ["src/mcp-file.ts", "out/mcp-file.mjs"],
-  ["src/mcp-history.ts", "out/mcp-history.mjs"],
+  { entry: "src/index.ts", out: "out/index.mjs" },
+  { entry: "src/mcp-tasks.ts", out: "out/mcp-tasks.mjs" },
+  { entry: "src/mcp-profile.ts", out: "out/mcp-profile.mjs" },
+  { entry: "src/mcp-memory.ts", out: "out/mcp-memory.mjs", external: ["@huggingface/transformers", "onnxruntime-node", "sharp"] },
+  { entry: "src/mcp-swarm.ts", out: "out/mcp-swarm.mjs" },
+  { entry: "src/mcp-nix.ts", out: "out/mcp-nix.mjs" },
+  { entry: "src/mcp-file.ts", out: "out/mcp-file.mjs" },
+  { entry: "src/mcp-history.ts", out: "out/mcp-history.mjs" },
 ];
 
-for (const [entryPoint, outfile] of entries) {
+for (const { entry, out, external } of entries) {
   await build({
-    entryPoints: [entryPoint],
+    entryPoints: [entry],
     bundle: true,
     format: "esm",
     platform: "node",
     target: "node24",
-    outfile,
+    outfile: out,
     banner: { js: banner },
+    ...(external ? { external } : {}),
   });
 }
