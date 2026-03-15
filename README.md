@@ -30,11 +30,11 @@ A single Go binary that orchestrates the full loop: receives messages from Teleg
 - **Scheduled tasks** — Cron, interval, or one-shot jobs that run agents and deliver results via Telegram. Multiple tasks execute in parallel (up to 3 concurrent) with independent sessions
 - **Secure vault** — AES-256-GCM encrypted secrets injected as env vars or files at container start, never exposed to the LLM
 - **Web & browser access** — Agents can search the web and automate browsers via [agent-browser](https://github.com/vercel-labs/agent-browser)
+- **Email via AgentMail** — Agents can send and receive email via [AgentMail](https://agentmail.to/). Configure an inbox per agent and the gateway handles real-time email routing
 - **Hot config reload** — Edit `praktor.yaml` and changes apply automatically, no restart needed
 - **Nix package manager** — Agents can install packages on demand (Python, ffmpeg, LaTeX, etc.) via MCP tools or the `/nix` Telegram command
 - **Agent extensions** — Per-agent MCP servers, plugins, and skills, managed via Mission Control
 - **Agent swarms** — Graph-based multi-agent orchestration with fan-out, pipeline, and collaborative patterns
-- **Email via AgentMail** — Agents can send and receive email via [AgentMail](https://agentmail.to/). Configure an inbox per agent and the gateway handles real-time email routing
 - **Backup & restore** — Back up and restore all Docker volumes as zstd-compressed tarballs via CLI
 
 ## Prerequisites
@@ -189,6 +189,43 @@ The browser session persists across messages within the same agent session and s
 ```
 
 The agent-browser skill is automatically loaded into every agent's system prompt, teaching it the full command set (`open`, `snapshot`, `click`, `fill`, `screenshot`, sessions, etc.).
+
+## Email via AgentMail
+
+[AgentMail](https://agentmail.to/) gives your agents their own email addresses. They can send and receive email autonomously — replies are routed back to the right agent in real time via WebSocket.
+
+### 1. Create an AgentMail Account
+
+Sign up at [agentmail.to](https://agentmail.to/) and create an API key from the dashboard.
+
+### 2. Create Inboxes
+
+Create an inbox for each agent that needs email. You can do this from the AgentMail dashboard or via their API. Each inbox gets a unique email address (e.g. `general@agentmail.to`).
+
+### 3. Configure Praktor
+
+Add the API key to your `.env`:
+
+```sh
+AGENTMAIL_API_KEY=your-api-key-here
+```
+
+Then assign inbox IDs to agents in `config/praktor.yaml`:
+
+```yaml
+agentmail:
+  api_key: ${AGENTMAIL_API_KEY}
+
+agents:
+  general:
+    description: "General-purpose assistant"
+    agentmail_inbox_id: "general@agentmail.to"
+  coder:
+    description: "Software engineering specialist"
+    agentmail_inbox_id: "coder@agentmail.to"
+```
+
+The gateway connects to AgentMail via WebSocket on startup. When an email arrives, it's dispatched to the agent whose `agentmail_inbox_id` matches the recipient address.
 
 ## Agent Extensions
 
