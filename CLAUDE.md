@@ -35,6 +35,7 @@ internal/
   natsbus/                       # Embedded NATS server + client helpers + topic naming
   container/                     # Docker container lifecycle, image building, volume mounts
   agent/                         # Message orchestrator, per-agent queue, session tracking
+  agentmail/                     # AgentMail WebSocket client for real-time email events
   registry/                      # Agent registry - syncs YAML config to DB, resolves agent config
   router/                        # Message router - @prefix parsing, smart routing via default agent
   telegram/                      # Telegram bot (telego), long-polling, message chunking
@@ -100,6 +101,7 @@ Loaded from YAML (default: `config/praktor.yaml`, override with `PRAKTOR_CONFIG`
 | `PRAKTOR_WEB_PORT` | `web.port` | Web UI port (default: 8080) |
 | `PRAKTOR_AGENT_MODEL` | `defaults.model` | Override default Claude model |
 | `PRAKTOR_VAULT_PASSPHRASE` | `vault.passphrase` | Encryption passphrase for secrets vault |
+| `AGENTMAIL_API_KEY` | `agentmail.api_key` | AgentMail API key for email capabilities (optional) |
 
 Hardcoded paths (not configurable): `data/praktor.db` (SQLite), `data/agents` (agent workspaces).
 
@@ -117,6 +119,7 @@ Agents are defined in the `agents` map in YAML config. Each agent has:
 - `allowed_tools` - Restrict Claude tools
 - `claude_md` - Relative path to agent-specific CLAUDE.md
 - `nix_enabled` - Enable nix package manager in agent container (starts nix-daemon)
+- `agentmail_inbox_id` - AgentMail inbox ID for email capabilities (optional, requires `agentmail.api_key`)
 
 The `router.default_agent` must reference an existing agent.
 
@@ -148,7 +151,7 @@ The gateway watches the config file for changes (mtime polled every 3s, SHA-256 
 
 **Reloadable:** Agent definitions (all fields), defaults (model, image, max_running, idle_timeout), router.default_agent, scheduler poll_interval, telegram main_chat_id.
 
-**Not reloadable** (warning logged): telegram.token, web.port, nats.data_dir, vault.passphrase.
+**Not reloadable** (warning logged): telegram.token, web.port, nats.data_dir, vault.passphrase, agentmail.api_key.
 
 Running agents whose config changed are stopped and lazily restarted on the next message. Added agents become routable immediately. Removed agents are stopped.
 
@@ -319,6 +322,7 @@ All agent containers include [agent-browser](https://github.com/vercel-labs/agen
 - Container isolation - Agents sandboxed in Docker containers with NATS communication
 - Agent swarms - Graph-based orchestration: fan-out (parallel), pipeline (sequential with context passing), and collaborative (real-time chat) execution patterns. Visual graph editor in Mission Control, `@swarm` Telegram integration
 - Secure vault - AES-256-GCM encrypted secrets, injected as env vars or files at container start (never exposed to LLM)
+- AgentMail integration - Agents with `agentmail_inbox_id` can send and receive email via the agentmail CLI. Gateway maintains a WebSocket connection to AgentMail for real-time `message.received` events, which are dispatched to the appropriate agent. Each agent is locked to its own inbox ID.
 - Backup & restore - `praktor backup` and `praktor restore` create/restore zstd-compressed tarballs of all `praktor-*` Docker volumes
 - Hot config reload - Config file changes are detected automatically (file polling every 3s) or via SIGHUP; only affected agents are restarted
 - Mission Control UI - Real-time dashboard with WebSocket updates

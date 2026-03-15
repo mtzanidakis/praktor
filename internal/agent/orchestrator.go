@@ -46,6 +46,7 @@ type Orchestrator struct {
 	fileListeners []FileListener
 	listenerMu    sync.RWMutex
 	swarmCoord SwarmCoordinator
+	agentMailAPIKey string
 }
 
 type OutputListener func(agentID, content string, meta map[string]string)
@@ -214,6 +215,7 @@ func (o *Orchestrator) executeMessage(ctx context.Context, agentID string, msg Q
 
 		o.resolveSecrets(&opts, agentID, def, hasDef)
 		o.resolveExtensions(&opts, agentID)
+		o.resolveAgentMail(&opts, agentID)
 
 		info, err = o.containers.StartAgent(ctx, opts)
 		if err != nil {
@@ -309,6 +311,7 @@ func (o *Orchestrator) RouteQuery(ctx context.Context, agentID string, message s
 
 		o.resolveSecrets(&opts, agentID, def, hasDef)
 		o.resolveExtensions(&opts, agentID)
+		o.resolveAgentMail(&opts, agentID)
 
 		info, err = o.containers.StartAgent(ctx, opts)
 		if err != nil {
@@ -830,6 +833,7 @@ func (o *Orchestrator) EnsureAgent(ctx context.Context, agentID string) error {
 	}
 	o.resolveSecrets(&opts, agentID, def, hasDef)
 	o.resolveExtensions(&opts, agentID)
+	o.resolveAgentMail(&opts, agentID)
 
 	info, err := o.containers.StartAgent(ctx, opts)
 	if err != nil {

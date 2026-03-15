@@ -150,6 +150,17 @@ func (r *Registry) GetGlobalClaudeMD() (string, error) {
 	return string(data), nil
 }
 
+func (r *Registry) FindByAgentMailInbox(inboxID string) (string, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for name, def := range r.agents {
+		if def.AgentMailInboxID == inboxID {
+			return name, true
+		}
+	}
+	return "", false
+}
+
 func (r *Registry) AgentDescriptions() map[string]string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

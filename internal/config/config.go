@@ -10,14 +10,19 @@ import (
 )
 
 type Config struct {
-	Telegram  TelegramConfig                `yaml:"telegram"`
-	Defaults  DefaultsConfig                `yaml:"defaults"`
-	Agents    map[string]AgentDefinition    `yaml:"agents"`
-	Router    RouterConfig                  `yaml:"router"`
-	NATS      NATSConfig                    `yaml:"nats"`
-	Web       WebConfig                     `yaml:"web"`
-	Scheduler SchedulerConfig               `yaml:"scheduler"`
-	Vault     VaultConfig                   `yaml:"vault"`
+	Telegram   TelegramConfig                `yaml:"telegram"`
+	Defaults   DefaultsConfig                `yaml:"defaults"`
+	Agents     map[string]AgentDefinition    `yaml:"agents"`
+	Router     RouterConfig                  `yaml:"router"`
+	NATS       NATSConfig                    `yaml:"nats"`
+	Web        WebConfig                     `yaml:"web"`
+	Scheduler  SchedulerConfig               `yaml:"scheduler"`
+	Vault      VaultConfig                   `yaml:"vault"`
+	AgentMail  AgentMailConfig               `yaml:"agentmail"`
+}
+
+type AgentMailConfig struct {
+	APIKey string `yaml:"api_key"`
 }
 
 type VaultConfig struct {
@@ -46,15 +51,16 @@ const (
 )
 
 type AgentDefinition struct {
-	Description  string            `yaml:"description"`
-	Model        string            `yaml:"model"`
-	Image        string            `yaml:"image"`
-	ClaudeMD     string            `yaml:"claude_md"`
-	Workspace    string            `yaml:"workspace"`
-	Env          map[string]string `yaml:"env"`
-	Files        []FileMount       `yaml:"files"`
-	AllowedTools []string          `yaml:"allowed_tools"`
-	NixEnabled   bool              `yaml:"nix_enabled"`
+	Description       string            `yaml:"description"`
+	Model             string            `yaml:"model"`
+	Image             string            `yaml:"image"`
+	ClaudeMD          string            `yaml:"claude_md"`
+	Workspace         string            `yaml:"workspace"`
+	Env               map[string]string `yaml:"env"`
+	Files             []FileMount       `yaml:"files"`
+	AllowedTools      []string          `yaml:"allowed_tools"`
+	NixEnabled        bool              `yaml:"nix_enabled"`
+	AgentMailInboxID  string            `yaml:"agentmail_inbox_id"`
 }
 
 type FileMount struct {
@@ -187,5 +193,8 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("PRAKTOR_VAULT_PASSPHRASE"); v != "" {
 		cfg.Vault.Passphrase = v
+	}
+	if v := os.Getenv("AGENTMAIL_API_KEY"); v != "" {
+		cfg.AgentMail.APIKey = v
 	}
 }

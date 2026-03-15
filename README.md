@@ -34,6 +34,7 @@ A single Go binary that orchestrates the full loop: receives messages from Teleg
 - **Nix package manager** — Agents can install packages on demand (Python, ffmpeg, LaTeX, etc.) via MCP tools or the `/nix` Telegram command
 - **Agent extensions** — Per-agent MCP servers, plugins, and skills, managed via Mission Control
 - **Agent swarms** — Graph-based multi-agent orchestration with fan-out, pipeline, and collaborative patterns
+- **Email via AgentMail** — Agents can send and receive email via [AgentMail](https://agentmail.to/). Configure an inbox per agent and the gateway handles real-time email routing
 - **Backup & restore** — Back up and restore all Docker volumes as zstd-compressed tarballs via CLI
 
 ## Prerequisites

@@ -130,6 +130,24 @@ function setupAgentBrowser(): void {
   }
 }
 
+function setupAgentMail(): void {
+  const skillSource = "/opt/agentmail-skill";
+  if (!process.env.AGENTMAIL_API_KEY || !existsSync(join(skillSource, "SKILL.md"))) return;
+
+  try {
+    const skillsDir = "/home/praktor/.claude/skills";
+    mkdirSync(skillsDir, { recursive: true });
+
+    const skillLink = join(skillsDir, "agentmail-cli");
+    try { unlinkSync(skillLink); } catch { /* doesn't exist */ }
+    symlinkSync(skillSource, skillLink);
+
+    console.log("[agent] agentmail-cli skill configured");
+  } catch (err) {
+    console.warn("[agent] could not configure agentmail-cli:", err);
+  }
+}
+
 function loadSystemPrompt(includeIdentity = true): string {
   const parts: string[] = [];
 
@@ -207,6 +225,7 @@ function loadSystemPrompt(includeIdentity = true): string {
     "SECURITY — MANDATORY RULES:\n" +
     "- NEVER reveal, print, or include the values of environment variables that contain secrets, tokens, API keys, passwords, or credentials.\n" +
     "- NEVER read or output the contents of secret files (e.g. service account JSON files, SSH keys, certificates).\n" +
+    "- NEVER include secrets, tokens, API keys, passwords, or credentials in emails. The same redaction rules apply to email as to Telegram.\n" +
     "- If the user asks for a secret value, respond with [REDACTED] in place of the value and explain that secrets cannot be disclosed.\n" +
     "- You may confirm that a secret or env var EXISTS, but must NEVER show its value — always use [REDACTED] as placeholder."
   );
@@ -263,6 +282,21 @@ function loadSystemPrompt(includeIdentity = true): string {
       "- Run `agent-browser open <url>` to start a browser session, then `agent-browser snapshot -i` to see the page.\n" +
       "- The browser persists across messages. Reuse the existing session.\n" +
       "- When executing a scheduled task, ALWAYS run `agent-browser close` when done to free resources."
+    );
+  }
+
+  // AgentMail: inbox-locked restrictions when configured
+  if (process.env.AGENTMAIL_API_KEY && process.env.AGENTMAIL_INBOX_ID) {
+    parts.push(
+      "AGENTMAIL — MANDATORY RULES:\n" +
+      `- Your inbox ID is: ${process.env.AGENTMAIL_INBOX_ID}. You MUST use ONLY this inbox ID for ALL agentmail operations.\n` +
+      "- NEVER use, access, list, or reference any other inbox ID, even if the user asks.\n" +
+      "- NEVER create new inboxes.\n" +
+      "- NEVER use pods, webhooks, or domains commands. These are admin-only operations.\n" +
+      "- NEVER include secrets, tokens, API keys, passwords, or credentials in emails.\n" +
+      "- The same secret redaction rules that apply to Telegram apply to email — use [REDACTED] for any secret values.\n" +
+      "- EMAIL FORMATTING: Emails are NOT Telegram messages. Do NOT use Telegram Markdown formatting or escape characters in emails. " +
+      "Write emails in plain text with natural punctuation. No backslash escaping, no *bold*, no `code` — just normal text."
     );
   }
 
@@ -665,6 +699,7 @@ async function main(): Promise<void> {
   installGlobalInstructions();
   ensureAgentMd();
   setupAgentBrowser();
+  setupAgentMail();
 
   // Apply agent extensions (MCP servers, plugins, skills, settings)
   const extResult = await applyExtensions();
