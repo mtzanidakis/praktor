@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mtzanidakis/praktor/internal/agent"
+	"github.com/mtzanidakis/praktor/internal/agentmail"
 	"github.com/mtzanidakis/praktor/internal/config"
 	"github.com/mtzanidakis/praktor/internal/container"
 	"github.com/mtzanidakis/praktor/internal/natsbus"
@@ -142,6 +143,14 @@ func runGateway() error {
 		slog.Info("telegram bot started")
 	} else {
 		slog.Warn("telegram token not set, bot disabled")
+	}
+
+	// AgentMail
+	if cfg.AgentMail.APIKey != "" {
+		orch.SetAgentMailAPIKey(cfg.AgentMail.APIKey)
+		amClient := agentmail.NewClient(cfg.AgentMail.APIKey, reg, orch.HandleMessage, cfg.Telegram.MainChatID)
+		go amClient.Run(ctx)
+		slog.Info("agentmail websocket client started")
 	}
 
 	// Web UI

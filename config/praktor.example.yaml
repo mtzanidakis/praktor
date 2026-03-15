@@ -15,6 +15,7 @@ agents:
   general:
     description: "General-purpose assistant for everyday tasks"
     workspace: general
+    # agentmail_inbox_id: "inb_xxx"       # AgentMail inbox (optional)
   coder:
     description: "Software engineering specialist"
     model: "claude-opus-4-6"
@@ -42,6 +43,9 @@ web:
 
 vault:
   passphrase: "${PRAKTOR_VAULT_PASSPHRASE}"
+
+agentmail:
+  api_key: "${AGENTMAIL_API_KEY}"    # AgentMail API key (optional)
 
 scheduler:
   poll_interval: 30s

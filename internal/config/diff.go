@@ -95,6 +95,9 @@ func Diff(old, new *Config) ConfigDiff {
 	if old.Vault.Passphrase != new.Vault.Passphrase {
 		d.NonReloadable = append(d.NonReloadable, "vault.passphrase")
 	}
+	if old.AgentMail.APIKey != new.AgentMail.APIKey {
+		d.NonReloadable = append(d.NonReloadable, "agentmail.api_key")
+	}
 
 	return d
 }
