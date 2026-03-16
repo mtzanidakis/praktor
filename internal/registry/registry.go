@@ -161,6 +161,20 @@ func (r *Registry) FindByAgentMailInbox(inboxID string) (string, bool) {
 	return "", false
 }
 
+// AgentMailInboxes returns a map of inbox_id → agent_id for all agents
+// that have an AgentMail inbox configured.
+func (r *Registry) AgentMailInboxes() map[string]string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	inboxes := make(map[string]string)
+	for name, def := range r.agents {
+		if def.AgentMailInboxID != "" {
+			inboxes[def.AgentMailInboxID] = name
+		}
+	}
+	return inboxes
+}
+
 func (r *Registry) AgentDescriptions() map[string]string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

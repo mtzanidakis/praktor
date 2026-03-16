@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -13,7 +15,10 @@ import (
 	"github.com/mtzanidakis/praktor/internal/registry"
 )
 
-const wsURL = "wss://ws.agentmail.to/v0"
+const (
+	wsURL  = "wss://ws.agentmail.to/v0"
+	apiURL = "https://api.agentmail.to/v0"
+)
 
 // MessageHandler is called when an agent should receive an email notification.
 type MessageHandler func(ctx context.Context, agentID, text string, meta map[string]string) error
@@ -24,9 +29,15 @@ type Client struct {
 	registry   *registry.Registry
 	handler    MessageHandler
 	mainChatID int64
+	httpClient *http.Client
 
 	mu   sync.Mutex
 	conn *websocket.Conn
+
+	// Track last event time and seen message IDs for catch-up dedup.
+	seenMu    sync.Mutex
+	lastEvent time.Time
+	seen      map[string]struct{}
 }
 
 // NewClient creates a new AgentMail WebSocket client.
@@ -36,6 +47,9 @@ func NewClient(apiKey string, reg *registry.Registry, handler MessageHandler, ma
 		registry:   reg,
 		handler:    handler,
 		mainChatID: mainChatID,
+		httpClient: &http.Client{Timeout: 15 * time.Second},
+		lastEvent:  time.Now(),
+		seen:       make(map[string]struct{}),
 	}
 }
 
@@ -66,6 +80,7 @@ func (c *Client) Run(ctx context.Context) {
 		} else {
 			backoff = time.Second
 			attempt = 0
+			c.catchUp(ctx)
 			c.readLoop(ctx)
 		}
 
@@ -165,6 +180,8 @@ func (c *Client) readLoop(ctx context.Context) {
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
 				slog.Warn("agentmail websocket disconnected, reconnecting", "error", err)
+			} else {
+				slog.Info("agentmail websocket disconnected, reconnecting", "error", err)
 			}
 			return
 		}
@@ -189,6 +206,97 @@ type wsMessage struct {
 	Cc        []string `json:"cc"`
 	Bcc       []string `json:"bcc"`
 	Subject   string   `json:"subject"`
+}
+
+// markSeen records a message ID and updates lastEvent. Returns false if already seen.
+func (c *Client) markSeen(messageID string) bool {
+	c.seenMu.Lock()
+	defer c.seenMu.Unlock()
+	if _, ok := c.seen[messageID]; ok {
+		return false
+	}
+	c.seen[messageID] = struct{}{}
+	c.lastEvent = time.Now()
+	// Prune old entries to avoid unbounded growth.
+	if len(c.seen) > 1000 {
+		c.seen = make(map[string]struct{})
+	}
+	return true
+}
+
+// catchUp polls the AgentMail REST API for messages received since the last
+// WebSocket event to recover any missed during reconnection.
+func (c *Client) catchUp(ctx context.Context) {
+	inboxes := c.registry.AgentMailInboxes()
+	if len(inboxes) == 0 {
+		return
+	}
+
+	c.seenMu.Lock()
+	since := c.lastEvent
+	c.seenMu.Unlock()
+
+	// Add a small buffer to avoid edge cases.
+	since = since.Add(-30 * time.Second)
+
+	for inboxID, agentID := range inboxes {
+		msgs, err := c.listMessages(ctx, inboxID, since)
+		if err != nil {
+			slog.Warn("agentmail: catch-up failed", "inbox", inboxID, "agent", agentID, "error", err)
+			continue
+		}
+		for _, msg := range msgs {
+			if !c.markSeen(msg.MessageID) {
+				continue
+			}
+			slog.Info("agentmail: catch-up message",
+				"agent", agentID,
+				"from", msg.From,
+				"subject", msg.Subject,
+				"thread_id", msg.ThreadID,
+			)
+			c.dispatchMessage(ctx, agentID, &msg)
+		}
+	}
+}
+
+// apiListResponse is the response from the list messages endpoint.
+type apiListResponse struct {
+	Messages []wsMessage `json:"messages"`
+}
+
+func (c *Client) listMessages(ctx context.Context, inboxID string, since time.Time) ([]wsMessage, error) {
+	u, err := url.Parse(apiURL + "/inboxes/" + inboxID + "/messages")
+	if err != nil {
+		return nil, err
+	}
+	q := u.Query()
+	q.Set("after", since.UTC().Format(time.RFC3339))
+	q.Set("limit", "50")
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, body)
+	}
+
+	var result apiListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return result.Messages, nil
 }
 
 func (c *Client) handleEvent(ctx context.Context, data []byte) {
@@ -223,6 +331,10 @@ func (c *Client) handleMessageReceived(ctx context.Context, msg *wsMessage) {
 		return
 	}
 
+	if !c.markSeen(msg.MessageID) {
+		return
+	}
+
 	slog.Info("agentmail: message received",
 		"agent", agentID,
 		"from", msg.From,
@@ -230,7 +342,10 @@ func (c *Client) handleMessageReceived(ctx context.Context, msg *wsMessage) {
 		"thread_id", msg.ThreadID,
 	)
 
-	// Build prompt for the agent to read and respond
+	c.dispatchMessage(ctx, agentID, msg)
+}
+
+func (c *Client) dispatchMessage(ctx context.Context, agentID string, msg *wsMessage) {
 	prompt := fmt.Sprintf(
 		"You received a new email from %s, subject: \"%s\".\n"+
 			"Read the thread: agentmail inboxes:threads retrieve --inbox-id %s --thread-id %s\n"+
