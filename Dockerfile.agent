@@ -55,7 +55,7 @@ RUN adduser \
 COPY --from=agent-builder /app/out/ /app/
 COPY --from=go-build /ptask /usr/local/bin/ptask
 COPY --from=go-build /claude /usr/local/bin/claude
-RUN npm install --loglevel=error -g agentmail-cli agent-browser@0.20.9 @huggingface/transformers@3 && \
+RUN npm install --loglevel=error -g agentmail-cli agent-browser@0.20.13 @huggingface/transformers@3 && \
     cd /usr/local/lib/node_modules/@huggingface/transformers/node_modules && \
     rm -rf onnxruntime-node && mkdir -p onnxruntime-node && \
     echo '{"name":"onnxruntime-node","main":"index.js"}' > onnxruntime-node/package.json && \
