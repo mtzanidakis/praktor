@@ -1,4 +1,5 @@
 bin/
+data/models/
 dumps/
 tsrp-state/
 ui/node_modules/
