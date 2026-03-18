@@ -1,5 +1,5 @@
 # Build Go CLIs (ptask + getcc) and download Claude Code binary
-FROM golang:1.26.1-alpine AS go-build
+FROM golang:1.26.1-trixie AS go-build
 WORKDIR /src
 COPY . .
 RUN go mod download
@@ -7,7 +7,7 @@ RUN CGO_ENABLED=0 go build -o /ptask ./cmd/ptask
 RUN CGO_ENABLED=0 go run ./cmd/getcc -save /claude
 
 # Bundle agent runner with esbuild (no node_modules needed at runtime)
-FROM node:24-alpine AS agent-builder
+FROM node:24-trixie AS agent-builder
 WORKDIR /app
 COPY agent-runner/package.json agent-runner/package-lock.json* ./
 RUN npm ci 2>/dev/null || npm install
@@ -16,47 +16,53 @@ COPY agent-runner/tsconfig.json .
 COPY agent-runner/esbuild.mjs .
 RUN node esbuild.mjs
 
-# Runtime image — no node_modules, just bundled JS files
-FROM alpine:3.23
+# Runtime image — Debian-based (glibc, no musl compatibility issues)
+FROM debian:trixie-slim
 
-RUN apk add --no-cache \
+# Install system packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     ca-certificates \
     chromium \
+    chromium-sandbox \
     curl \
     git \
     jq \
-    libgcc \
-    libstdc++ \
-    nix \
-    nodejs \
-    npm \
-    ripgrep \
+    procps \
     tini \
-    ttf-freefont \
-    font-noto-cjk \
-    font-noto-emoji \
-    tzdata && \
-    update-ca-certificates
+    tzdata \
+    wget \
+    xdg-utils \
+    xz-utils \
+    nix-setup-systemd \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # enable nix-command and flakes
 RUN echo "extra-experimental-features = nix-command flakes" >> /etc/nix/nix.conf
 
-RUN adduser \
-   --disabled-password \
-   --gecos "praktor user" \
-   --home "/home/praktor" \
-   --shell "/sbin/nologin" \
+# Install Node.js 24 + npm from NodeSource
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get clean
+
+RUN useradd \
+   --create-home \
+   --home-dir "/home/praktor" \
+   --shell "/bin/bash" \
    --uid 10321 \
    praktor && \
-   addgroup praktor nix
+   usermod -aG nix-users praktor
 
 # Copy built artifacts from builder stages
 COPY --from=agent-builder /app/out/ /app/
 COPY --from=go-build /ptask /usr/local/bin/ptask
 COPY --from=go-build /claude /usr/local/bin/claude
-RUN npm install --loglevel=error -g agentmail-cli agent-browser@0.21.0 @huggingface/transformers@3 && \
-    cd /usr/local/lib/node_modules/@huggingface/transformers/node_modules && \
+RUN NPM_GLOBAL=$(npm root -g) && \
+    npm install --loglevel=error -g agentmail-cli agent-browser@0.21.0 @huggingface/transformers@3 && \
+    rm -rf -- /root/.npm /tmp/node-compile-cache && \
+    cd "$NPM_GLOBAL/@huggingface/transformers/node_modules" && \
     rm -rf onnxruntime-node && mkdir -p onnxruntime-node && \
     echo '{"name":"onnxruntime-node","main":"index.js"}' > onnxruntime-node/package.json && \
     printf '%s\n' \
@@ -68,31 +74,29 @@ RUN npm install --loglevel=error -g agentmail-cli agent-browser@0.21.0 @huggingf
       'module.exports=ort;' \
       > onnxruntime-node/index.js
 RUN mkdir -p /usr/local/share/agent-browser && \
-    echo '{"contentBoundaries":true,"downloadPath":"/workspace/agent/Downloads","executable-path":"/usr/bin/chromium-browser","args":"--no-sandbox,--disable-gpu,--disable-dev-shm-usage"}' \
-    > /usr/local/share/agent-browser/config.json
+    echo '{"contentBoundaries":true,"downloadPath":"/workspace/agent/Downloads","executablePath":"/usr/bin/chromium","args":"--disable-gpu,--disable-dev-shm-usage"}' > /usr/local/share/agent-browser/config.json
 
 # Pre-download embedding model for semantic memory search
 ENV TRANSFORMERS_CACHE=/opt/models
-ENV NODE_PATH=/usr/local/lib/node_modules
+ENV NODE_PATH=/usr/lib/node_modules
 RUN mkdir -p /opt/models && \
     node -e "const{pipeline}=require('@huggingface/transformers');pipeline('feature-extraction','Xenova/all-MiniLM-L6-v2',{dtype:'q8',cache_dir:'/opt/models'}).then(()=>console.log('model downloaded'))" && \
     chown -R praktor:praktor /opt/models
 
 # Download agentmail-cli skill for agents with email capabilities
 RUN mkdir -p /opt/agentmail-skill && \
-    wget -qO /opt/agentmail-skill/SKILL.md \
+    curl -so /opt/agentmail-skill/SKILL.md \
     https://raw.githubusercontent.com/agentmail-to/agentmail-skills/main/agentmail-cli/SKILL.md
 
 # Pre-create volume mount points with correct ownership so Docker
 # populates new named volumes with the right permissions and structure.
-RUN mkdir -p /workspace/agent /workspace/global /home/praktor/bin && \
-    chown -R praktor:praktor /workspace/agent /workspace/global /home/praktor/bin && \
+RUN mkdir -p /workspace/agent /workspace/global && \
+    chown -R praktor:praktor /workspace/agent /workspace/global && \
     chmod 0700 /home/praktor
 
 # Runtime config
 ENV AGENT_BROWSER_IDLE_TIMEOUT_MS=180000
 ENV DISABLE_AUTOUPDATER=true
-ENV USE_BUILTIN_RIPGREP=0
 ENV NIX_PROFILES="/nix/var/nix/profiles/default /home/praktor/.nix-profile"
 ENV NIX_SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 ENV PATH="/home/praktor/bin:/home/praktor/.nix-profile/bin:/nix/var/nix/profiles/default/bin:${PATH}"

@@ -205,7 +205,7 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 	if opts.NixEnabled {
 		execResp, err := m.docker.ContainerExecCreate(ctx, resp.ID, dockercontainer.ExecOptions{
 			User: "root",
-			Cmd:  []string{"/usr/sbin/nix-daemon"},
+			Cmd:  []string{"nix-daemon"},
 		})
 		if err != nil {
 			slog.Warn("failed to create nix-daemon exec", "agent", opts.AgentID, "error", err)

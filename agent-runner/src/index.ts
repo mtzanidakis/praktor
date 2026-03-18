@@ -95,7 +95,7 @@ function ensureAgentMd(): void {
 }
 
 function setupAgentBrowser(): void {
-  const skillSource = "/usr/local/lib/node_modules/agent-browser/skills/agent-browser";
+  const skillSource = "/usr/lib/node_modules/agent-browser/skills/agent-browser";
   const configSource = "/usr/local/share/agent-browser/config.json";
   if (!existsSync(skillSource)) return; // agent-browser not installed
 
@@ -274,11 +274,11 @@ function loadSystemPrompt(includeIdentity = true): string {
   }
 
   // agent-browser: inform agent it's pre-installed with system chromium
-  if (existsSync("/usr/local/lib/node_modules/agent-browser")) {
+  if (existsSync("/usr/lib/node_modules/agent-browser")) {
     parts.push(
       "AGENT-BROWSER — Pre-installed and configured. Do NOT install browsers via npm, npx, nix, or any other method.\n" +
       "- `agent-browser` is already in PATH and ready to use.\n" +
-      "- It is configured to use the system Chromium at `/usr/bin/chromium-browser`.\n" +
+      "- It is configured to use Google Chrome at `/usr/bin/google-chrome-stable`.\n" +
       "- Run `agent-browser open <url>` to start a browser session, then `agent-browser snapshot -i` to see the page.\n" +
       "- The browser persists across messages. Reuse the existing session.\n" +
       "- When executing a scheduled task, ALWAYS run `agent-browser close` when done to free resources."
