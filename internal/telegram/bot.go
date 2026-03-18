@@ -849,7 +849,7 @@ func (b *Bot) cmdPkg(ctx context.Context, chatID int64, payload string) {
 			_ = b.SendMessage(ctx, chatID, "Usage: /nix add <package...> \\[@agent]")
 			return
 		}
-		cmd = []string{"nix", "profile", "add"}
+		cmd = []string{"nix", "profile", "install"}
 		for _, p := range cleanArgs[1:] {
 			cmd = append(cmd, "nixpkgs#"+p)
 		}

@@ -110,7 +110,7 @@ server.tool(
     console.error(`[mcp-nix] add packages=${pkgs.join(",")}`);
     if (!nixAvailable()) return nixUnavailableResult();
     try {
-      const args = ["profile", "add", ...pkgs.map((p) => `nixpkgs#${resolvePackage(p)}`)];
+      const args = ["profile", "install", ...pkgs.map((p) => `nixpkgs#${resolvePackage(p)}`)];
       const stdout = execFileSync("nix", args, {
         timeout: 120000,
         encoding: "utf-8",
