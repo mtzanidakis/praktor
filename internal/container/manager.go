@@ -201,6 +201,18 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 		return nil, fmt.Errorf("start container: %w", err)
 	}
 
+	// Ensure volume mount points are owned by praktor (uid 10321).
+	// Docker named volumes may be created with root ownership.
+	chownResp, err := m.docker.ContainerExecCreate(ctx, resp.ID, dockercontainer.ExecOptions{
+		User: "root",
+		Cmd:  []string{"chown", "-R", "10321:10321", "/workspace/agent", "/home/praktor"},
+	})
+	if err != nil {
+		slog.Warn("failed to create chown exec", "agent", opts.AgentID, "error", err)
+	} else if err := m.docker.ContainerExecStart(ctx, chownResp.ID, dockercontainer.ExecStartOptions{}); err != nil {
+		slog.Warn("failed to chown volumes", "agent", opts.AgentID, "error", err)
+	}
+
 	// Start nix-daemon as root via Docker exec (container runs as praktor)
 	if opts.NixEnabled {
 		execResp, err := m.docker.ContainerExecCreate(ctx, resp.ID, dockercontainer.ExecOptions{
