@@ -362,6 +362,7 @@ func (r *Registry) syncEmbeddings() {
 	for _, a := range agents {
 		if !activeIDs[a.ID] {
 			r.store.DeleteAgentEmbedding(a.ID)
+			r.store.DeleteLearnedEmbeddings(a.ID)
 		}
 	}
 }

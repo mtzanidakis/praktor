@@ -230,6 +230,15 @@ func (s *Store) migrate() error {
 		}
 	}
 
+	// sqlite-vec: learned routing embeddings (trained from smart routing decisions)
+	var learnedTableExists int
+	s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='learned_embeddings'`).Scan(&learnedTableExists)
+	if learnedTableExists == 0 {
+		if _, err := s.db.Exec(`CREATE VIRTUAL TABLE learned_embeddings USING vec0(agent_id TEXT NOT NULL, embedding float[384])`); err != nil {
+			return fmt.Errorf("create learned_embeddings vec0 table: %w", err)
+		}
+	}
+
 	return nil
 }
 

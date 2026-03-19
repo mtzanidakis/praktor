@@ -12,6 +12,11 @@ import (
 	"github.com/mtzanidakis/praktor/internal/store"
 )
 
+// minConfidenceGap is the minimum L2 distance gap between the best and
+// runner-up vector matches. Below this, routing is considered ambiguous and
+// falls through to smart routing.
+const minConfidenceGap float32 = 0.05
+
 type Orchestrator interface {
 	RouteQuery(ctx context.Context, agentID string, message string) (string, error)
 }
@@ -26,7 +31,7 @@ type Router struct {
 }
 
 func New(reg *registry.Registry, cfg config.RouterConfig) *Router {
-	threshold := float32(1.3)
+	threshold := float32(1.5)
 	if cfg.VectorThreshold > 0 {
 		threshold = float32(cfg.VectorThreshold)
 	}
@@ -82,24 +87,39 @@ func (r *Router) Route(ctx context.Context, message string) (agentID string, cle
 			if err != nil {
 				slog.Debug("vector search failed, falling through", "error", err)
 			} else if len(results) > 0 {
-				if results[0].Distance < r.threshold {
-					if _, ok := r.registry.GetDefinition(results[0].AgentID); ok {
+				best := results[0]
+				if best.Distance < r.threshold {
+					// If top-2 distances are too close, the match is ambiguous.
+					if len(results) > 1 {
+						gap := results[1].Distance - best.Distance
+						if gap < minConfidenceGap {
+							slog.Info("vector routing ambiguous, falling through",
+								"best", best.AgentID,
+								"distance", fmt.Sprintf("%.3f", best.Distance),
+								"runner_up", results[1].AgentID,
+								"runner_up_distance", fmt.Sprintf("%.3f", results[1].Distance),
+								"gap", fmt.Sprintf("%.3f", gap))
+							goto smartRoute
+						}
+					}
+					if _, ok := r.registry.GetDefinition(best.AgentID); ok {
 						slog.Info("vector routing matched",
-							"agent", results[0].AgentID,
-							"distance", fmt.Sprintf("%.3f", results[0].Distance),
+							"agent", best.AgentID,
+							"distance", fmt.Sprintf("%.3f", best.Distance),
 							"threshold", fmt.Sprintf("%.3f", r.threshold))
-						return results[0].AgentID, message, nil
+						return best.AgentID, message, nil
 					}
 				} else {
 					slog.Info("vector routing no confident match",
-						"best", results[0].AgentID,
-						"distance", fmt.Sprintf("%.3f", results[0].Distance),
+						"best", best.AgentID,
+						"distance", fmt.Sprintf("%.3f", best.Distance),
 						"threshold", fmt.Sprintf("%.3f", r.threshold))
 				}
 			}
 		}
 	}
 
+smartRoute:
 	// 3. Try smart routing via default agent
 	if r.orch != nil && r.defaultAgent != "" {
 		descs := r.registry.AgentDescriptions()
@@ -111,6 +131,7 @@ func (r *Router) Route(ctx context.Context, message string) (agentID string, cle
 				// Validate the routed agent exists
 				routedAgent = strings.TrimSpace(routedAgent)
 				if _, ok := r.registry.GetDefinition(routedAgent); ok {
+					r.learnRouting(ctx, routedAgent, message)
 					return routedAgent, message, nil
 				}
 				slog.Debug("route query returned unknown agent, using default", "agent", routedAgent)
@@ -132,6 +153,22 @@ func (r *Router) DefaultAgent() string {
 // SetDefaultAgent updates the default agent used for routing.
 func (r *Router) SetDefaultAgent(agent string) {
 	r.defaultAgent = agent
+}
+
+// learnRouting saves the message embedding as a routing example for the agent.
+func (r *Router) learnRouting(ctx context.Context, agentID, message string) {
+	if r.embedder == nil || r.store == nil {
+		return
+	}
+	vecs, err := r.embedder.Embed(ctx, []string{message})
+	if err != nil || len(vecs) == 0 {
+		return
+	}
+	if err := r.store.SaveLearnedEmbedding(agentID, vecs[0]); err != nil {
+		slog.Error("failed to save learned routing embedding", "agent", agentID, "error", err)
+	} else {
+		slog.Info("learned routing example saved", "agent", agentID)
+	}
 }
 
 func buildRoutingPrompt(descs map[string]string, message string) string {
