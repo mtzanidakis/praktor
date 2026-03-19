@@ -49,7 +49,7 @@ RUN useradd \
 COPY --from=go-build /ptask /usr/local/bin/ptask
 COPY --from=go-build /getcc /usr/local/bin/getcc
 RUN NPM_GLOBAL=$(npm root -g) && \
-    npm install --loglevel=error -g agentmail-cli agent-browser@0.21.0 @huggingface/transformers@3 && \
+    npm install --loglevel=error -g agentmail-cli @huggingface/transformers@3 && \
     rm -rf -- /root/.npm /tmp/node-compile-cache && \
     cd "$NPM_GLOBAL/@huggingface/transformers/node_modules" && \
     rm -rf onnxruntime-node && mkdir -p onnxruntime-node && \
@@ -62,8 +62,38 @@ RUN NPM_GLOBAL=$(npm root -g) && \
       'ort.env.wasm.numThreads=1;' \
       'module.exports=ort;' \
       > onnxruntime-node/index.js
-RUN mkdir -p /usr/local/share/agent-browser && \
-    echo '{"contentBoundaries":true,"downloadPath":"/workspace/agent/Downloads","executablePath":"/usr/bin/chromium","args":"--disable-gpu,--disable-dev-shm-usage"}' > /usr/local/share/agent-browser/config.json
+
+# Install agent-browser binary from GitHub release
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then \
+      AB_ARCH="linux-x64"; \
+      AB_SHA256="b99f239f67254decbb00fdc03fdb30ff2a84d3b79b4d6d5e5d33f43d7dc71f5c"; \
+    elif [ "$ARCH" = "arm64" ]; then \
+      AB_ARCH="linux-arm64"; \
+      AB_SHA256="36aed43001d8743c382fa7b49c7b2e6ffefc129a12072ef28f45f0f050239a64"; \
+    else \
+      echo "Unsupported architecture: $ARCH" && exit 1; \
+    fi && \
+    curl -fsSL "https://github.com/vercel-labs/agent-browser/releases/download/v0.21.1/agent-browser-${AB_ARCH}" \
+      -o /usr/local/bin/agent-browser && \
+    echo "${AB_SHA256}  /usr/local/bin/agent-browser" | sha256sum -c - && \
+    chmod 555 /usr/local/bin/agent-browser
+
+# Download agent-browser skill and config
+RUN mkdir -p /usr/local/share/agent-browser/skills/agent-browser/references \
+             /usr/local/share/agent-browser/skills/agent-browser/templates && \
+    cd /usr/local/share/agent-browser/skills/agent-browser && \
+    curl -fsSL -O https://raw.githubusercontent.com/vercel-labs/agent-browser/main/skills/agent-browser/SKILL.md && \
+    cd references && \
+    for f in authentication commands profiling proxy-support session-management snapshot-refs video-recording; do \
+      curl -fsSL -O "https://raw.githubusercontent.com/vercel-labs/agent-browser/main/skills/agent-browser/references/${f}.md"; \
+    done && \
+    cd ../templates && \
+    for f in authenticated-session capture-workflow form-automation; do \
+      curl -fsSL -O "https://raw.githubusercontent.com/vercel-labs/agent-browser/main/skills/agent-browser/templates/${f}.sh"; \
+    done && \
+    echo '{"contentBoundaries":true,"downloadPath":"/workspace/agent/Downloads","executablePath":"/usr/bin/chromium","args":"--disable-gpu,--disable-dev-shm-usage"}' \
+      > /usr/local/share/agent-browser/config.json
 
 # Pre-download embedding model for semantic memory search
 ENV TRANSFORMERS_CACHE=/opt/models
