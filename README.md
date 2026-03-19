@@ -16,7 +16,7 @@ Personal AI agent assistant. A single Go binary that receives messages from Tele
 - **Telegram I/O** — Chat with your agents from your phone
 - **Telegram commands** — `/start`, `/stop`, `/reset`, `/nix`, `/agents`, `/commands`
 - **Named agents** — Multiple agents with distinct roles, models, and configurations
-- **Smart routing** — `@agent_name` prefix, vector similarity via sqlite-vec (all-MiniLM-L6-v2, pure Go), or AI-powered fallback via the default agent
+- **Smart routing** — `@agent_name` prefix or AI-powered classification via the default agent
 - **Per-agent isolation** — Each agent runs in its own Docker container with its own filesystem
 - **Persistent memory** — Per-agent SQLite memory database with hybrid search (FTS5 keyword + vector semantic similarity via all-MiniLM-L6-v2) for storing and recalling facts across sessions
 - **Agent identity** — Each agent has an `AGENT.md` for personality and expertise, editable from Mission Control or by agents themselves
@@ -100,15 +100,15 @@ Mission Control is available at `http://localhost:8080`.
 
 ### 3. Start Chatting
 
-Open Telegram and send a message to your bot. Praktor routes it to the right agent, spins up a container, and responds. Use `@agent_name` to target a specific agent, or let vector routing match the message to the best agent automatically:
+Open Telegram and send a message to your bot. Praktor routes it to the right agent, spins up a container, and responds. Use `@agent_name` to target a specific agent, or let smart routing classify the message automatically:
 
 ```
-Hello!                              → vector routing matches best agent
+Hello!                              → smart routing picks best agent
 @coder fix the login bug            → explicit routing to coder
 @researcher find papers on RAG      → explicit routing to researcher
 ```
 
-Routing works in 4 tiers: `@agent_name` prefix → vector similarity (semantic match against agent descriptions) → AI-powered classification via default agent → default agent fallback.
+Routing works in 3 tiers: `@agent_name` prefix → AI-powered classification via default agent → default agent fallback.
 
 For a secure setup without exposed ports, see [Production Deployment](https://github.com/mtzanidakis/praktor/wiki/Production-Deployment).
 

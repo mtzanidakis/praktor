@@ -557,8 +557,6 @@ func (s *Server) updateAgentMD(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// Re-sync embeddings so vector routing picks up profile changes.
-	s.registry.SyncEmbeddings()
 	jsonResponse(w, map[string]string{"status": "saved"})
 }
 

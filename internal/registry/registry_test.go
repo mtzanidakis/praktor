@@ -1,7 +1,6 @@
 package registry
 
 import (
-	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -9,24 +8,6 @@ import (
 	"github.com/mtzanidakis/praktor/internal/config"
 	"github.com/mtzanidakis/praktor/internal/store"
 )
-
-// mockEmbedder returns sequential vectors for embedding calls.
-type mockEmbedder struct {
-	callCount int
-}
-
-func (m *mockEmbedder) Embed(_ context.Context, texts []string) ([][]float32, error) {
-	m.callCount++
-	out := make([][]float32, len(texts))
-	for i := range texts {
-		vec := make([]float32, 384)
-		vec[i%384] = 1.0
-		out[i] = vec
-	}
-	return out, nil
-}
-
-func (m *mockEmbedder) Dims() int { return 384 }
 
 func newTestRegistry(t *testing.T) (*Registry, *store.Store) {
 	t.Helper()
@@ -245,92 +226,3 @@ func TestUserMDNotExist(t *testing.T) {
 	}
 }
 
-func TestSyncEmbeddings(t *testing.T) {
-	reg, s := newTestRegistry(t)
-	emb := &mockEmbedder{}
-	reg.SetEmbedder(emb)
-
-	if err := reg.Sync(); err != nil {
-		t.Fatalf("sync: %v", err)
-	}
-
-	// Should have called Embed once (batch) for both agents
-	if emb.callCount != 1 {
-		t.Errorf("expected 1 embed call, got %d", emb.callCount)
-	}
-
-	// Both agents should have embeddings
-	hash1, _ := s.GetAgentEmbeddingHash("general")
-	hash2, _ := s.GetAgentEmbeddingHash("coder")
-	if hash1 == "" {
-		t.Error("expected general to have embedding hash")
-	}
-	if hash2 == "" {
-		t.Error("expected coder to have embedding hash")
-	}
-
-	// Second sync should NOT re-embed (descriptions unchanged)
-	emb.callCount = 0
-	if err := reg.Sync(); err != nil {
-		t.Fatalf("sync 2: %v", err)
-	}
-	if emb.callCount != 0 {
-		t.Errorf("expected 0 embed calls on unchanged sync, got %d", emb.callCount)
-	}
-}
-
-func TestSyncEmbeddingsUpdatesOnDescriptionChange(t *testing.T) {
-	reg, s := newTestRegistry(t)
-	emb := &mockEmbedder{}
-	reg.SetEmbedder(emb)
-
-	if err := reg.Sync(); err != nil {
-		t.Fatalf("sync: %v", err)
-	}
-	hashBefore, _ := s.GetAgentEmbeddingHash("general")
-
-	// Change description
-	newAgents := map[string]config.AgentDefinition{
-		"general": {Description: "Updated general assistant", Workspace: "general"},
-		"coder":   {Description: "Code specialist", Workspace: "coder"},
-	}
-	emb.callCount = 0
-	if err := reg.Update(newAgents, config.DefaultsConfig{Image: "praktor-agent:latest", Model: "claude-sonnet-4-5-20250929"}); err != nil {
-		t.Fatalf("update: %v", err)
-	}
-
-	// Should have re-embedded only general (1 text in batch)
-	if emb.callCount != 1 {
-		t.Errorf("expected 1 embed call for changed desc, got %d", emb.callCount)
-	}
-
-	hashAfter, _ := s.GetAgentEmbeddingHash("general")
-	if hashAfter == hashBefore {
-		t.Error("expected hash to change after description update")
-	}
-}
-
-func TestSyncEmbeddingsSkipsEmptyDescription(t *testing.T) {
-	dir := t.TempDir()
-	s, err := store.New(filepath.Join(dir, "test.db"))
-	if err != nil {
-		t.Fatalf("new store: %v", err)
-	}
-	t.Cleanup(func() { s.Close() })
-
-	agents := map[string]config.AgentDefinition{
-		"nodesc": {Workspace: "nodesc"}, // empty description
-	}
-
-	reg := New(s, agents, config.DefaultsConfig{}, filepath.Join(dir, "agents"))
-	emb := &mockEmbedder{}
-	reg.SetEmbedder(emb)
-
-	if err := reg.Sync(); err != nil {
-		t.Fatalf("sync: %v", err)
-	}
-
-	if emb.callCount != 0 {
-		t.Errorf("expected 0 embed calls for agent without description, got %d", emb.callCount)
-	}
-}

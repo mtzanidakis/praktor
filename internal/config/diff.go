@@ -65,7 +65,7 @@ func Diff(old, new *Config) ConfigDiff {
 	}
 
 	// Router
-	if old.Router.DefaultAgent != new.Router.DefaultAgent || old.Router.VectorThreshold != new.Router.VectorThreshold {
+	if old.Router.DefaultAgent != new.Router.DefaultAgent {
 		d.RouterChanged = true
 		d.NewDefaultAgent = new.Router.DefaultAgent
 	}

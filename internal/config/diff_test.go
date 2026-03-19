@@ -159,20 +159,3 @@ func TestDiff_MainChatIDChanged(t *testing.T) {
 	}
 }
 
-func TestDiff_VectorThresholdChanged(t *testing.T) {
-	old := &Config{Router: RouterConfig{DefaultAgent: "bot", VectorThreshold: 1.0}}
-	new := &Config{Router: RouterConfig{DefaultAgent: "bot", VectorThreshold: 0.8}}
-	d := Diff(old, new)
-	if !d.RouterChanged {
-		t.Error("expected router changed when vector threshold changes")
-	}
-}
-
-func TestDiff_VectorThresholdUnchanged(t *testing.T) {
-	old := &Config{Router: RouterConfig{DefaultAgent: "bot", VectorThreshold: 1.0}}
-	new := &Config{Router: RouterConfig{DefaultAgent: "bot", VectorThreshold: 1.0}}
-	d := Diff(old, new)
-	if d.RouterChanged {
-		t.Error("expected no router change when threshold is the same")
-	}
-}

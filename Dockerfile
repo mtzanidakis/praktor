@@ -24,7 +24,6 @@ RUN go mod download
 COPY --from=ui-builder /ui/dist/ ./internal/web/static/
 ARG VERSION
 RUN CGO_ENABLED=0 go build -ldflags "-X main.version=${VERSION:-$(git describe --tags --always 2>/dev/null || echo dev)}" -o /praktor ./cmd/praktor
-RUN CGO_ENABLED=0 go run -ldflags "-s" ./cmd/dlmodel -repo sentence-transformers/all-MiniLM-L6-v2 -dest /models
 
 # Stage 4: Minimal runtime
 FROM scratch AS base
@@ -34,7 +33,6 @@ COPY --from=go-builder /bin/busybox.static /bin/rm
 COPY --from=go-builder /bin/busybox.static /bin/mkdir
 COPY --from=go-builder /bin/busybox.static /bin/chown
 COPY --from=go-builder /praktor /praktor
-COPY --from=go-builder /models /opt/models
 COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=go-builder /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=go-builder /etc/passwd.scratch /etc/passwd

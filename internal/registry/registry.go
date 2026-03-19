@@ -1,17 +1,12 @@
 package registry
 
 import (
-	"context"
-	"crypto/sha256"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/mtzanidakis/praktor/internal/config"
-	"github.com/mtzanidakis/praktor/internal/embeddings"
 	"github.com/mtzanidakis/praktor/internal/store"
 )
 
@@ -21,7 +16,6 @@ type Registry struct {
 	agents   map[string]config.AgentDefinition
 	cfg      config.DefaultsConfig
 	basePath string
-	embedder embeddings.Embedder
 }
 
 func New(s *store.Store, agents map[string]config.AgentDefinition, cfg config.DefaultsConfig, basePath string) *Registry {
@@ -78,7 +72,6 @@ func (r *Registry) Sync() error {
 		return err
 	}
 
-	r.syncEmbeddings()
 	return nil
 }
 
@@ -274,97 +267,6 @@ func (r *Registry) GetUserMD() (string, error) {
 func (r *Registry) SaveUserMD(content string) error {
 	path := filepath.Join(r.basePath, "global", "USER.md")
 	return os.WriteFile(path, []byte(content), 0o644)
-}
-
-// SetEmbedder sets the embedder used for vector routing.
-func (r *Registry) SetEmbedder(e embeddings.Embedder) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.embedder = e
-}
-
-// SyncEmbeddings triggers a re-sync of agent embeddings. Call this after
-// updating agent profile data (e.g. AGENT.md) so vector routing stays current.
-func (r *Registry) SyncEmbeddings() {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	r.syncEmbeddings()
-}
-
-// syncEmbeddings computes and stores embeddings for agent descriptions
-// that have changed since last sync. Must be called with agents already set.
-func (r *Registry) syncEmbeddings() {
-	if r.embedder == nil {
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	// Collect agents needing (re-)embedding
-	type needsEmbed struct {
-		name string
-		desc string
-		hash string
-	}
-	var pending []needsEmbed
-
-	for name, def := range r.agents {
-		if def.Description == "" {
-			continue
-		}
-		// Build embedding text from description + AGENT.md profile
-		embText := name + ": " + def.Description
-		if profile, err := r.GetAgentMD(name); err == nil && profile != "" {
-			embText += "\n" + profile
-		}
-		embHash := fmt.Sprintf("%x", sha256.Sum256([]byte(embText)))
-		existing, _ := r.store.GetAgentEmbeddingHash(name)
-		if existing == embHash {
-			continue
-		}
-		pending = append(pending, needsEmbed{name: name, desc: embText, hash: embHash})
-	}
-
-	if len(pending) == 0 {
-		return
-	}
-
-	// Batch embed all descriptions at once
-	texts := make([]string, len(pending))
-	for i, p := range pending {
-		texts[i] = p.desc
-	}
-
-	vecs, err := r.embedder.Embed(ctx, texts)
-	if err != nil {
-		slog.Error("failed to embed agent descriptions", "error", err)
-		return
-	}
-
-	for i, p := range pending {
-		if i >= len(vecs) {
-			break
-		}
-		if err := r.store.SaveAgentEmbedding(p.name, p.hash, vecs[i]); err != nil {
-			slog.Error("failed to save agent embedding", "agent", p.name, "error", err)
-		} else {
-			slog.Info("agent embedding updated", "agent", p.name)
-		}
-	}
-
-	// Clean up embeddings for removed agents
-	agents, _ := r.store.ListAgents()
-	activeIDs := make(map[string]bool, len(r.agents))
-	for name := range r.agents {
-		activeIDs[name] = true
-	}
-	for _, a := range agents {
-		if !activeIDs[a.ID] {
-			r.store.DeleteAgentEmbedding(a.ID)
-			r.store.DeleteLearnedEmbeddings(a.ID)
-		}
-	}
 }
 
 const agentMDTemplate = `# Agent Identity

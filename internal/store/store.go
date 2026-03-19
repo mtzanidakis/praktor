@@ -10,7 +10,6 @@ import (
 
 	"github.com/mtzanidakis/praktor/internal/extensions"
 	_ "modernc.org/sqlite"
-	_ "modernc.org/sqlite/vec"
 )
 
 type Store struct {
@@ -221,22 +220,9 @@ func (s *Store) migrate() error {
 		return fmt.Errorf("migrate extensions to tables: %w", err)
 	}
 
-	// sqlite-vec: agent description embeddings for vector routing
-	var vecTableExists int
-	s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='agent_embeddings'`).Scan(&vecTableExists)
-	if vecTableExists == 0 {
-		if _, err := s.db.Exec(`CREATE VIRTUAL TABLE agent_embeddings USING vec0(agent_id TEXT NOT NULL, desc_hash TEXT NOT NULL, embedding float[384])`); err != nil {
-			return fmt.Errorf("create agent_embeddings vec0 table: %w", err)
-		}
-	}
-
-	// sqlite-vec: learned routing embeddings (trained from smart routing decisions)
-	var learnedTableExists int
-	s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='learned_embeddings'`).Scan(&learnedTableExists)
-	if learnedTableExists == 0 {
-		if _, err := s.db.Exec(`CREATE VIRTUAL TABLE learned_embeddings USING vec0(agent_id TEXT NOT NULL, embedding float[384])`); err != nil {
-			return fmt.Errorf("create learned_embeddings vec0 table: %w", err)
-		}
+	// Drop legacy vector routing tables (vec0 virtual tables).
+	for _, table := range []string{"agent_embeddings", "learned_embeddings"} {
+		s.db.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS %s`, table))
 	}
 
 	return nil

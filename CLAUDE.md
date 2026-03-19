@@ -20,26 +20,24 @@ Telegram ←→ Go Gateway ←→ Router ←→ Embedded NATS ←→ Agent Conta
 
 The gateway binary runs all core services: Telegram bot, message router, NATS message bus, agent orchestrator, scheduler, swarm coordinator, and HTTP/WebSocket server. Agent containers are spawned on demand via the Docker API and communicate with the host over NATS pub/sub.
 
-**Named Agents:** Multiple agents are defined in YAML config, each with its own description, model, image, env vars, secrets, allowed tools, and workspace. Messages are routed to agents via a 4-tier chain: `@agent_name` prefix → vector similarity (if configured) → smart routing via default agent container → default agent fallback.
+**Named Agents:** Multiple agents are defined in YAML config, each with its own description, model, image, env vars, secrets, allowed tools, and workspace. Messages are routed to agents via a 3-tier chain: `@agent_name` prefix → smart routing via default agent container → default agent fallback.
 
 ## Project Structure
 
 ```
 cmd/praktor/main.go              # CLI: `gateway`, `vault`, `backup`, `restore`, and `version` subcommands
 cmd/ptask/main.go                # Task management CLI (Go, runs inside agent containers)
-cmd/dlmodel/main.go              # Download HuggingFace ONNX model for vector routing (used in Dockerfile)
 internal/
   config/                        # YAML config + env var overrides
   extensions/                    # Agent extension types (MCP servers, plugins, skills)
-  embeddings/                    # Hugot-based pure Go sentence embeddings (all-MiniLM-L6-v2, 384 dims)
-  store/                         # SQLite (modernc.org/sqlite, pure Go) + sqlite-vec - agents, messages, tasks, swarms, secrets, embeddings
+  store/                         # SQLite (modernc.org/sqlite, pure Go) - agents, messages, tasks, swarms, secrets
   vault/                         # AES-256-GCM encryption with Argon2id key derivation
   natsbus/                       # Embedded NATS server + client helpers + topic naming
   container/                     # Docker container lifecycle, image building, volume mounts
   agent/                         # Message orchestrator, per-agent queue, session tracking
   agentmail/                     # AgentMail WebSocket client for real-time email events
   registry/                      # Agent registry - syncs YAML config to DB, resolves agent config
-  router/                        # Message router - @prefix parsing, vector similarity routing, smart routing via default agent
+  router/                        # Message router - @prefix parsing, smart routing via default agent
   telegram/                      # Telegram bot (telego), long-polling, message chunking
   scheduler/                     # Cron/interval/relative delay task polling (adhocore/gronx)
   swarm/                         # Graph-based swarm orchestration (DAG execution, collaborative chat)
@@ -125,8 +123,6 @@ Agents are defined in the `agents` map in YAML config. Each agent has:
 
 The `router.default_agent` must reference an existing agent.
 
-**Vector Routing:** Enabled by default. The all-MiniLM-L6-v2 ONNX model (384 dims) is baked into the Docker image at `/opt/models/sentence-transformers_all-MiniLM-L6-v2` via `cmd/dlmodel`. Uses Hugot pure-Go backend (no CGO). Agent description embeddings are computed on startup and on config reload. Set `router.vector_threshold` (default: 1.3, L2 distance) to tune routing confidence — lower values require closer semantic match.
-
 ### Agent Extensions
 
 Extensions are stored per-agent in normalized DB tables (not YAML config) and managed via the REST API + Mission Control UI. They allow adding MCP servers, plugins, and skills to individual agents. Extensions require `nix_enabled: true` on the agent.
@@ -153,7 +149,7 @@ Updating extensions via PUT stops the running agent container so it picks up cha
 
 The gateway watches the config file for changes (mtime polled every 3s, SHA-256 hash verified on mtime change). When a change is detected, it automatically reloads without restarting the gateway process. SIGHUP also triggers a reload.
 
-**Reloadable:** Agent definitions (all fields), defaults (model, image, max_running, idle_timeout), router.default_agent, router.vector_threshold, scheduler poll_interval, telegram main_chat_id.
+**Reloadable:** Agent definitions (all fields), defaults (model, image, max_running, idle_timeout), router.default_agent, scheduler poll_interval, telegram main_chat_id.
 
 **Not reloadable** (warning logged): telegram.token, web.port, nats.data_dir, vault.passphrase, agentmail.api_key.
 
@@ -232,8 +228,7 @@ The gateway uses `praktor-data` for SQLite/NATS and `praktor-global` for global 
 - `docker/docker` - Docker SDK for container management
 - `nats-io/nats-server/v2` - Embedded NATS server
 - `nats-io/nats.go` - NATS client
-- `modernc.org/sqlite` - Pure-Go SQLite (no CGO) + `modernc.org/sqlite/vec` for sqlite-vec vector search
-- `knights-analytics/hugot` - Pure-Go ONNX sentence transformer inference (all-MiniLM-L6-v2)
+- `modernc.org/sqlite` - Pure-Go SQLite (no CGO)
 - `gorilla/websocket` - WebSocket connections
 - `google/uuid` - UUID generation
 - `adhocore/gronx` - Cron expression parsing
@@ -281,7 +276,7 @@ The lead agent always runs last and receives all prior results for synthesis.
 
 ## SQLite Schema
 
-Tables: `agents`, `messages` (with agent_id index), `scheduled_tasks` (with status+next_run index), `agent_sessions`, `swarm_runs`, `secrets`, `agent_secrets`, `agent_mcp_servers`, `agent_marketplaces`, `agent_plugins`, `agent_skills`. Virtual tables: `messages_fts` (FTS5), `agent_embeddings` (vec0, 384-dim float vectors for routing). Migrations run automatically on startup.
+Tables: `agents`, `messages` (with agent_id index), `scheduled_tasks` (with status+next_run index), `agent_sessions`, `swarm_runs`, `secrets`, `agent_secrets`, `agent_mcp_servers`, `agent_marketplaces`, `agent_plugins`, `agent_skills`. Virtual tables: `messages_fts` (FTS5). Migrations run automatically on startup.
 
 ## MCP Server Convention
 
@@ -315,7 +310,7 @@ All agent containers include [agent-browser](https://github.com/vercel-labs/agen
 
 - Telegram I/O - Message Claude from your phone
 - Named agents - Multiple agents with distinct roles, models, and configurations
-- Smart routing - `@agent_name` prefix, vector similarity routing via sqlite-vec + Hugot (all-MiniLM-L6-v2, pure Go), or AI-powered routing via default agent
+- Smart routing - `@agent_name` prefix or AI-powered routing via default agent
 - Isolated agent context - Each agent has its own CLAUDE.md memory, isolated filesystem, and runs in its own container sandbox
 - Persistent memory - SQLite-backed per-agent memory (`/workspace/agent/memory.db`) with MCP tools (memory_store, memory_recall, memory_list, memory_delete, memory_forget). Uses hybrid search combining FTS5 keyword matching with vector semantic similarity (all-MiniLM-L6-v2, 384 dims, quantized int8 via `@huggingface/transformers`) using Reciprocal Rank Fusion. Embeddings are computed async on store and backfilled on first MCP server start for existing memories. Existing memory keys are listed in the system prompt so agents know what's stored.
 - Scheduled tasks - Cron/interval/relative delay (+30s, +5m, +2h)/one-shot jobs that run Claude and deliver results. Tasks execute in parallel (up to `MAX_PARALLEL_TASKS`, default 3) with fresh sessions, while regular user messages remain sequential with conversation continuity
