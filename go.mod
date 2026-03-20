@@ -7,7 +7,7 @@ require (
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/klauspost/compress v1.18.4
+	github.com/klauspost/compress v1.18.5
 	github.com/moby/go-archive v0.2.0
 	github.com/mymmrac/telego v1.7.0
 	github.com/nats-io/nats-server/v2 v2.12.5
