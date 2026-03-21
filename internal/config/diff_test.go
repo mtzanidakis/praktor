@@ -147,6 +147,21 @@ func TestDiff_NonReloadable(t *testing.T) {
 	}
 }
 
+func TestDiff_SpeechAPIKeyNonReloadable(t *testing.T) {
+	old := &Config{Speech: SpeechConfig{APIKey: "old-key"}}
+	new := &Config{Speech: SpeechConfig{APIKey: "new-key"}}
+	d := Diff(old, new)
+	found := false
+	for _, f := range d.NonReloadable {
+		if f == "speech.api_key" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected speech.api_key in non-reloadable, got %v", d.NonReloadable)
+	}
+}
+
 func TestDiff_MainChatIDChanged(t *testing.T) {
 	old := &Config{Telegram: TelegramConfig{MainChatID: 123}}
 	new := &Config{Telegram: TelegramConfig{MainChatID: 456}}

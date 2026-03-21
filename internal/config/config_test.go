@@ -34,6 +34,18 @@ func TestDefaults(t *testing.T) {
 	if StorePath != "data/praktor.db" {
 		t.Errorf("expected StorePath data/praktor.db, got %s", StorePath)
 	}
+	if cfg.Speech.TTSMode != "voice" {
+		t.Errorf("expected default tts_mode voice, got %s", cfg.Speech.TTSMode)
+	}
+	if cfg.Speech.TTSVoice != "alloy" {
+		t.Errorf("expected default tts_voice alloy, got %s", cfg.Speech.TTSVoice)
+	}
+	if cfg.Speech.TTSEnabled {
+		t.Error("expected tts_enabled false by default")
+	}
+	if cfg.Speech.APIKey != "" {
+		t.Errorf("expected empty speech api_key by default, got %s", cfg.Speech.APIKey)
+	}
 }
 
 func TestLoadWithEnvOverrides(t *testing.T) {
@@ -60,6 +72,20 @@ func TestLoadWithEnvOverrides(t *testing.T) {
 	}
 	if cfg.Web.Port != 9090 {
 		t.Errorf("expected web port 9090, got %d", cfg.Web.Port)
+	}
+}
+
+func TestLoadWithOpenAIKeyOverride(t *testing.T) {
+	t.Setenv("PRAKTOR_CONFIG", "/nonexistent/config.yaml")
+	t.Setenv("OPENAI_API_KEY", "sk-openai-test")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.Speech.APIKey != "sk-openai-test" {
+		t.Errorf("expected speech api_key sk-openai-test, got %s", cfg.Speech.APIKey)
 	}
 }
 

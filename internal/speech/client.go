@@ -16,6 +16,7 @@ const openAIURL = "https://api.openai.com/v1"
 
 // Client wraps the OpenAI speech API for transcription (STT) and synthesis (TTS).
 type Client struct {
+	apiURL     string
 	apiKey     string
 	httpClient *http.Client
 }
@@ -23,6 +24,7 @@ type Client struct {
 // NewClient creates an OpenAI speech API client.
 func NewClient(apiKey string) *Client {
 	return &Client{
+		apiURL: openAIURL,
 		apiKey: apiKey,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
@@ -51,7 +53,7 @@ func (c *Client) Transcribe(ctx context.Context, audio []byte, filename string) 
 		return "", fmt.Errorf("close multipart writer: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openAIURL+"/audio/transcriptions", &body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiURL+"/audio/transcriptions", &body)
 	if err != nil {
 		return "", fmt.Errorf("create request: %w", err)
 	}
@@ -99,7 +101,7 @@ func (c *Client) Synthesize(ctx context.Context, text, voice string) ([]byte, er
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openAIURL+"/audio/speech", bytes.NewReader(jsonData))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiURL+"/audio/speech", bytes.NewReader(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
