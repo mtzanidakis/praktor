@@ -317,7 +317,8 @@ func (b *Bot) handleMessage(ctx context.Context, msg telego.Message) {
 	senderID := strconv.FormatInt(userID, 10)
 	chatIDStr := strconv.FormatInt(chatID, 10)
 
-	// If the user is replying to an agent's message, route directly to that agent.
+	// If the user is replying to an agent's message, route directly to that agent
+	// and include the quoted message text for context.
 	var agentID, cleanedMessage string
 	if msg.ReplyToMessage != nil {
 		b.msgAgentMu.RLock()
@@ -325,7 +326,13 @@ func (b *Bot) handleMessage(ctx context.Context, msg telego.Message) {
 		b.msgAgentMu.RUnlock()
 		if ok {
 			agentID = replyAgent
-			cleanedMessage = text
+			// Include quoted message so the agent has context about what's being replied to
+			replyText := msg.ReplyToMessage.Text
+			if replyText != "" {
+				cleanedMessage = fmt.Sprintf("[Replying to message: %s]\n\n%s", replyText, text)
+			} else {
+				cleanedMessage = text
+			}
 			slog.Debug("routing via reply", "chat", chatID, "agent", agentID, "reply_to", msg.ReplyToMessage.MessageID)
 		}
 	}

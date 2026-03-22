@@ -231,6 +231,15 @@ function loadSystemPrompt(includeIdentity = true): string {
     "- You may confirm that a secret or env var EXISTS, but must NEVER show its value — always use [REDACTED] as placeholder."
   );
 
+  // Conversation history: instruct agent to search when context is missing
+  parts.push(
+    "CONVERSATION HISTORY — You have access to the full conversation history via the history_search MCP tool.\n" +
+    "- When the user references a previous conversation, topic, or decision you don't have in your current context, ALWAYS search history before saying you don't know.\n" +
+    "- Use history_search with relevant keywords from the user's message to find past discussions.\n" +
+    "- This is especially important after a session restart — your conversation memory resets but the full history is preserved and searchable.\n" +
+    "- NEVER say you don't have information or context without searching history first."
+  );
+
   // Memory: list existing keys so the agent knows what's stored
   try {
     const MEMORY_DB_PATH = "/workspace/agent/memory.db";
