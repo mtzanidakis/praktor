@@ -10,7 +10,7 @@ require (
 	github.com/klauspost/compress v1.18.5
 	github.com/moby/go-archive v0.2.0
 	github.com/mymmrac/telego v1.7.0
-	github.com/nats-io/nats-server/v2 v2.12.5
+	github.com/nats-io/nats-server/v2 v2.12.6
 	github.com/nats-io/nats.go v1.49.0
 	golang.org/x/crypto v0.49.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -50,7 +50,7 @@ require (
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/moby/term v0.5.2 // indirect
 	github.com/morikuni/aec v1.1.0 // indirect
-	github.com/nats-io/jwt/v2 v2.8.0 // indirect
+	github.com/nats-io/jwt/v2 v2.8.1 // indirect
 	github.com/nats-io/nkeys v0.4.15 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
