@@ -25,6 +25,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     xdg-utils \
     xz-utils \
+    fonts-noto-color-emoji \
+    fonts-noto-cjk \
+    fonts-freefont-ttf \
     nix-setup-systemd \
     && sed -i 's/^# *\(en_US.UTF-8\)/\1/' /etc/locale.gen \
     && locale-gen \
