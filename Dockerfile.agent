@@ -1,5 +1,5 @@
 # Bundle agent runner with esbuild (no node_modules needed at runtime)
-FROM node:24-trixie AS agent-builder
+FROM node:25-trixie AS agent-builder
 WORKDIR /app
 COPY agent-runner/package.json agent-runner/package-lock.json* ./
 RUN npm ci 2>/dev/null || npm install
