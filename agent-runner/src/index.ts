@@ -32,6 +32,7 @@ let isProcessing = false;
 let lastSessionId: string | undefined;
 let currentQueryIter: AsyncIterator<unknown> | null = null;
 let aborted = false;
+let backgroundTasks = 0; // tracks task_started without matching task_notification
 let extensionMcpServers: Record<string, { type: string; command?: string; args?: string[]; url?: string; env?: Record<string, string>; headers?: Record<string, string> }> = {};
 const pendingMessages: Array<Record<string, unknown>> = [];
 
@@ -420,7 +421,11 @@ async function executeTask(data: Record<string, unknown>): Promise<void> {
 
     try {
       for await (const event of { [Symbol.asyncIterator]: () => iter }) {
-        if (event.type === "result" && event.subtype === "success") {
+        if (event.type === "system" && (event as Record<string, unknown>).subtype === "task_started") {
+          backgroundTasks++;
+        } else if (event.type === "system" && (event as Record<string, unknown>).subtype === "task_notification") {
+          if (backgroundTasks > 0) backgroundTasks--;
+        } else if (event.type === "result" && event.subtype === "success") {
           fullResponse = event.result;
         } else if (event.type === "assistant") {
           for (const block of event.message.content) {
@@ -493,6 +498,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
 
   isProcessing = true;
   aborted = false;
+  backgroundTasks = 0;
   console.log(`[agent] processing message for agent ${AGENT_ID}: ${text.substring(0, 100)}...`);
 
   try {
@@ -518,7 +524,11 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
     try {
       for await (const event of { [Symbol.asyncIterator]: () => iter }) {
         console.log(`[agent] event: type=${event.type}${"subtype" in event ? ` subtype=${event.subtype}` : ""}`);
-        if (event.type === "result" && event.subtype === "success") {
+        if (event.type === "system" && (event as Record<string, unknown>).subtype === "task_started") {
+          backgroundTasks++;
+        } else if (event.type === "system" && (event as Record<string, unknown>).subtype === "task_notification") {
+          if (backgroundTasks > 0) backgroundTasks--;
+        } else if (event.type === "result" && event.subtype === "success") {
           fullResponse = event.result;
           lastSessionId = event.session_id;
         } else if (event.type === "assistant") {
@@ -638,7 +648,13 @@ async function handleControl(
       process.exit(0);
       break;
     case "ping":
-      msg.respond(new TextEncoder().encode(JSON.stringify({ status: "ok" })));
+      msg.respond(new TextEncoder().encode(JSON.stringify({
+        status: "ok",
+        processing: isProcessing,
+        pending_messages: pendingMessages.length,
+        active_tasks: activeTaskCount,
+        background_tasks: backgroundTasks,
+      })));
       break;
     case "abort":
       console.log("[agent] aborting current run...");

@@ -442,18 +442,6 @@ func (o *Orchestrator) popPendingMeta(msgID string) map[string]string {
 	return meta
 }
 
-// hasPendingMessages reports whether the agent has in-flight messages
-// (published to NATS but no result received yet).
-func (o *Orchestrator) hasPendingMessages(agentID string) bool {
-	o.mu.RLock()
-	defer o.mu.RUnlock()
-	for _, id := range o.pendingMsgID {
-		if id == agentID {
-			return true
-		}
-	}
-	return false
-}
 
 func (o *Orchestrator) handleIPC(msg *nats.Msg) {
 	var cmd IPCCommand
@@ -922,11 +910,53 @@ func (o *Orchestrator) ClearSession(ctx context.Context, agentID string) error {
 
 func (o *Orchestrator) StopAgent(ctx context.Context, agentID string) error {
 	o.sessions.Remove(agentID)
+	o.clearPendingMessages(agentID)
 	err := o.containers.StopAgent(ctx, agentID)
 	if err == nil {
 		o.publishAgentStopEvent(agentID, "manual")
 	}
 	return err
+}
+
+// isAgentBusy pings the agent container to check if it's actively processing.
+// Returns false (not busy) if the agent doesn't respond or reports idle.
+func (o *Orchestrator) isAgentBusy(agentID string) bool {
+	if o.containers.GetRunning(agentID) == nil {
+		return false
+	}
+	topic := natsbus.TopicAgentControl(agentID)
+	data, _ := json.Marshal(map[string]string{"command": "ping"})
+	resp, err := o.client.Request(topic, data, 3*time.Second)
+	if err != nil {
+		return false
+	}
+	var status struct {
+		Processing      bool `json:"processing"`
+		PendingMessages int  `json:"pending_messages"`
+		ActiveTasks     int  `json:"active_tasks"`
+		BackgroundTasks int  `json:"background_tasks"`
+	}
+	if err := json.Unmarshal(resp.Data, &status); err != nil {
+		return false
+	}
+	busy := status.Processing || status.PendingMessages > 0 || status.ActiveTasks > 0 || status.BackgroundTasks > 0
+	if !busy {
+		// Agent reports idle — clear any orphaned pending messages on our side
+		o.clearPendingMessages(agentID)
+	}
+	return busy
+}
+
+// clearPendingMessages removes all in-flight message tracking for an agent.
+func (o *Orchestrator) clearPendingMessages(agentID string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	for msgID, aid := range o.pendingMsgID {
+		if aid == agentID {
+			delete(o.pendingMsgID, msgID)
+			delete(o.pendingMeta, msgID)
+		}
+	}
 }
 
 func (o *Orchestrator) StartIdleReaper(ctx context.Context) {
@@ -944,8 +974,13 @@ func (o *Orchestrator) StartIdleReaper(ctx context.Context) {
 		case <-ticker.C:
 			idle := o.sessions.ListIdle(o.cfg.IdleTimeout)
 			for _, agentID := range idle {
-				if q := o.getQueue(agentID); q.Busy() || o.hasPendingMessages(agentID) {
-					slog.Info("skipping idle stop for busy agent", "agent", agentID)
+				if q := o.getQueue(agentID); q.Busy() {
+					slog.Info("skipping idle stop for busy agent", "agent", agentID, "reason", "queue")
+					o.sessions.Touch(agentID)
+					continue
+				}
+				if o.isAgentBusy(agentID) {
+					slog.Info("skipping idle stop for busy agent", "agent", agentID, "reason", "agent")
 					o.sessions.Touch(agentID)
 					continue
 				}
