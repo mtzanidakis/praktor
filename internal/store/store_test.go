@@ -117,6 +117,47 @@ func TestMessageCRUD(t *testing.T) {
 	}
 }
 
+func TestParseTimeString(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{"RFC3339 UTC", "2026-02-17T04:35:00Z", false},
+		{"RFC3339 offset", "2026-02-17T10:20:00+05:45", false},
+		{"RFC3339Nano", "2026-02-17T04:35:00.123456789Z", false},
+		{"SQLite CURRENT_TIMESTAMP", "2026-02-17 04:35:00", false},
+		{"space with offset colon", "2026-02-17 10:20:00+05:45", false},
+		{"Go time.String with tz name", "2026-02-17 10:20:00 +0545 NPT", false},
+		{"Go time.String UTC", "2026-02-17 04:35:00 +0000 UTC", false},
+		{"Go time.String with fractional", "2026-02-17 10:20:00.123456 +0545 NPT", false},
+		{"numeric offset no tz name", "2026-02-17 10:20:00 +0545", false},
+		{"numeric offset with fractional", "2026-02-17 10:20:00.123 +0545", false},
+		{"empty string", "", true},
+		{"garbage", "not-a-time", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseTimeString(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got %v", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+			// All valid inputs represent the same instant (2026-02-17 ~04:35 UTC)
+			if got.Year() != 2026 || got.Month() != 2 || got.Day() != 17 {
+				t.Errorf("unexpected date: %v", got)
+			}
+		})
+	}
+}
+
 func TestScheduledTaskCRUD(t *testing.T) {
 	s := newTestStore(t)
 	_ = s.SaveAgent(&Agent{ID: "a1", Name: "Agent 1", Workspace: "a1"})
@@ -146,6 +187,15 @@ func TestScheduledTaskCRUD(t *testing.T) {
 		t.Errorf("expected 'Test Task', got '%s'", got.Name)
 	}
 
+	// Verify NextRunAt round-trips correctly (within 1 second tolerance)
+	if got.NextRunAt == nil {
+		t.Fatal("expected NextRunAt to be set")
+	}
+	diff := got.NextRunAt.Sub(nextRun.UTC())
+	if diff < -time.Second || diff > time.Second {
+		t.Errorf("NextRunAt drift: saved %v, got %v", nextRun.UTC(), got.NextRunAt)
+	}
+
 	// Due tasks
 	due, err := s.GetDueTasks(time.Now())
 	if err != nil {
@@ -155,11 +205,66 @@ func TestScheduledTaskCRUD(t *testing.T) {
 		t.Errorf("expected 1 due task, got %d", len(due))
 	}
 
+	// UpdateTaskRun round-trips NextRunAt
+	futureRun := now.Add(1 * time.Hour)
+	if err := s.UpdateTaskRun("task-1", "ok", "", &futureRun); err != nil {
+		t.Fatalf("update task run: %v", err)
+	}
+	got, _ = s.GetTask("task-1")
+	if got.NextRunAt == nil {
+		t.Fatal("expected NextRunAt after update")
+	}
+	diff = got.NextRunAt.Sub(futureRun.UTC())
+	if diff < -time.Second || diff > time.Second {
+		t.Errorf("NextRunAt drift after update: saved %v, got %v", futureRun.UTC(), got.NextRunAt)
+	}
+	if got.LastRunAt == nil {
+		t.Error("expected LastRunAt to be set after update")
+	}
+
 	// Pause
 	_ = s.UpdateTaskStatus("task-1", "paused")
 	due, _ = s.GetDueTasks(time.Now())
 	if len(due) != 0 {
 		t.Errorf("expected 0 due tasks after pause, got %d", len(due))
+	}
+}
+
+func TestScheduledTaskNonStandardTimezone(t *testing.T) {
+	s := newTestStore(t)
+	_ = s.SaveAgent(&Agent{ID: "a1", Name: "Agent 1", Workspace: "a1"})
+
+	// Simulate what happens when a task is created in a non-standard timezone:
+	// manually insert a row with Go's time.String() format containing "+0545"
+	npt := time.FixedZone("NPT", 5*3600+45*60)
+	ts := time.Date(2026, 2, 17, 10, 20, 0, 0, npt)
+	rawTimeStr := ts.String() // "2026-02-17 10:20:00 +0545 NPT"
+
+	_, err := s.db.Exec(`
+		INSERT INTO scheduled_tasks (id, agent_id, name, schedule, prompt, context_mode, status, next_run_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"task-npt", "a1", "Nepal Task", `{"kind":"cron","cron_expr":"0 9 * * *"}`,
+		"test", "isolated", "active", rawTimeStr)
+	if err != nil {
+		t.Fatalf("insert raw: %v", err)
+	}
+
+	// This is the exact scenario from the bug report — ListTasks must not error
+	tasks, err := s.ListTasks()
+	if err != nil {
+		t.Fatalf("ListTasks failed (this is the reported bug): %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(tasks))
+	}
+	if tasks[0].NextRunAt == nil {
+		t.Fatal("expected NextRunAt to be parsed")
+	}
+
+	// Verify the parsed time matches the original instant
+	diff := tasks[0].NextRunAt.Sub(ts)
+	if diff < -time.Second || diff > time.Second {
+		t.Errorf("time mismatch: original %v, parsed %v", ts, tasks[0].NextRunAt)
 	}
 }
 

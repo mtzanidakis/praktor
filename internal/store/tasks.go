@@ -3,8 +3,59 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
+
+// timeFormats lists datetime formats that may appear in SQLite DATETIME columns.
+// Order matters: try the most common/standard formats first.
+var timeFormats = []string{
+	time.RFC3339Nano,
+	time.RFC3339,
+	"2006-01-02T15:04:05Z07:00",
+	"2006-01-02 15:04:05Z07:00",
+	"2006-01-02 15:04:05-07:00",
+	"2006-01-02T15:04:05",
+	"2006-01-02 15:04:05",
+}
+
+// parseTimeString parses a time string stored in SQLite, handling non-standard
+// timezone offsets like "+0545" that time.Time.String() may produce.
+func parseTimeString(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	for _, f := range timeFormats {
+		if t, err := time.Parse(f, s); err == nil {
+			return t, nil
+		}
+	}
+	// Handle Go's time.String() format: "2006-01-02 15:04:05.999999999 +0545 NPT"
+	// or "2006-01-02 15:04:05 +0545 NPT" (with optional fractional seconds and tz name)
+	if t, err := time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", s); err == nil {
+		return t, nil
+	}
+	if t, err := time.Parse("2006-01-02 15:04:05 -0700 MST", s); err == nil {
+		return t, nil
+	}
+	if t, err := time.Parse("2006-01-02 15:04:05.999999999 -0700", s); err == nil {
+		return t, nil
+	}
+	if t, err := time.Parse("2006-01-02 15:04:05 -0700", s); err == nil {
+		return t, nil
+	}
+	return time.Time{}, fmt.Errorf("cannot parse time: %q", s)
+}
+
+// scanTimeString scans a nullable time column as a string and parses it.
+func scanTimeString(s *string) *time.Time {
+	if s == nil || *s == "" {
+		return nil
+	}
+	t, err := parseTimeString(*s)
+	if err != nil {
+		return nil
+	}
+	return &t
+}
 
 type ScheduledTask struct {
 	ID          string     `json:"id"`
@@ -26,10 +77,18 @@ func scanTask(scanner interface {
 }) (*ScheduledTask, error) {
 	t := &ScheduledTask{}
 	var lastStatus, lastError *string
+	var nextRunAt, lastRunAt, createdAt *string
 	err := scanner.Scan(&t.ID, &t.AgentID, &t.Name, &t.Schedule, &t.Prompt, &t.ContextMode, &t.Status,
-		&t.NextRunAt, &t.LastRunAt, &lastStatus, &lastError, &t.CreatedAt)
+		&nextRunAt, &lastRunAt, &lastStatus, &lastError, &createdAt)
 	if err != nil {
 		return nil, err
+	}
+	t.NextRunAt = scanTimeString(nextRunAt)
+	t.LastRunAt = scanTimeString(lastRunAt)
+	if createdAt != nil {
+		if ct := scanTimeString(createdAt); ct != nil {
+			t.CreatedAt = *ct
+		}
 	}
 	if lastStatus != nil {
 		t.LastStatus = *lastStatus
@@ -38,6 +97,16 @@ func scanTask(scanner interface {
 		t.LastError = *lastError
 	}
 	return t, nil
+}
+
+// timeToUTC converts a *time.Time to a *string in RFC3339 UTC format for storage.
+// Returns nil if the input is nil.
+func timeToUTC(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	s := t.UTC().Format(time.RFC3339)
+	return &s
 }
 
 func (s *Store) SaveTask(t *ScheduledTask) error {
@@ -52,7 +121,7 @@ func (s *Store) SaveTask(t *ScheduledTask) error {
 			context_mode = excluded.context_mode,
 			status = excluded.status,
 			next_run_at = excluded.next_run_at`,
-		t.ID, t.AgentID, t.Name, t.Schedule, t.Prompt, t.ContextMode, t.Status, t.NextRunAt)
+		t.ID, t.AgentID, t.Name, t.Schedule, t.Prompt, t.ContextMode, t.Status, timeToUTC(t.NextRunAt))
 	if err != nil {
 		return fmt.Errorf("save task: %w", err)
 	}
@@ -122,7 +191,7 @@ func (s *Store) GetDueTasks(now time.Time) ([]ScheduledTask, error) {
 		       next_run_at, last_run_at, last_status, last_error, created_at
 		FROM scheduled_tasks
 		WHERE status = 'active' AND next_run_at <= ?
-		ORDER BY next_run_at`, now)
+		ORDER BY next_run_at`, now.UTC().Format(time.RFC3339))
 	if err != nil {
 		return nil, fmt.Errorf("get due tasks: %w", err)
 	}
@@ -143,7 +212,7 @@ func (s *Store) UpdateTaskRun(id string, lastStatus string, lastError string, ne
 	_, err := s.db.Exec(`
 		UPDATE scheduled_tasks
 		SET last_run_at = CURRENT_TIMESTAMP, last_status = ?, last_error = ?, next_run_at = ?
-		WHERE id = ?`, lastStatus, lastError, nextRunAt, id)
+		WHERE id = ?`, lastStatus, lastError, timeToUTC(nextRunAt), id)
 	return err
 }
 
