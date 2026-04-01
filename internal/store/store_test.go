@@ -268,6 +268,59 @@ func TestScheduledTaskNonStandardTimezone(t *testing.T) {
 	}
 }
 
+func TestGetDueTasksMixedFormats(t *testing.T) {
+	s := newTestStore(t)
+	_ = s.SaveAgent(&Agent{ID: "a1", Name: "Agent 1", Workspace: "a1"})
+
+	// Insert a task with old format (space-separated) that is in the future
+	futureOld := "2099-01-01 00:00:00"
+	_, err := s.db.Exec(`
+		INSERT INTO scheduled_tasks (id, agent_id, name, schedule, prompt, context_mode, status, next_run_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"task-future-old", "a1", "Future Old", `{"kind":"cron","cron_expr":"0 0 1 1 *"}`,
+		"test", "isolated", "active", futureOld)
+	if err != nil {
+		t.Fatalf("insert future old: %v", err)
+	}
+
+	// Insert a task with new RFC3339 format that is in the future
+	futureNew := "2099-06-01T12:00:00Z"
+	_, err = s.db.Exec(`
+		INSERT INTO scheduled_tasks (id, agent_id, name, schedule, prompt, context_mode, status, next_run_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"task-future-new", "a1", "Future New", `{"kind":"cron","cron_expr":"0 12 1 6 *"}`,
+		"test", "isolated", "active", futureNew)
+	if err != nil {
+		t.Fatalf("insert future new: %v", err)
+	}
+
+	// Insert a task with old format that IS due (past)
+	pastOld := "2020-01-01 00:00:00"
+	_, err = s.db.Exec(`
+		INSERT INTO scheduled_tasks (id, agent_id, name, schedule, prompt, context_mode, status, next_run_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"task-past-old", "a1", "Past Old", `{"kind":"cron","cron_expr":"0 0 1 1 *"}`,
+		"test", "isolated", "active", pastOld)
+	if err != nil {
+		t.Fatalf("insert past old: %v", err)
+	}
+
+	// Only the past task should be due — future tasks must NOT trigger
+	due, err := s.GetDueTasks(time.Now())
+	if err != nil {
+		t.Fatalf("GetDueTasks: %v", err)
+	}
+	if len(due) != 1 {
+		t.Errorf("expected 1 due task, got %d", len(due))
+		for _, d := range due {
+			t.Logf("  due: %s (next_run_at=%v)", d.ID, d.NextRunAt)
+		}
+	}
+	if len(due) > 0 && due[0].ID != "task-past-old" {
+		t.Errorf("expected task-past-old to be due, got %s", due[0].ID)
+	}
+}
+
 func TestSwarmRunCRUD(t *testing.T) {
 	s := newTestStore(t)
 	_ = s.SaveAgent(&Agent{ID: "a1", Name: "Agent 1", Workspace: "a1"})

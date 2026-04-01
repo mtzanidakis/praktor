@@ -186,24 +186,29 @@ func (s *Store) ListTasksForAgent(agentID string) ([]ScheduledTask, error) {
 }
 
 func (s *Store) GetDueTasks(now time.Time) ([]ScheduledTask, error) {
+	// Fetch all active tasks with a next_run_at and filter in Go, because
+	// the DB may contain mixed timestamp formats (pre-fix vs RFC3339) that
+	// break SQLite's lexicographic string comparison.
 	rows, err := s.db.Query(`
 		SELECT id, agent_id, name, schedule, prompt, context_mode, status,
 		       next_run_at, last_run_at, last_status, last_error, created_at
 		FROM scheduled_tasks
-		WHERE status = 'active' AND next_run_at <= ?
-		ORDER BY next_run_at`, now.UTC().Format(time.RFC3339))
+		WHERE status = 'active' AND next_run_at IS NOT NULL`)
 	if err != nil {
 		return nil, fmt.Errorf("get due tasks: %w", err)
 	}
 	defer rows.Close()
 
+	nowUTC := now.UTC()
 	var tasks []ScheduledTask
 	for rows.Next() {
 		t, err := scanTask(rows)
 		if err != nil {
 			return nil, fmt.Errorf("scan task: %w", err)
 		}
-		tasks = append(tasks, *t)
+		if t.NextRunAt != nil && !t.NextRunAt.After(nowUTC) {
+			tasks = append(tasks, *t)
+		}
 	}
 	return tasks, rows.Err()
 }
