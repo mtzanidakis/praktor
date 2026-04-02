@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync, readdirSync, rmSync, existsSync } from "fs";
 import { dirname, join } from "path";
-import { execSync } from "child_process";
+import { execSync, execFileSync } from "child_process";
 import { sendIPC } from "./ipc.js";
 
 export interface MCPServerConfig {
@@ -53,7 +53,7 @@ function isNixRunning(): boolean {
 
 function isCommandAvailable(cmd: string): boolean {
   try {
-    execSync(`which ${cmd}`, { timeout: 5000, stdio: "pipe" });
+    execFileSync("which", [cmd], { timeout: 5000, stdio: "pipe" });
     return true;
   } catch {
     return false;
@@ -69,7 +69,7 @@ function nixInstall(pkg: string): string | null {
   pkg = packageAliases[pkg] || pkg;
   try {
     console.log(`[extensions] installing nix package: ${pkg}`);
-    execSync(`nix profile install nixpkgs#${pkg}`, {
+    execFileSync("nix", ["profile", "install", `nixpkgs#${pkg}`], {
       timeout: 120000,
       stdio: "pipe",
     });
@@ -209,7 +209,7 @@ function applyMarketplaces(
     if (!desiredNames.has(name)) {
       try {
         console.log(`[extensions] removing marketplace: ${name}`);
-        execSync(`claude plugin marketplace remove ${name}`, {
+        execFileSync("claude", ["plugin", "marketplace", "remove", name], {
           timeout: 30000,
           stdio: "pipe",
         });
@@ -242,7 +242,7 @@ function applyMarketplaces(
       }
 
       console.log(`[extensions] registering marketplace: ${mp.source}`);
-      execSync(`claude plugin marketplace add ${mp.source}`, {
+      execFileSync("claude", ["plugin", "marketplace", "add", mp.source], {
         timeout: 30000,
         stdio: "pipe",
       });
@@ -272,7 +272,7 @@ function applyPlugins(plugins: PluginConfig[], errors: string[]): void {
     if (!desiredNames.has(ip.name) && !desiredNames.has(baseName)) {
       try {
         console.log(`[extensions] uninstalling plugin: ${ip.name}`);
-        execSync(`claude plugin uninstall ${ip.name}`, {
+        execFileSync("claude", ["plugin", "uninstall", ip.name], {
           timeout: 30000,
           stdio: "pipe",
         });
@@ -297,14 +297,14 @@ function applyPlugins(plugins: PluginConfig[], errors: string[]): void {
         // Handle enable/disable state
         if (plugin.disabled && existing.enabled) {
           console.log(`[extensions] disabling plugin: ${plugin.name}`);
-          execSync(`claude plugin disable ${plugin.name}`, {
+          execFileSync("claude", ["plugin", "disable", plugin.name], {
             timeout: 30000,
             stdio: "pipe",
           });
           console.log(`[extensions] disabled plugin: ${plugin.name}`);
         } else if (!plugin.disabled && !existing.enabled) {
           console.log(`[extensions] enabling plugin: ${plugin.name}`);
-          execSync(`claude plugin enable ${plugin.name}`, {
+          execFileSync("claude", ["plugin", "enable", plugin.name], {
             timeout: 30000,
             stdio: "pipe",
           });
@@ -317,7 +317,7 @@ function applyPlugins(plugins: PluginConfig[], errors: string[]): void {
 
       // Install new plugin
       console.log(`[extensions] installing plugin: ${plugin.name}`);
-      execSync(`claude plugin install ${plugin.name}`, {
+      execFileSync("claude", ["plugin", "install", plugin.name], {
         timeout: 60000,
         stdio: "pipe",
       });
@@ -326,7 +326,7 @@ function applyPlugins(plugins: PluginConfig[], errors: string[]): void {
       // Disable immediately if configured as disabled
       if (plugin.disabled) {
         console.log(`[extensions] disabling plugin: ${plugin.name}`);
-        execSync(`claude plugin disable ${plugin.name}`, {
+        execFileSync("claude", ["plugin", "disable", plugin.name], {
           timeout: 30000,
           stdio: "pipe",
         });
@@ -358,7 +358,7 @@ interface InstalledPlugin {
 
 function getInstalledPlugins(): InstalledPlugin[] {
   try {
-    const output = execSync("claude plugin list 2>/dev/null || true", {
+    const output = execFileSync("claude", ["plugin", "list"], {
       timeout: 10000,
       stdio: "pipe",
     }).toString();
@@ -387,10 +387,10 @@ function getInstalledPlugins(): InstalledPlugin[] {
 
 function getInstalledMarketplaces(): string[] {
   try {
-    const output = execSync(
-      "claude plugin marketplace list 2>/dev/null || true",
-      { timeout: 10000, stdio: "pipe" }
-    ).toString();
+    const output = execFileSync("claude", ["plugin", "marketplace", "list"], {
+      timeout: 10000,
+      stdio: "pipe",
+    }).toString();
     return parseNames(output);
   } catch {
     return [];
