@@ -73,14 +73,14 @@ RUN NPM_GLOBAL=$(npm root -g) && \
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "amd64" ]; then \
       AB_ARCH="linux-x64"; \
-      AB_SHA256="c00c2646c0e483e55c3f5c893c50a2065211193a6f9edd7180bbc5b50b15526d"; \
+      AB_SHA256="a27e1a7fb5b6625224fb3c4effd38eefb564c52230240a336265959dc8bef4f5"; \
     elif [ "$ARCH" = "arm64" ]; then \
       AB_ARCH="linux-arm64"; \
-      AB_SHA256="04786a9bad527a2bfba432307b502a93aabc4043e7072b2a1b20acf3c86b74de"; \
+      AB_SHA256="61411908ee47fe795b57f1b9142837e7cd58600d05523fb5a9c015c46bcd4e4f"; \
     else \
       echo "Unsupported architecture: $ARCH" && exit 1; \
     fi && \
-    curl -fsSL "https://github.com/vercel-labs/agent-browser/releases/download/v0.23.4/agent-browser-${AB_ARCH}" \
+    curl -fsSL "https://github.com/vercel-labs/agent-browser/releases/download/v0.24.0/agent-browser-${AB_ARCH}" \
       -o /usr/local/bin/agent-browser && \
     echo "${AB_SHA256}  /usr/local/bin/agent-browser" | sha256sum -c - && \
     chmod 555 /usr/local/bin/agent-browser
