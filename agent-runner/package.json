@@ -14,6 +14,9 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "nats": "latest"
   },
+  "overrides": {
+    "@anthropic-ai/sdk": "^0.82.0"
+  },
   "devDependencies": {
     "@types/node": "latest",
     "esbuild": "latest",
