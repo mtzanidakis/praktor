@@ -57,6 +57,15 @@ type Bot struct {
 	// Track which chats had voice input (for TTS respond-in-kind)
 	voiceChatMu sync.RWMutex
 	voiceChat   map[int64]bool // chatID → was voice
+
+	// Buffer media group messages so albums are routed together
+	mediaGroupMu sync.Mutex
+	mediaGroups  map[string]*mediaGroupBuffer // mediaGroupID → buffer
+}
+
+type mediaGroupBuffer struct {
+	messages []telego.Message
+	timer    *time.Timer
 }
 
 func NewBot(cfg config.TelegramConfig, orch *agent.Orchestrator, rtr *router.Router, sc *swarm.Coordinator, reg *registry.Registry, bus *natsbus.Bus, s *store.Store, speechClient *speech.Client, speechCfg config.SpeechConfig) (*Bot, error) {
@@ -79,7 +88,8 @@ func NewBot(cfg config.TelegramConfig, orch *agent.Orchestrator, rtr *router.Rou
 		swarmChat:  make(map[string]int64),
 		speech:     speechClient,
 		speechCfg:  speechCfg,
-		voiceChat:  make(map[int64]bool),
+		voiceChat:   make(map[int64]bool),
+		mediaGroups: make(map[string]*mediaGroupBuffer),
 	}
 
 	// Register bot commands with Telegram so they appear in the menu
@@ -292,6 +302,156 @@ func (b *Bot) handleMessage(ctx context.Context, msg telego.Message) {
 		return
 	}
 
+	// Buffer media group messages (albums) so all images are routed together.
+	// Telegram sends each image as a separate message; only the first carries
+	// the caption. We collect them for 500ms then process the batch.
+	if msg.MediaGroupID != "" {
+		b.mediaGroupMu.Lock()
+		buf, ok := b.mediaGroups[msg.MediaGroupID]
+		if !ok {
+			buf = &mediaGroupBuffer{}
+			b.mediaGroups[msg.MediaGroupID] = buf
+		}
+		buf.messages = append(buf.messages, msg)
+		if buf.timer != nil {
+			buf.timer.Stop()
+		}
+		mgID := msg.MediaGroupID
+		buf.timer = time.AfterFunc(500*time.Millisecond, func() {
+			b.mediaGroupMu.Lock()
+			batch := b.mediaGroups[mgID]
+			delete(b.mediaGroups, mgID)
+			b.mediaGroupMu.Unlock()
+			if batch != nil {
+				b.processMediaGroup(ctx, batch.messages)
+			}
+		})
+		b.mediaGroupMu.Unlock()
+		return
+	}
+
+	b.processMessage(ctx, msg)
+}
+
+// processMediaGroup handles a batch of messages that belong to the same media
+// group (album). It routes all messages to the agent determined by the caption
+// (present on the first message) and delivers them as a single combined message.
+func (b *Bot) processMediaGroup(ctx context.Context, msgs []telego.Message) {
+	if len(msgs) == 0 {
+		return
+	}
+
+	// Find the caption (only one message in the group has it).
+	var caption string
+	for _, m := range msgs {
+		if m.Caption != "" {
+			caption = m.Caption
+			break
+		}
+	}
+
+	// Use the first message for chat/user/reply metadata.
+	first := msgs[0]
+	chatID := first.Chat.ID
+	userID := first.From.ID
+	senderID := strconv.FormatInt(userID, 10)
+	chatIDStr := strconv.FormatInt(chatID, 10)
+
+	// Route based on caption (or default agent if no caption).
+	var agentID, cleanedMessage string
+
+	// Check reply-based routing.
+	if first.ReplyToMessage != nil {
+		b.msgAgentMu.RLock()
+		replyAgent, ok := b.msgAgent[first.ReplyToMessage.MessageID]
+		b.msgAgentMu.RUnlock()
+		if ok {
+			agentID = replyAgent
+			replyText := first.ReplyToMessage.Text
+			if replyText != "" && caption != "" {
+				cleanedMessage = fmt.Sprintf("[Replying to message: %s]\n\n%s", replyText, caption)
+			} else if caption != "" {
+				cleanedMessage = caption
+			}
+		}
+	}
+
+	// Normal routing using the caption text.
+	if agentID == "" {
+		routeText := caption
+		if routeText == "" {
+			routeText = fmt.Sprintf("I'm sending you %d files", len(msgs))
+		}
+		var err error
+		agentID, cleanedMessage, err = b.router.Route(ctx, routeText)
+		if err != nil {
+			slog.Error("routing failed", "error", err)
+			_ = b.SendMessage(ctx, chatID, "Sorry, I couldn't route your message to an agent.")
+			return
+		}
+		if cleanedMessage == "" {
+			cleanedMessage = routeText
+		}
+	}
+
+	if agentID == "swarm" {
+		b.handleSwarmCommand(ctx, chatID, cleanedMessage)
+		return
+	}
+
+	b.chatAgentMu.Lock()
+	b.chatAgent[chatID] = agentID
+	b.chatAgentMu.Unlock()
+
+	_ = b.sendChatAction(ctx, chatID, "typing")
+
+	// Download and save all attachments.
+	ag, err := b.registry.Get(agentID)
+	if err != nil || ag == nil {
+		slog.Error("agent not found for media group", "agent", agentID, "error", err)
+		_ = b.SendMessage(ctx, chatID, "Sorry, I couldn't find the agent to deliver the files.")
+		return
+	}
+	image := b.registry.ResolveImage(agentID)
+
+	var fileParts []string
+	for _, m := range msgs {
+		att := extractAttachment(m)
+		if att == nil {
+			continue
+		}
+		data, err := b.downloadFile(ctx, att.FileID)
+		if err != nil {
+			slog.Error("file download failed", "file_id", att.FileID, "error", err)
+			continue
+		}
+		volumePath := fmt.Sprintf("uploads/%d_%s", time.Now().UnixNano(), att.Name)
+		containerPath := "/workspace/agent/" + volumePath
+		if err := b.orch.WriteVolumeBytes(ctx, ag.Workspace, volumePath, data, image); err != nil {
+			slog.Error("file write to volume failed", "path", volumePath, "error", err)
+			continue
+		}
+		slog.Info("file received and saved", "agent", agentID, "name", att.Name, "size", len(data), "path", containerPath)
+		fileParts = append(fileParts, fmt.Sprintf("[File received: %s (%s, %d bytes) saved to %s]",
+			att.Name, att.MimeType, len(data), containerPath))
+	}
+
+	if len(fileParts) > 0 {
+		cleanedMessage = cleanedMessage + "\n\n" + strings.Join(fileParts, "\n")
+	}
+
+	meta := map[string]string{
+		"sender":  fmt.Sprintf("user:%s", senderID),
+		"chat_id": chatIDStr,
+	}
+
+	if err := b.orch.HandleMessage(ctx, agentID, cleanedMessage, meta); err != nil {
+		slog.Error("handle message failed", "agent", agentID, "error", err)
+		_ = b.SendMessage(ctx, chatID, "Sorry, I encountered an error processing your message.")
+	}
+}
+
+func (b *Bot) processMessage(ctx context.Context, msg telego.Message) {
 	chatID := msg.Chat.ID
 	userID := msg.From.ID
 
