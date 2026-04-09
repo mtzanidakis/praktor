@@ -1,5 +1,5 @@
 # Build Go CLIs (ptask + getcc) and download Claude Code binary
-FROM golang:1.26.1-trixie AS go-build
+FROM golang:1.26.2-trixie AS go-build
 WORKDIR /src
 COPY . .
 RUN go mod download

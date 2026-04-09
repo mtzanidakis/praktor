@@ -5,7 +5,7 @@ COPY ui/ .
 RUN npm install && npm run build
 
 # Stage 2: Build the Go binary
-FROM golang:1.26.1-alpine AS go-builder
+FROM golang:1.26.2-alpine AS go-builder
 RUN apk add --no-cache busybox-static ca-certificates tzdata && \
    update-ca-certificates
 RUN adduser \
