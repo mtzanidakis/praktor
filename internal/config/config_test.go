@@ -148,7 +148,7 @@ agents:
     workspace: general
   coder:
     description: "Code specialist"
-    model: "claude-opus-4-6"
+    model: "claude-opus-4-7"
     env:
       GITHUB_TOKEN: "token123"
     allowed_tools: [WebSearch, WebFetch]
@@ -179,8 +179,8 @@ router:
 	}
 
 	coder := cfg.Agents["coder"]
-	if coder.Model != "claude-opus-4-6" {
-		t.Errorf("expected model 'claude-opus-4-6', got %q", coder.Model)
+	if coder.Model != "claude-opus-4-7" {
+		t.Errorf("expected model 'claude-opus-4-7', got %q", coder.Model)
 	}
 	if coder.Env["GITHUB_TOKEN"] != "token123" {
 		t.Errorf("expected GITHUB_TOKEN env, got %v", coder.Env)

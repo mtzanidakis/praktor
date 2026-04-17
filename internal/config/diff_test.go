@@ -8,9 +8,9 @@ import (
 func TestDiff_NoChanges(t *testing.T) {
 	cfg := &Config{
 		Agents: map[string]AgentDefinition{
-			"bot": {Description: "test bot", Model: "claude-opus-4-6"},
+			"bot": {Description: "test bot", Model: "claude-opus-4-7"},
 		},
-		Defaults: DefaultsConfig{Model: "claude-opus-4-6", Image: "img:latest"},
+		Defaults: DefaultsConfig{Model: "claude-opus-4-7", Image: "img:latest"},
 		Router:   RouterConfig{DefaultAgent: "bot"},
 	}
 	d := Diff(cfg, cfg)
@@ -64,7 +64,7 @@ func TestDiff_AgentRemoved(t *testing.T) {
 func TestDiff_AgentModelChanged(t *testing.T) {
 	old := &Config{
 		Agents: map[string]AgentDefinition{
-			"bot": {Description: "test", Model: "claude-opus-4-6"},
+			"bot": {Description: "test", Model: "claude-opus-4-7"},
 		},
 	}
 	new := &Config{
@@ -97,7 +97,7 @@ func TestDiff_AgentEnvChanged(t *testing.T) {
 
 func TestDiff_DefaultsChanged(t *testing.T) {
 	old := &Config{
-		Defaults: DefaultsConfig{Model: "claude-opus-4-6", Image: "img:latest"},
+		Defaults: DefaultsConfig{Model: "claude-opus-4-7", Image: "img:latest"},
 	}
 	new := &Config{
 		Defaults: DefaultsConfig{Model: "claude-sonnet-4-5-20250929", Image: "img:latest"},

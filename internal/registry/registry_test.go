@@ -27,7 +27,7 @@ func newTestRegistry(t *testing.T) (*Registry, *store.Store) {
 		},
 		"coder": {
 			Description: "Code specialist",
-			Model:       "claude-opus-4-6",
+			Model:       "claude-opus-4-7",
 			Workspace:   "coder",
 		},
 	}
@@ -89,8 +89,8 @@ func TestResolveModel(t *testing.T) {
 	reg, _ := newTestRegistry(t)
 
 	// Coder has explicit model
-	if m := reg.ResolveModel("coder"); m != "claude-opus-4-6" {
-		t.Errorf("expected coder model 'claude-opus-4-6', got %q", m)
+	if m := reg.ResolveModel("coder"); m != "claude-opus-4-7" {
+		t.Errorf("expected coder model 'claude-opus-4-7', got %q", m)
 	}
 
 	// General falls back to global default

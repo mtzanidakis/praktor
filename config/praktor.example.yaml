@@ -18,7 +18,7 @@ agents:
     # agentmail_inbox_id: "general@agentmail.to"  # AgentMail inbox (optional)
   coder:
     description: "Software engineering specialist"
-    model: "claude-opus-4-6"
+    model: "claude-opus-4-7"
     workspace: coder
     nix_enabled: true                              # Enable nix package manager
     env:

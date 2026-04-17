@@ -76,7 +76,7 @@ agents:
     nix_enabled: true
   coder:
     description: "Software engineering specialist"
-    model: "claude-opus-4-6"
+    model: "claude-opus-4-7"
     nix_enabled: true
     env:
       GITHUB_TOKEN: "secret:github-token"    # Resolved from vault
