@@ -15,7 +15,7 @@ import (
 	"strings"
 )
 
-const installScriptURL = "https://claude.ai/install.sh"
+const installScriptURL = "https://downloads.claude.ai/claude-code-releases/bootstrap.sh"
 
 var availablePlatforms = []string{
 	"linux-x64",
@@ -197,7 +197,7 @@ func downloadAndVerify(url, expectedChecksum, destPath string) error {
 	return nil
 }
 
-// fetchBaseURL fetches the install script and extracts the GCS_BUCKET value.
+// fetchBaseURL fetches the install script and extracts the DOWNLOAD_BASE_URL value.
 func fetchBaseURL(scriptURL string) (string, error) {
 	resp, err := http.Get(scriptURL)
 	if err != nil {
@@ -212,11 +212,11 @@ func fetchBaseURL(scriptURL string) (string, error) {
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		if strings.HasPrefix(line, "GCS_BUCKET=") {
-			val := strings.TrimPrefix(line, "GCS_BUCKET=")
+		if strings.HasPrefix(line, "DOWNLOAD_BASE_URL=") {
+			val := strings.TrimPrefix(line, "DOWNLOAD_BASE_URL=")
 			val = strings.Trim(val, `"'`)
 			if val == "" {
-				return "", fmt.Errorf("GCS_BUCKET is empty in install script")
+				return "", fmt.Errorf("DOWNLOAD_BASE_URL is empty in install script")
 			}
 			return val, nil
 		}
@@ -225,7 +225,7 @@ func fetchBaseURL(scriptURL string) (string, error) {
 		return "", fmt.Errorf("reading install script: %w", err)
 	}
 
-	return "", fmt.Errorf("GCS_BUCKET not found in install script")
+	return "", fmt.Errorf("DOWNLOAD_BASE_URL not found in install script")
 }
 
 func isValidPlatform(p string) bool {

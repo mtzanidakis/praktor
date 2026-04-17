@@ -16,7 +16,7 @@ func TestFetchBaseURL(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, `#!/bin/sh`)
 		fmt.Fprintln(w, `DOWNLOAD_DIR="$HOME/.claude/downloads"`)
-		fmt.Fprintln(w, `GCS_BUCKET="https://storage.example.com/bucket/releases"`)
+		fmt.Fprintln(w, `DOWNLOAD_BASE_URL="https://downloads.example.com/claude-code-releases"`)
 		fmt.Fprintln(w, `echo "hello"`)
 	}))
 	defer ts.Close()
@@ -25,7 +25,7 @@ func TestFetchBaseURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := "https://storage.example.com/bucket/releases"
+	want := "https://downloads.example.com/claude-code-releases"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -33,7 +33,7 @@ func TestFetchBaseURL(t *testing.T) {
 
 func TestFetchBaseURLSingleQuotes(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "GCS_BUCKET='https://example.com/bucket'")
+		fmt.Fprintln(w, "DOWNLOAD_BASE_URL='https://example.com/releases'")
 	}))
 	defer ts.Close()
 
@@ -41,7 +41,7 @@ func TestFetchBaseURLSingleQuotes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got != "https://example.com/bucket" {
+	if got != "https://example.com/releases" {
 		t.Errorf("got %q", got)
 	}
 }
@@ -49,13 +49,13 @@ func TestFetchBaseURLSingleQuotes(t *testing.T) {
 func TestFetchBaseURLMissing(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, `#!/bin/sh`)
-		fmt.Fprintln(w, `echo "no bucket here"`)
+		fmt.Fprintln(w, `echo "no base url here"`)
 	}))
 	defer ts.Close()
 
 	_, err := fetchBaseURL(ts.URL)
 	if err == nil {
-		t.Fatal("expected error when GCS_BUCKET is missing")
+		t.Fatal("expected error when DOWNLOAD_BASE_URL is missing")
 	}
 }
 
