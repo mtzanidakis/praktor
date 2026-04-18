@@ -39,8 +39,6 @@ Personal AI agent assistant. A single Go binary that receives messages from Tele
 - A Claude authentication method: [Anthropic API key](https://console.anthropic.com/) or Claude Code OAuth token (`claude setup-token`)
 - (Optional) An [OpenAI API key](https://platform.openai.com/api-keys) for voice message transcription and text-to-speech
 
-> **Note on OAuth tokens:** Using Claude Code OAuth tokens with third-party applications must comply with Anthropic's [authentication and credential use policy](https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use). Review the policy before using this method. OAuth token support is deprecated and will be removed in a future version.
-
 ## Getting Started
 
 ### 1. Clone and Configure
