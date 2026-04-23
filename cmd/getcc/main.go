@@ -78,12 +78,30 @@ func main() {
 	platform := flag.String("platform", "", "target platform (e.g. linux-x64-musl, darwin-arm64); auto-detected if omitted")
 	listPlatforms := flag.Bool("list-platforms", false, "list available platforms and exit")
 	savePath := flag.String("save", "", "download the binary to this path (verifies checksum)")
+	showLatest := flag.Bool("show-latest", false, "print only the latest available version and exit")
+	getVersion := flag.String("get-version", "", "download the specified version instead of the latest")
 	flag.Parse()
 
 	if *listPlatforms {
 		for _, p := range availablePlatforms {
 			fmt.Println(p)
 		}
+		return
+	}
+
+	baseURL, err := fetchBaseURL(installScriptURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: fetching base URL: %v\n", err)
+		os.Exit(1)
+	}
+
+	if *showLatest {
+		version, err := fetchVersion(baseURL)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: fetching version: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(version)
 		return
 	}
 
@@ -96,16 +114,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	baseURL, err := fetchBaseURL(installScriptURL)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: fetching base URL: %v\n", err)
-		os.Exit(1)
-	}
-
-	version, err := fetchVersion(baseURL)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: fetching version: %v\n", err)
-		os.Exit(1)
+	var version string
+	if *getVersion != "" {
+		version = *getVersion
+	} else {
+		version, err = fetchVersion(baseURL)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: fetching version: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	checksum, err := fetchChecksum(baseURL, version, *platform)
