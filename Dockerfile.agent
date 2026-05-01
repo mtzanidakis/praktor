@@ -10,7 +10,7 @@ RUN node esbuild.mjs
 
 FROM ghcr.io/mtzanidakis/praktor-agent-base:latest
 COPY --from=agent-builder /app/out/ /app/
-RUN /usr/local/bin/getcc -get-version 2.1.121 -save /usr/local/bin/claude && chmod 555 /usr/local/bin/claude
+RUN /usr/local/bin/getcc -get-version 2.1.126 -save /usr/local/bin/claude && chmod 555 /usr/local/bin/claude
 USER praktor
 WORKDIR /workspace/agent
 ENTRYPOINT ["tini", "--", "node", "/app/index.mjs"]
