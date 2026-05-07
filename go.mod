@@ -11,7 +11,7 @@ require (
 	github.com/moby/go-archive v0.2.0
 	github.com/mymmrac/telego v1.8.0
 	github.com/nats-io/nats-server/v2 v2.14.0
-	github.com/nats-io/nats.go v1.51.0
+	github.com/nats-io/nats.go v1.52.0
 	golang.org/x/crypto v0.50.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.50.0
