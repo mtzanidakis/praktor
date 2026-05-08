@@ -70,14 +70,14 @@ RUN NPM_GLOBAL=$(npm root -g) && \
       > onnxruntime-node/index.js
 
 # Install agent-browser binary from GitHub release
-ARG AGENT_BROWSER_VERSION=v0.26.0
+ARG AGENT_BROWSER_VERSION=v0.27.0
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "amd64" ]; then \
       AB_ARCH="linux-x64"; \
-      AB_SHA256="8784dc259abf72ee04e751b45677d956387af50c99aec5dcd7a41a9bc498e3c3"; \
+      AB_SHA256="c249a948cb6a60df94320e319c372a5e679466ca8ea2cc4e69bac4fcc7c270f3"; \
     elif [ "$ARCH" = "arm64" ]; then \
       AB_ARCH="linux-arm64"; \
-      AB_SHA256="b3901b17298f6ce6511fcae5c576068a3e8a510ecb365c8ccd876b9b82db4447"; \
+      AB_SHA256="622d5cb27388a8efbf6a6d7434b20bcac497ed6d55765ec8e37eaa27dc0db963"; \
     else \
       echo "Unsupported architecture: $ARCH" && exit 1; \
     fi && \
@@ -94,7 +94,7 @@ RUN mkdir -p /usr/local/share/agent-browser/skills/core/references \
     BASE="https://raw.githubusercontent.com/vercel-labs/agent-browser/${AGENT_BROWSER_VERSION}/skill-data/core" && \
     curl -fsSL -O "${BASE}/SKILL.md" && \
     cd references && \
-    for f in authentication commands profiling proxy-support session-management snapshot-refs video-recording; do \
+    for f in authentication commands profiling proxy-support session-management snapshot-refs trust-boundaries video-recording; do \
       curl -fsSL -O "${BASE}/references/${f}.md"; \
     done && \
     cd ../templates && \
