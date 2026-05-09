@@ -308,11 +308,15 @@ func (c *Coordinator) runSwarmAgent(ctx context.Context, swarmID string, agent S
 		opts.Env["SWARM_CHAT_TOPIC"] = chatTopic
 	}
 
-	// Wait for NATS connect (mirror orchestrator pattern)
-	clientsBefore := c.bus.NumClients()
-
-	_, err := c.containers.StartAgent(ctx, opts)
+	waiter, err := natsbus.PrepareReadyWaiter(c.bus, c.client, agentID)
 	if err != nil {
+		result.Status = "error"
+		result.Error = fmt.Sprintf("prepare ready waiter: %v", err)
+		return result
+	}
+	defer waiter.Close()
+
+	if _, err := c.containers.StartAgent(ctx, opts); err != nil {
 		result.Status = "error"
 		result.Error = err.Error()
 		return result
@@ -335,27 +339,13 @@ func (c *Coordinator) runSwarmAgent(ctx context.Context, swarmID string, agent S
 		}()
 	}
 
-	// Wait for NATS connection
-	deadline := time.After(30 * time.Second)
-	ticker := time.NewTicker(250 * time.Millisecond)
-	defer ticker.Stop()
-
-waitLoop:
-	for {
-		select {
-		case <-deadline:
-			slog.Warn("swarm agent ready timeout", "agent", agentID)
-			break waitLoop
-		case <-ctx.Done():
+	if err := waiter.Wait(ctx, 30*time.Second); err != nil {
+		if ctx.Err() != nil {
 			result.Status = "error"
 			result.Error = "cancelled"
 			return result
-		case <-ticker.C:
-			if c.bus.NumClients() > clientsBefore {
-				time.Sleep(500 * time.Millisecond)
-				break waitLoop
-			}
 		}
+		// ErrReadyTimeout — log already emitted by waiter; proceed.
 	}
 
 	// Subscribe for result

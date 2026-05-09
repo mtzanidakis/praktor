@@ -198,9 +198,14 @@ func (o *Orchestrator) executeMessage(ctx context.Context, agentID string, msg Q
 	// Ensure container is running
 	info := o.containers.GetRunning(agentID)
 	if info == nil {
-		// Capture NATS client count before starting so we can detect when agent connects
-		clientsBefore := o.bus.NumClients()
-		slog.Info("starting agent", "agent", agentID, "nats_clients_before", clientsBefore)
+		slog.Info("starting agent", "agent", agentID)
+
+		var waiter *natsbus.ReadyWaiter
+		waiter, err = natsbus.PrepareReadyWaiter(o.bus, o.client, agentID)
+		if err != nil {
+			return fmt.Errorf("prepare ready waiter: %w", err)
+		}
+		defer waiter.Close()
 
 		opts := container.AgentOpts{
 			AgentID:   agentID,
@@ -225,28 +230,11 @@ func (o *Orchestrator) executeMessage(ctx context.Context, agentID string, msg Q
 			return fmt.Errorf("start agent: %w", err)
 		}
 
-		// Wait for agent to connect to NATS by watching client count
-		deadline := time.After(30 * time.Second)
-		ticker := time.NewTicker(250 * time.Millisecond)
-		defer ticker.Stop()
-
-	waitLoop:
-		for {
-			select {
-			case <-deadline:
-				slog.Warn("agent ready timeout, sending anyway", "agent", agentID, "nats_clients", o.bus.NumClients())
-				break waitLoop
-			case <-ctx.Done():
+		if err := waiter.Wait(ctx, 30*time.Second); err != nil {
+			if ctx.Err() != nil {
 				return ctx.Err()
-			case <-ticker.C:
-				current := o.bus.NumClients()
-				if current > clientsBefore {
-					// Give the agent a moment to set up subscriptions after connecting
-					time.Sleep(500 * time.Millisecond)
-					slog.Info("agent container ready", "agent", agentID, "nats_clients", current)
-					break waitLoop
-				}
 			}
+			// ErrReadyTimeout — log already emitted by waiter; proceed and publish anyway.
 		}
 
 		now := time.Now()
@@ -299,7 +287,13 @@ func (o *Orchestrator) RouteQuery(ctx context.Context, agentID string, message s
 			return "", fmt.Errorf("agent not found: %s", agentID)
 		}
 
-		clientsBefore := o.bus.NumClients()
+		var waiter *natsbus.ReadyWaiter
+		waiter, err = natsbus.PrepareReadyWaiter(o.bus, o.client, agentID)
+		if err != nil {
+			return "", fmt.Errorf("prepare ready waiter: %w", err)
+		}
+		defer waiter.Close()
+
 		opts := container.AgentOpts{
 			AgentID:   agentID,
 			Workspace: ag.Workspace,
@@ -322,23 +316,11 @@ func (o *Orchestrator) RouteQuery(ctx context.Context, agentID string, message s
 			return "", fmt.Errorf("start agent for routing: %w", err)
 		}
 
-		// Wait for NATS connection
-		deadline := time.After(30 * time.Second)
-		ticker := time.NewTicker(250 * time.Millisecond)
-		defer ticker.Stop()
-	waitLoop:
-		for {
-			select {
-			case <-deadline:
-				break waitLoop
-			case <-ctx.Done():
+		if err := waiter.Wait(ctx, 30*time.Second); err != nil {
+			if ctx.Err() != nil {
 				return "", ctx.Err()
-			case <-ticker.C:
-				if o.bus.NumClients() > clientsBefore {
-					time.Sleep(500 * time.Millisecond)
-					break waitLoop
-				}
 			}
+			// ErrReadyTimeout — proceed; routing request will time out if agent is unresponsive.
 		}
 
 		now := time.Now()
@@ -848,8 +830,14 @@ func (o *Orchestrator) EnsureAgent(ctx context.Context, agentID string) error {
 		return fmt.Errorf("agent not found: %s", agentID)
 	}
 
-	clientsBefore := o.bus.NumClients()
-	slog.Info("starting agent", "agent", agentID, "nats_clients_before", clientsBefore)
+	slog.Info("starting agent", "agent", agentID)
+
+	var waiter *natsbus.ReadyWaiter
+	waiter, err = natsbus.PrepareReadyWaiter(o.bus, o.client, agentID)
+	if err != nil {
+		return fmt.Errorf("prepare ready waiter: %w", err)
+	}
+	defer waiter.Close()
 
 	opts := container.AgentOpts{
 		AgentID:   agentID,
@@ -872,25 +860,11 @@ func (o *Orchestrator) EnsureAgent(ctx context.Context, agentID string) error {
 		return fmt.Errorf("start agent: %w", err)
 	}
 
-	deadline := time.After(30 * time.Second)
-	ticker := time.NewTicker(250 * time.Millisecond)
-	defer ticker.Stop()
-
-waitLoop:
-	for {
-		select {
-		case <-deadline:
-			slog.Warn("agent ready timeout", "agent", agentID, "nats_clients", o.bus.NumClients())
-			break waitLoop
-		case <-ctx.Done():
+	if err := waiter.Wait(ctx, 30*time.Second); err != nil {
+		if ctx.Err() != nil {
 			return ctx.Err()
-		case <-ticker.C:
-			if o.bus.NumClients() > clientsBefore {
-				time.Sleep(500 * time.Millisecond)
-				slog.Info("agent container ready", "agent", agentID, "nats_clients", o.bus.NumClients())
-				break waitLoop
-			}
 		}
+		// ErrReadyTimeout — log already emitted by waiter; proceed.
 	}
 
 	now := time.Now()
