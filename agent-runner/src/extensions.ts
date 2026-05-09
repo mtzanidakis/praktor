@@ -3,14 +3,21 @@ import { dirname, join } from "path";
 import { execSync, execFileSync } from "child_process";
 import { sendIPC } from "./ipc.js";
 
-export interface MCPServerConfig {
-  type: "stdio" | "http";
-  command?: string;
-  args?: string[];
-  url?: string;
-  env?: Record<string, string>;
-  headers?: Record<string, string>;
-}
+// Discriminated union — assignable to the SDK's McpServerConfig
+// (McpStdioServerConfig | McpHttpServerConfig). Avoids a separate cast at
+// the boundary in index.ts.
+export type MCPServerConfig =
+  | {
+      type: "stdio";
+      command: string;
+      args?: string[];
+      env?: Record<string, string>;
+    }
+  | {
+      type: "http";
+      url: string;
+      headers?: Record<string, string>;
+    };
 
 export interface MarketplaceConfig {
   source: string;
@@ -88,7 +95,7 @@ export function collectDependencies(ext: AgentExtensions): string[] {
   // MCP servers (stdio): command is the dependency
   if (ext.mcp_servers) {
     for (const srv of Object.values(ext.mcp_servers)) {
-      if (srv.type === "stdio" && srv.command) {
+      if (srv.type === "stdio") {
         deps.add(srv.command);
       }
     }

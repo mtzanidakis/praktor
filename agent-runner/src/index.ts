@@ -1,4 +1,4 @@
-import { query, startup, type WarmQuery } from "@anthropic-ai/claude-agent-sdk";
+import { query, startup, type McpServerConfig, type WarmQuery } from "@anthropic-ai/claude-agent-sdk";
 import { NatsBridge } from "./nats-bridge.js";
 import { applyExtensions } from "./extensions.js";
 import { readFileSync, readdirSync, mkdirSync, writeFileSync, rmSync, symlinkSync, existsSync, lstatSync, readlinkSync, unlinkSync } from "fs";
@@ -50,7 +50,7 @@ export function totalBgTasks(): number {
   for (const v of backgroundTasksByQuery.values()) total += v;
   return total;
 }
-let extensionMcpServers: Record<string, { type: string; command?: string; args?: string[]; url?: string; env?: Record<string, string>; headers?: Record<string, string> }> = {};
+let extensionMcpServers: Record<string, McpServerConfig> = {};
 const pendingMessages: Array<Record<string, unknown>> = [];
 
 // Pre-warmed subprocess for the next regular message, so the CLI spawn +
@@ -396,6 +396,57 @@ function buildRunOptions(sessionId?: string) {
   const cwd = "/workspace/agent";
   const tools = parseAllowedTools(ALLOWED_TOOLS_ENV);
 
+  // Annotated const so contextual typing narrows `type: "stdio"` on each
+  // entry to the literal "stdio" expected by McpStdioServerConfig (a plain
+  // inline literal would widen to `string` and fail to match the SDK type).
+  const mcpServers: Record<string, McpServerConfig> = {
+    "praktor-tasks": {
+      type: "stdio",
+      command: "node",
+      args: ["/app/mcp-tasks.mjs"],
+      env: { NATS_URL, AGENT_ID },
+    },
+    "praktor-profile": {
+      type: "stdio",
+      command: "node",
+      args: ["/app/mcp-profile.mjs"],
+      env: { NATS_URL, AGENT_ID },
+    },
+    "praktor-memory": {
+      type: "stdio",
+      command: "node",
+      args: ["/app/mcp-memory.mjs"],
+      env: {},
+    },
+    "praktor-nix": {
+      type: "stdio",
+      command: "node",
+      args: ["/app/mcp-nix.mjs"],
+      env: {},
+    },
+    "praktor-file": {
+      type: "stdio",
+      command: "node",
+      args: ["/app/mcp-file.mjs"],
+      env: { NATS_URL, AGENT_ID },
+    },
+    "praktor-history": {
+      type: "stdio",
+      command: "node",
+      args: ["/app/mcp-history.mjs"],
+      env: { NATS_URL, AGENT_ID },
+    },
+    ...extensionMcpServers,
+  };
+  if (SWARM_CHAT_TOPIC) {
+    mcpServers["praktor-swarm"] = {
+      type: "stdio",
+      command: "node",
+      args: ["/app/mcp-swarm.mjs"],
+      env: { NATS_URL, AGENT_ID, SWARM_CHAT_TOPIC },
+    };
+  }
+
   return {
       model: CLAUDE_MODEL,
       cwd,
@@ -404,54 +455,8 @@ function buildRunOptions(sessionId?: string) {
       ...(sessionId ? { resume: sessionId } : {}),
       ...(tools ? { tools } : {}),
       maxTurns: MAX_TURNS,
-      mcpServers: {
-        "praktor-tasks": {
-          type: "stdio",
-          command: "node",
-          args: ["/app/mcp-tasks.mjs"],
-          env: { NATS_URL, AGENT_ID },
-        },
-        "praktor-profile": {
-          type: "stdio",
-          command: "node",
-          args: ["/app/mcp-profile.mjs"],
-          env: { NATS_URL, AGENT_ID },
-        },
-        "praktor-memory": {
-          type: "stdio",
-          command: "node",
-          args: ["/app/mcp-memory.mjs"],
-          env: {},
-        },
-        "praktor-nix": {
-          type: "stdio",
-          command: "node",
-          args: ["/app/mcp-nix.mjs"],
-          env: {},
-        },
-        "praktor-file": {
-          type: "stdio",
-          command: "node",
-          args: ["/app/mcp-file.mjs"],
-          env: { NATS_URL, AGENT_ID },
-        },
-        "praktor-history": {
-          type: "stdio",
-          command: "node",
-          args: ["/app/mcp-history.mjs"],
-          env: { NATS_URL, AGENT_ID },
-        },
-        ...(SWARM_CHAT_TOPIC ? {
-          "praktor-swarm": {
-            type: "stdio",
-            command: "node",
-            args: ["/app/mcp-swarm.mjs"],
-            env: { NATS_URL, AGENT_ID, SWARM_CHAT_TOPIC },
-          },
-        } : {}),
-        ...extensionMcpServers,
-      },
-      permissionMode: "bypassPermissions",
+      mcpServers,
+      permissionMode: "bypassPermissions" as const,
       allowDangerouslySkipPermissions: true,
       stderr: (data: string) => {
         console.error(`[claude-stderr] ${data.trimEnd()}`);
@@ -750,7 +755,7 @@ async function handleRoute(
         pathToClaudeCodeExecutable: "/usr/local/bin/claude",
         systemPrompt: systemPrompt || undefined,
         tools: [],
-        permissionMode: "bypassPermissions",
+        permissionMode: "bypassPermissions" as const,
         allowDangerouslySkipPermissions: true,
       },
     });

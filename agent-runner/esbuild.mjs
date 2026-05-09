@@ -1,4 +1,11 @@
 import { build } from "esbuild";
+import { execSync } from "node:child_process";
+
+// Type-check first. esbuild only transpiles; without this, type errors
+// (like the terminalReason scope bug fixed in 4ead36e) ship to production
+// undetected. Fails fast with a non-zero exit on any tsc --strict error.
+console.log("[esbuild] running tsc --noEmit");
+execSync("npx tsc --noEmit", { stdio: "inherit" });
 
 const banner = 'import{createRequire as __cr}from"module";var require=__cr(import.meta.url);';
 

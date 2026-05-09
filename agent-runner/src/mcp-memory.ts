@@ -330,7 +330,9 @@ server.tool(
         `DELETE FROM memories WHERE key LIKE ? OR content LIKE ? OR tags LIKE ?`
       );
       const result = stmt.run(pattern, pattern, pattern);
-      deletedCount = result.changes;
+      // node:sqlite returns number | bigint depending on row count; we never
+      // exceed 2^53 here so a plain Number() is safe and keeps the type narrow.
+      deletedCount = Number(result.changes);
     }
 
     return {
