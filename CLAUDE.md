@@ -72,22 +72,29 @@ go run ./cmd/praktor gateway           # Start the gateway (needs config)
 CGO_ENABLED=0 go build ./cmd/praktor   # Build static binary
 CGO_ENABLED=0 go build ./cmd/ptask     # Build ptask CLI
 CGO_ENABLED=0 go test ./internal/...   # Run all tests
+make lint                              # Run golangci-lint
 ./praktor backup -f backup.tar.zst     # Back up all praktor Docker volumes
 ./praktor restore -f backup.tar.zst    # Restore volumes (-overwrite to replace)
-docker compose build agent              # Build the agent image
+docker compose build agent             # Build the agent image
 docker compose up -d                   # Run full stack (pulls gateway from GHCR)
 ```
 
 Note: On this system, binaries must be built with `CGO_ENABLED=0` due to the nix dynamic linker. The `modernc.org/sqlite` driver is pure Go and does not require CGO.
 
-**IMPORTANT: Never run `node`, `npm`, or `npx` directly on the host.** Always run them inside a Docker container. For the UI:
+## Local Toolchain (mise)
 
-```sh
-docker run --rm -v $(pwd)/ui:/app -w /app node:24-alpine sh -c "npm install && npm run build"
-docker run --rm -v $(pwd)/ui:/app -w /app node:24-alpine npm run dev
-```
+Local dev tooling is pinned in `mise.toml` (`mise install` to provision):
 
-For agent-runner or any other Node.js tooling, use the same pattern with the appropriate volume mount.
+- `go`, `golangci-lint` — Go build/test/lint
+- `node` — UI build (`cd ui && npm install && npm run build`), agent-runner bundling, vitest
+- `nats` — debug NATS topics on the embedded bus (from `natscli`)
+- `jq` — JSON parsing for logs and API responses
+
+`sqlite3` is expected to be available from the system package manager (it isn't in mise — the asdf plugin is broken and most systems already provide it).
+
+With mise managing node, run `npm`/`npx` directly on the host for UI and agent-runner work — Docker is no longer required for those.
+
+Docker is still required at runtime: the gateway spawns agent containers via the Docker API.
 
 ## Configuration
 
