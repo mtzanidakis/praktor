@@ -1,4 +1,4 @@
-.PHONY: build run test clean ui
+.PHONY: build run test lint clean ui
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 
@@ -10,6 +10,9 @@ run:
 
 test:
 	go test -p 2 ./...
+
+lint:
+	golangci-lint run ./...
 
 clean:
 	rm -rf bin/ ui/dist/

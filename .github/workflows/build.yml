@@ -10,20 +10,12 @@ permissions:
   packages: write
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-
-      - run: CGO_ENABLED=0 go test ./internal/...
+  ci:
+    uses: ./.github/workflows/ci.yml
 
   build-gateway:
     runs-on: ubuntu-latest
-    needs: test
+    needs: ci
     steps:
       - uses: actions/checkout@v6
 
@@ -59,7 +51,7 @@ jobs:
 
   build-agent-base:
     runs-on: ubuntu-latest
-    needs: test
+    needs: ci
     steps:
       - uses: actions/checkout@v6
 
