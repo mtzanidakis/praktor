@@ -150,10 +150,23 @@ For example, you can ask Claude Code things like:
 
 ## Development
 
+### Toolchain (mise)
+
+Local tooling is pinned in `mise.toml`. With [mise](https://mise.jdx.dev) installed, run:
+
+```sh
+mise install                 # Provision go, golangci-lint, node, nats, jq
+```
+
+This matches the versions used in CI, so `make lint` and `go test` behave identically locally and on GitHub Actions. `sqlite3` is expected from the system package manager.
+
+### Common commands
+
 ```sh
 go mod download              # Install Go dependencies
 make dev                     # Run the gateway locally
 make test                    # Run tests
+make lint                    # Run golangci-lint
 ```
 
 Mission Control with hot reload:
