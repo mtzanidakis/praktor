@@ -263,13 +263,3 @@ func isSpace(b byte) bool {
 	return b == ' ' || b == '\t' || b == '\n' || b == '\r'
 }
 
-func cloneMap(m map[string]string) map[string]string {
-	if m == nil {
-		return nil
-	}
-	c := make(map[string]string, len(m))
-	for k, v := range m {
-		c[k] = v
-	}
-	return c
-}

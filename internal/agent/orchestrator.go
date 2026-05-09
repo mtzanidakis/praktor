@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math/rand/v2"
 	"strconv"
 	"strings"
@@ -215,7 +216,7 @@ func (o *Orchestrator) executeMessage(ctx context.Context, agentID string, msg Q
 			NATSUrl:   o.bus.AgentNATSURL(),
 		}
 		if hasDef {
-			opts.Env = cloneMap(def.Env)
+			opts.Env = maps.Clone(def.Env)
 			opts.AllowedTools = def.AllowedTools
 
 			opts.NixEnabled = def.NixEnabled
@@ -257,9 +258,7 @@ func (o *Orchestrator) executeMessage(ctx context.Context, agentID string, msg Q
 		"agentID": agentID,
 		"msg_id":  msgID,
 	}
-	for k, v := range msg.Meta {
-		payload[k] = v
-	}
+	maps.Copy(payload, msg.Meta)
 
 	// Store meta so output handler can route responses back
 	o.mu.Lock()
@@ -303,7 +302,7 @@ func (o *Orchestrator) RouteQuery(ctx context.Context, agentID string, message s
 		}
 		def, hasDef := o.registry.GetDefinition(agentID)
 		if hasDef {
-			opts.Env = cloneMap(def.Env)
+			opts.Env = maps.Clone(def.Env)
 			opts.NixEnabled = def.NixEnabled
 		}
 
@@ -847,7 +846,7 @@ func (o *Orchestrator) EnsureAgent(ctx context.Context, agentID string) error {
 		NATSUrl:   o.bus.AgentNATSURL(),
 	}
 	if hasDef {
-		opts.Env = cloneMap(def.Env)
+		opts.Env = maps.Clone(def.Env)
 		opts.AllowedTools = def.AllowedTools
 		opts.NixEnabled = def.NixEnabled
 	}

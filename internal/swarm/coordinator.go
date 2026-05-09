@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -291,9 +292,7 @@ func (c *Coordinator) runSwarmAgent(ctx context.Context, swarmID string, agent S
 		opts.Model = c.registry.ResolveModel(agent.AgentID)
 		opts.Image = c.registry.ResolveImage(agent.AgentID)
 		if def, hasDef := c.registry.GetDefinition(agent.AgentID); hasDef {
-			for k, v := range def.Env {
-				opts.Env[k] = v
-			}
+			maps.Copy(opts.Env, def.Env)
 			opts.AllowedTools = def.AllowedTools
 
 			opts.NixEnabled = def.NixEnabled
