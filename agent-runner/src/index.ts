@@ -481,10 +481,10 @@ interface TaskResponseDecision {
   warn: boolean;
 }
 
-// Decides what to publish as a task's final result message. Tasks are
-// unattended, so silent completions get a marker — but skip the marker when
-// the agent already delivered something user-visible (streamed text or a
-// file via the file_send IPC).
+// Decides what to publish as a task's final result message. Silent
+// completions publish empty content (the gateway drops it before Telegram)
+// and only surface as an internal warn log — the user-facing marker was
+// noisy and unhelpful.
 export function decideTaskFinalResponse(
   signals: TaskResponseSignals
 ): TaskResponseDecision {
@@ -497,7 +497,7 @@ export function decideTaskFinalResponse(
   if (signals.hasFileSent) {
     return { content: "", warn: false };
   }
-  return { content: "⚠️ Task completed with no output.", warn: true };
+  return { content: "", warn: true };
 }
 
 async function executeTask(data: Record<string, unknown>): Promise<void> {

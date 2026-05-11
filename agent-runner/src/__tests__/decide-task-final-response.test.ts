@@ -55,13 +55,16 @@ describe("decideTaskFinalResponse", () => {
     ).toEqual({ content: "[response was streamed]", warn: false });
   });
 
-  it("surfaces the no-output marker when nothing user-visible happened", () => {
+  it("publishes empty content with warn=true when nothing user-visible happened", () => {
+    // Empty content is dropped by the gateway before Telegram (orchestrator
+    // skips listener forwarding for empty results), so silent task completions
+    // surface only as an internal warn log — no noisy '⚠️' message to the user.
     expect(
       decideTaskFinalResponse({
         result: "",
         hasStreamedOutput: false,
         hasFileSent: false,
       })
-    ).toEqual({ content: "⚠️ Task completed with no output.", warn: true });
+    ).toEqual({ content: "", warn: true });
   });
 });
