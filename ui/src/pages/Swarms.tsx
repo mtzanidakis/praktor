@@ -15,7 +15,7 @@ interface SwarmSynapse {
   bidirectional: boolean;
 }
 
-interface Swarm {
+export interface Swarm {
   id: string;
   name: string;
   lead_agent: string;
@@ -64,7 +64,7 @@ const statusColors: Record<string, { color: string; bg: string }> = {
   pending: { color: 'var(--amber)', bg: 'var(--amber-muted)' },
 };
 
-function swarmToLaunchData(swarm: Swarm): SwarmLaunchData {
+export function swarmToLaunchData(swarm: Swarm): SwarmLaunchData {
   return {
     name: swarm.name || 'Swarm',
     task: swarm.task,

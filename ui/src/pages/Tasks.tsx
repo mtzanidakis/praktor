@@ -81,7 +81,7 @@ const badge = (color: string, bg: string): React.CSSProperties => ({
 });
 
 /** Extract user-friendly schedule string from schedule JSON for editing. */
-function parseScheduleForEdit(scheduleJSON: string): string {
+export function parseScheduleForEdit(scheduleJSON: string): string {
   try {
     const s = JSON.parse(scheduleJSON);
     if (s.kind === 'cron' && s.cron_expr) return s.cron_expr;
