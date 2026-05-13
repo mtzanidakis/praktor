@@ -3,7 +3,7 @@ module github.com/mtzanidakis/praktor
 go 1.26.3
 
 require (
-	github.com/adhocore/gronx v1.19.6
+	github.com/adhocore/gronx v1.19.7
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
