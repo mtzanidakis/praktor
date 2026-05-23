@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/tar"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/klauspost/compress/zstd"
+	"github.com/moby/moby/api/pkg/stdcopy"
 	dockercontainer "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 )
@@ -254,30 +256,55 @@ func runRestore(args []string) error {
 
 	tr := tar.NewReader(zr)
 
-	// Track current volume's streaming state
+	// Track current volume's streaming state. Restore streams the tar into
+	// the stdin of a helper container running `tar -xf - -C /vol`. This
+	// bypasses the daemon's `PUT /containers/{id}/archive` validator, which
+	// rejects entries with symlink targets that escape the destination
+	// (common in nix store contents — e.g. `../../../../../etc/environment`).
 	var (
 		currentVol  string
-		pw          *io.PipeWriter
 		volTW       *tar.Writer
-		copyErr     chan error
+		attach      client.ContainerAttachResult
+		waitResult  client.ContainerWaitResult
+		drainStderr *bytes.Buffer
+		drainDone   chan struct{}
 		containerID string
 	)
 
+	// finishVolume closes the tar stream, waits for the helper container's
+	// tar process to exit, captures its stderr, and removes the container.
+	// Returns the helper's error (non-zero exit, stderr) if any.
 	finishVolume := func() error {
 		if volTW == nil {
 			return nil
 		}
 		_ = volTW.Close()
-		_ = pw.Close()
-		if err := <-copyErr; err != nil {
-			return fmt.Errorf("copy to container for %s: %w", currentVol, err)
+		_ = attach.CloseWrite()
+
+		var exitErr error
+		select {
+		case res := <-waitResult.Result:
+			if res.Error != nil && res.Error.Message != "" {
+				exitErr = fmt.Errorf("container error: %s", res.Error.Message)
+			} else if res.StatusCode != 0 {
+				exitErr = fmt.Errorf("tar exit %d: %s", res.StatusCode, strings.TrimSpace(drainStderr.String()))
+			}
+		case err := <-waitResult.Error:
+			exitErr = err
 		}
+
+		<-drainDone
+		attach.Close()
 		_, _ = docker.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{Force: true})
+
+		volTW = nil
+		if exitErr != nil {
+			return fmt.Errorf("restore %s: %w", currentVol, exitErr)
+		}
 		return nil
 	}
 
 	startVolume := func(volName string) error {
-		// Create volume if it doesn't exist
 		_, err := docker.VolumeCreate(ctx, client.VolumeCreateOptions{Name: volName})
 		if err != nil {
 			return fmt.Errorf("create volume %s: %w", volName, err)
@@ -285,7 +312,15 @@ func runRestore(args []string) error {
 
 		ctrName := fmt.Sprintf("praktor-restore-%d", time.Now().UnixNano())
 		resp, err := docker.ContainerCreate(ctx, client.ContainerCreateOptions{
-			Config:     &dockercontainer.Config{Image: helperImage, Entrypoint: []string{"true"}},
+			Config: &dockercontainer.Config{
+				Image:        helperImage,
+				Cmd:          []string{"tar", "-xf", "-", "-C", "/vol"},
+				OpenStdin:    true,
+				StdinOnce:    true,
+				AttachStdin:  true,
+				AttachStdout: true,
+				AttachStderr: true,
+			},
 			HostConfig: &dockercontainer.HostConfig{Binds: []string{volName + ":/vol"}},
 			Name:       ctrName,
 		})
@@ -294,22 +329,63 @@ func runRestore(args []string) error {
 		}
 		containerID = resp.ID
 
-		pr, pipew := io.Pipe()
-		pw = pipew
-		volTW = tar.NewWriter(pw)
-		copyErr = make(chan error, 1)
+		a, err := docker.ContainerAttach(ctx, containerID, client.ContainerAttachOptions{
+			Stream: true, Stdin: true, Stdout: true, Stderr: true,
+		})
+		if err != nil {
+			_, _ = docker.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{Force: true})
+			return fmt.Errorf("attach %s: %w", volName, err)
+		}
+		attach = a
 
+		if _, err := docker.ContainerStart(ctx, containerID, client.ContainerStartOptions{}); err != nil {
+			attach.Close()
+			_, _ = docker.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{Force: true})
+			return fmt.Errorf("start helper for %s: %w", volName, err)
+		}
+
+		waitResult = docker.ContainerWait(ctx, containerID, client.ContainerWaitOptions{})
+
+		drainStderr = &bytes.Buffer{}
+		drainDone = make(chan struct{})
 		go func() {
-			_, err := docker.CopyToContainer(ctx, containerID, client.CopyToContainerOptions{
-				DestinationPath: "/vol",
-				Content:         pr,
-			})
-			copyErr <- err
+			defer close(drainDone)
+			_, _ = stdcopy.StdCopy(io.Discard, drainStderr, attach.Reader)
 		}()
 
+		volTW = tar.NewWriter(attach.Conn)
 		currentVol = volName
 		slog.Info("restoring volume", "name", volName)
 		return nil
+	}
+
+	// abortVolume forcefully tears down the in-flight helper container
+	// after a streaming error from our side (so we can surface a tar exit
+	// code or stderr if available). Called from main loop error paths.
+	abortVolume := func() string {
+		if volTW == nil {
+			return ""
+		}
+		_ = volTW.Close()
+		_ = attach.CloseWrite()
+
+		var detail string
+		select {
+		case res := <-waitResult.Result:
+			if res.StatusCode != 0 {
+				detail = fmt.Sprintf("tar exit %d: %s", res.StatusCode, strings.TrimSpace(drainStderr.String()))
+			}
+		case err := <-waitResult.Error:
+			if err != nil {
+				detail = err.Error()
+			}
+		}
+
+		<-drainDone
+		attach.Close()
+		_, _ = docker.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{Force: true})
+		volTW = nil
+		return detail
 	}
 
 	restoredCount := 0
@@ -319,12 +395,8 @@ func runRestore(args []string) error {
 			break
 		}
 		if err != nil {
-			// Clean up on error
-			if volTW != nil {
-				_ = volTW.Close()
-				_ = pw.Close()
-				<-copyErr
-				_, _ = docker.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{Force: true})
+			if detail := abortVolume(); detail != "" {
+				return fmt.Errorf("read tar entry: %w (helper for %s: %s)", err, currentVol, detail)
 			}
 			return fmt.Errorf("read tar entry: %w", err)
 		}
@@ -349,11 +421,17 @@ func runRestore(args []string) error {
 		// Strip volume prefix and write into volume tar stream
 		hdr.Name = relPath
 		if err := volTW.WriteHeader(hdr); err != nil {
-			return fmt.Errorf("write tar header: %w", err)
+			if detail := abortVolume(); detail != "" {
+				return fmt.Errorf("write tar header for %s/%s: %w (helper: %s)", currentVol, hdr.Name, err, detail)
+			}
+			return fmt.Errorf("write tar header for %s/%s: %w", currentVol, hdr.Name, err)
 		}
 		if hdr.Size > 0 {
 			if _, err := io.Copy(volTW, tr); err != nil {
-				return fmt.Errorf("write tar data: %w", err)
+				if detail := abortVolume(); detail != "" {
+					return fmt.Errorf("write tar data for %s/%s (%d bytes, typeflag=%d): %w (helper: %s)", currentVol, hdr.Name, hdr.Size, hdr.Typeflag, err, detail)
+				}
+				return fmt.Errorf("write tar data for %s/%s (%d bytes, typeflag=%d): %w", currentVol, hdr.Name, hdr.Size, hdr.Typeflag, err)
 			}
 		}
 	}
