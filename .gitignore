@@ -6,6 +6,7 @@ ui/node_modules/
 ui/dist/
 agent-runner/node_modules/
 agent-runner/dist/
+agent-runner/out/
 config/praktor.yaml
 .env
 docker-compose.override.yml
