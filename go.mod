@@ -3,7 +3,7 @@ module github.com/mtzanidakis/praktor
 go 1.26.3
 
 require (
-	github.com/adhocore/gronx v1.19.7
+	github.com/adhocore/gronx v1.20.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/klauspost/compress v1.18.6
