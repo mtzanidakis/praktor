@@ -11,12 +11,9 @@ import (
 	"strings"
 	"time"
 
-	dockercontainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	dockerimage "github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/volume"
-	"github.com/docker/docker/client"
 	"github.com/klauspost/compress/zstd"
+	dockercontainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 const (
@@ -54,7 +51,7 @@ func runBackup(args []string) error {
 	}
 
 	ctx := context.Background()
-	docker, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	docker, err := client.New(client.FromEnv)
 	if err != nil {
 		return fmt.Errorf("docker client: %w", err)
 	}
@@ -121,26 +118,26 @@ func runBackup(args []string) error {
 func backupVolume(ctx context.Context, docker *client.Client, tw *tar.Writer, volName, image string) error {
 	containerName := fmt.Sprintf("praktor-backup-%d", time.Now().UnixNano())
 
-	resp, err := docker.ContainerCreate(ctx,
-		&dockercontainer.Config{Image: image, Entrypoint: []string{"true"}},
-		&dockercontainer.HostConfig{Binds: []string{volName + ":/vol"}},
-		nil, nil, containerName,
-	)
+	resp, err := docker.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:     &dockercontainer.Config{Image: image, Entrypoint: []string{"true"}},
+		HostConfig: &dockercontainer.HostConfig{Binds: []string{volName + ":/vol"}},
+		Name:       containerName,
+	})
 	if err != nil {
 		return fmt.Errorf("create temp container: %w", err)
 	}
 	defer func() {
-		_ = docker.ContainerRemove(ctx, resp.ID, dockercontainer.RemoveOptions{Force: true})
+		_, _ = docker.ContainerRemove(ctx, resp.ID, client.ContainerRemoveOptions{Force: true})
 	}()
 
-	reader, _, err := docker.CopyFromContainer(ctx, resp.ID, "/vol/.")
+	copyResp, err := docker.CopyFromContainer(ctx, resp.ID, client.CopyFromContainerOptions{SourcePath: "/vol/."})
 	if err != nil {
 		return fmt.Errorf("copy from container: %w", err)
 	}
-	defer func() { _ = reader.Close() }()
+	defer func() { _ = copyResp.Content.Close() }()
 
 	// Re-write tar entries with volume name prefix
-	srcTar := tar.NewReader(reader)
+	srcTar := tar.NewReader(copyResp.Content)
 	for {
 		hdr, err := srcTar.Next()
 		if err == io.EOF {
@@ -203,7 +200,7 @@ func runRestore(args []string) error {
 	}
 
 	ctx := context.Background()
-	docker, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	docker, err := client.New(client.FromEnv)
 	if err != nil {
 		return fmt.Errorf("docker client: %w", err)
 	}
@@ -275,23 +272,23 @@ func runRestore(args []string) error {
 		if err := <-copyErr; err != nil {
 			return fmt.Errorf("copy to container for %s: %w", currentVol, err)
 		}
-		_ = docker.ContainerRemove(ctx, containerID, dockercontainer.RemoveOptions{Force: true})
+		_, _ = docker.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{Force: true})
 		return nil
 	}
 
 	startVolume := func(volName string) error {
 		// Create volume if it doesn't exist
-		_, err := docker.VolumeCreate(ctx, volume.CreateOptions{Name: volName})
+		_, err := docker.VolumeCreate(ctx, client.VolumeCreateOptions{Name: volName})
 		if err != nil {
 			return fmt.Errorf("create volume %s: %w", volName, err)
 		}
 
 		ctrName := fmt.Sprintf("praktor-restore-%d", time.Now().UnixNano())
-		resp, err := docker.ContainerCreate(ctx,
-			&dockercontainer.Config{Image: helperImage, Entrypoint: []string{"true"}},
-			&dockercontainer.HostConfig{Binds: []string{volName + ":/vol"}},
-			nil, nil, ctrName,
-		)
+		resp, err := docker.ContainerCreate(ctx, client.ContainerCreateOptions{
+			Config:     &dockercontainer.Config{Image: helperImage, Entrypoint: []string{"true"}},
+			HostConfig: &dockercontainer.HostConfig{Binds: []string{volName + ":/vol"}},
+			Name:       ctrName,
+		})
 		if err != nil {
 			return fmt.Errorf("create temp container: %w", err)
 		}
@@ -303,7 +300,11 @@ func runRestore(args []string) error {
 		copyErr = make(chan error, 1)
 
 		go func() {
-			copyErr <- docker.CopyToContainer(ctx, containerID, "/vol", pr, dockercontainer.CopyToContainerOptions{})
+			_, err := docker.CopyToContainer(ctx, containerID, client.CopyToContainerOptions{
+				DestinationPath: "/vol",
+				Content:         pr,
+			})
+			copyErr <- err
 		}()
 
 		currentVol = volName
@@ -323,7 +324,7 @@ func runRestore(args []string) error {
 				_ = volTW.Close()
 				_ = pw.Close()
 				<-copyErr
-				_ = docker.ContainerRemove(ctx, containerID, dockercontainer.RemoveOptions{Force: true})
+				_, _ = docker.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{Force: true})
 			}
 			return fmt.Errorf("read tar entry: %w", err)
 		}
@@ -437,15 +438,15 @@ func splitVolumePath(name string) (volName, relPath string) {
 }
 
 func listPraktorVolumes(ctx context.Context, docker *client.Client) ([]string, error) {
-	resp, err := docker.VolumeList(ctx, volume.ListOptions{
-		Filters: filters.NewArgs(filters.Arg("name", volumePrefix)),
+	resp, err := docker.VolumeList(ctx, client.VolumeListOptions{
+		Filters: make(client.Filters).Add("name", volumePrefix),
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	var names []string
-	for _, v := range resp.Volumes {
+	for _, v := range resp.Items {
 		names = append(names, v.Name)
 	}
 	return names, nil
@@ -458,7 +459,7 @@ func ensureImage(ctx context.Context, docker *client.Client, image string) error
 	}
 
 	slog.Info("pulling helper image", "image", image)
-	reader, err := docker.ImagePull(ctx, image, dockerimage.PullOptions{})
+	reader, err := docker.ImagePull(ctx, image, client.ImagePullOptions{})
 	if err != nil {
 		return err
 	}
