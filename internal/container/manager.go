@@ -13,11 +13,10 @@ import (
 	"sync"
 	"time"
 
-	dockercontainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	dockercontainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/mtzanidakis/praktor/internal/config"
 	"github.com/mtzanidakis/praktor/internal/natsbus"
 )
@@ -66,7 +65,7 @@ type SecretFile struct {
 }
 
 func NewManager(bus *natsbus.Bus, cfg config.DefaultsConfig) (*Manager, error) {
-	docker, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	docker, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, fmt.Errorf("docker client: %w", err)
 	}
@@ -91,14 +90,14 @@ func (m *Manager) ensureNetwork(ctx context.Context) error {
 		return nil
 	}
 
-	_, err := m.docker.NetworkInspect(ctx, networkName, network.InspectOptions{})
+	_, err := m.docker.NetworkInspect(ctx, networkName, client.NetworkInspectOptions{})
 	if err == nil {
 		m.networkName = networkName
 		return nil
 	}
 
 	// Create it (for non-Compose runs like make dev)
-	_, err = m.docker.NetworkCreate(ctx, networkName, network.CreateOptions{
+	_, err = m.docker.NetworkCreate(ctx, networkName, client.NetworkCreateOptions{
 		Driver: "bridge",
 	})
 	if err != nil {
@@ -129,8 +128,8 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 
 	// Remove any stale container with the same name
 	timeout := 5
-	_ = m.docker.ContainerStop(ctx, containerName, dockercontainer.StopOptions{Timeout: &timeout})
-	_ = m.docker.ContainerRemove(ctx, containerName, dockercontainer.RemoveOptions{Force: true})
+	_, _ = m.docker.ContainerStop(ctx, containerName, client.ContainerStopOptions{Timeout: &timeout})
+	_, _ = m.docker.ContainerRemove(ctx, containerName, client.ContainerRemoveOptions{Force: true})
 
 	env := []string{
 		fmt.Sprintf("NATS_URL=%s", opts.NATSUrl),
@@ -183,7 +182,12 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 
 	networkCfg := &network.NetworkingConfig{}
 
-	resp, err := m.docker.ContainerCreate(ctx, containerCfg, hostCfg, networkCfg, nil, containerName)
+	resp, err := m.docker.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:           containerCfg,
+		HostConfig:       hostCfg,
+		NetworkingConfig: networkCfg,
+		Name:             containerName,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create container: %w", err)
 	}
@@ -191,36 +195,36 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 	// Copy secret files into container before starting
 	for _, sf := range opts.SecretFiles {
 		if err := m.copyFileToContainer(ctx, resp.ID, sf); err != nil {
-			_ = m.docker.ContainerRemove(ctx, resp.ID, dockercontainer.RemoveOptions{Force: true})
+			_, _ = m.docker.ContainerRemove(ctx, resp.ID, client.ContainerRemoveOptions{Force: true})
 			return nil, fmt.Errorf("copy secret file %s: %w", sf.Target, err)
 		}
 	}
 
-	if err := m.docker.ContainerStart(ctx, resp.ID, dockercontainer.StartOptions{}); err != nil {
+	if _, err := m.docker.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{}); err != nil {
 		return nil, fmt.Errorf("start container: %w", err)
 	}
 
 	// Ensure volume mount points are owned by praktor (uid 10321).
 	// Docker named volumes may be created with root ownership.
-	chownResp, err := m.docker.ContainerExecCreate(ctx, resp.ID, dockercontainer.ExecOptions{
+	chownResp, err := m.docker.ExecCreate(ctx, resp.ID, client.ExecCreateOptions{
 		User: "root",
 		Cmd:  []string{"chown", "-R", "10321:10321", "/workspace/agent", "/home/praktor"},
 	})
 	if err != nil {
 		slog.Warn("failed to create chown exec", "agent", opts.AgentID, "error", err)
-	} else if err := m.docker.ContainerExecStart(ctx, chownResp.ID, dockercontainer.ExecStartOptions{}); err != nil {
+	} else if _, err := m.docker.ExecStart(ctx, chownResp.ID, client.ExecStartOptions{}); err != nil {
 		slog.Warn("failed to chown volumes", "agent", opts.AgentID, "error", err)
 	}
 
 	// Start nix-daemon as root via Docker exec (container runs as praktor)
 	if opts.NixEnabled {
-		execResp, err := m.docker.ContainerExecCreate(ctx, resp.ID, dockercontainer.ExecOptions{
+		execResp, err := m.docker.ExecCreate(ctx, resp.ID, client.ExecCreateOptions{
 			User: "root",
 			Cmd:  []string{"nix-daemon"},
 		})
 		if err != nil {
 			slog.Warn("failed to create nix-daemon exec", "agent", opts.AgentID, "error", err)
-		} else if err := m.docker.ContainerExecStart(ctx, execResp.ID, dockercontainer.ExecStartOptions{Detach: true}); err != nil {
+		} else if _, err := m.docker.ExecStart(ctx, execResp.ID, client.ExecStartOptions{Detach: true}); err != nil {
 			slog.Warn("failed to start nix-daemon", "agent", opts.AgentID, "error", err)
 		} else {
 			slog.Info("nix-daemon started", "agent", opts.AgentID)
@@ -288,7 +292,11 @@ func (m *Manager) copyFileToContainer(ctx context.Context, containerID string, s
 		return fmt.Errorf("close tar: %w", err)
 	}
 
-	return m.docker.CopyToContainer(ctx, containerID, "/", &buf, dockercontainer.CopyToContainerOptions{})
+	_, err := m.docker.CopyToContainer(ctx, containerID, client.CopyToContainerOptions{
+		DestinationPath: "/",
+		Content:         &buf,
+	})
+	return err
 }
 
 func (m *Manager) StopAgent(ctx context.Context, agentID string) error {
@@ -301,11 +309,11 @@ func (m *Manager) StopAgent(ctx context.Context, agentID string) error {
 	}
 
 	timeout := 10
-	if err := m.docker.ContainerStop(ctx, info.ID, dockercontainer.StopOptions{Timeout: &timeout}); err != nil {
+	if _, err := m.docker.ContainerStop(ctx, info.ID, client.ContainerStopOptions{Timeout: &timeout}); err != nil {
 		slog.Warn("failed to stop container gracefully", "container", info.ID[:12], "error", err)
 	}
 
-	if err := m.docker.ContainerRemove(ctx, info.ID, dockercontainer.RemoveOptions{Force: true}); err != nil {
+	if _, err := m.docker.ContainerRemove(ctx, info.ID, client.ContainerRemoveOptions{Force: true}); err != nil {
 		slog.Warn("failed to remove container", "container", info.ID[:12], "error", err)
 	}
 
@@ -356,7 +364,7 @@ func (m *Manager) Exec(ctx context.Context, agentID string, cmd []string) (strin
 		return "", fmt.Errorf("agent %s is not running", agentID)
 	}
 
-	execResp, err := m.docker.ContainerExecCreate(ctx, info.ID, dockercontainer.ExecOptions{
+	execResp, err := m.docker.ExecCreate(ctx, info.ID, client.ExecCreateOptions{
 		Cmd:          cmd,
 		AttachStdout: true,
 		AttachStderr: true,
@@ -365,7 +373,7 @@ func (m *Manager) Exec(ctx context.Context, agentID string, cmd []string) (strin
 		return "", fmt.Errorf("exec create: %w", err)
 	}
 
-	attach, err := m.docker.ContainerExecAttach(ctx, execResp.ID, dockercontainer.ExecAttachOptions{})
+	attach, err := m.docker.ExecAttach(ctx, execResp.ID, client.ExecAttachOptions{})
 	if err != nil {
 		return "", fmt.Errorf("exec attach: %w", err)
 	}
@@ -376,7 +384,7 @@ func (m *Manager) Exec(ctx context.Context, agentID string, cmd []string) (strin
 		return "", fmt.Errorf("exec read: %w", err)
 	}
 
-	inspect, err := m.docker.ContainerExecInspect(ctx, execResp.ID)
+	inspect, err := m.docker.ExecInspect(ctx, execResp.ID, client.ExecInspectOptions{})
 	if err != nil {
 		return "", fmt.Errorf("exec inspect: %w", err)
 	}
@@ -395,12 +403,9 @@ func (m *Manager) ActiveCount() int {
 }
 
 func (m *Manager) CleanupStale(ctx context.Context) error {
-	filterArgs := filters.NewArgs()
-	filterArgs.Add("label", labelPrefix+".managed=true")
-
-	containers, err := m.docker.ContainerList(ctx, dockercontainer.ListOptions{
+	resp, err := m.docker.ContainerList(ctx, client.ContainerListOptions{
 		All:     true,
-		Filters: filterArgs,
+		Filters: make(client.Filters).Add("label", labelPrefix+".managed=true"),
 	})
 	if err != nil {
 		return fmt.Errorf("list containers: %w", err)
@@ -413,10 +418,10 @@ func (m *Manager) CleanupStale(ctx context.Context) error {
 	}
 	m.mu.RUnlock()
 
-	for _, c := range containers {
+	for _, c := range resp.Items {
 		if !activeIDs[c.ID] {
 			slog.Info("cleaning up stale container", "container", c.ID[:12])
-			_ = m.docker.ContainerRemove(ctx, c.ID, dockercontainer.RemoveOptions{Force: true})
+			_, _ = m.docker.ContainerRemove(ctx, c.ID, client.ContainerRemoveOptions{Force: true})
 		}
 	}
 	return nil
@@ -432,26 +437,26 @@ func (m *Manager) ReadVolumeFile(ctx context.Context, workspace, filePath, image
 	volName := fmt.Sprintf("praktor-wk-%s", sanitizeVolumeName(workspace))
 	containerName := fmt.Sprintf("praktor-vol-tmp-%s-%d", sanitizeVolumeName(workspace), time.Now().UnixNano())
 
-	resp, err := m.docker.ContainerCreate(ctx,
-		&dockercontainer.Config{Image: image, Entrypoint: []string{"true"}},
-		&dockercontainer.HostConfig{Binds: []string{volName + ":/vol"}},
-		nil, nil, containerName,
-	)
+	resp, err := m.docker.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:     &dockercontainer.Config{Image: image, Entrypoint: []string{"true"}},
+		HostConfig: &dockercontainer.HostConfig{Binds: []string{volName + ":/vol"}},
+		Name:       containerName,
+	})
 	if err != nil {
 		return "", fmt.Errorf("create temp container: %w", err)
 	}
 	defer func() {
-		_ = m.docker.ContainerRemove(ctx, resp.ID, dockercontainer.RemoveOptions{Force: true})
+		_, _ = m.docker.ContainerRemove(ctx, resp.ID, client.ContainerRemoveOptions{Force: true})
 	}()
 
 	srcPath := path.Join("/vol", filePath)
-	reader, _, err := m.docker.CopyFromContainer(ctx, resp.ID, srcPath)
+	copyResp, err := m.docker.CopyFromContainer(ctx, resp.ID, client.CopyFromContainerOptions{SourcePath: srcPath})
 	if err != nil {
 		return "", fmt.Errorf("copy from volume: %w", err)
 	}
-	defer func() { _ = reader.Close() }()
+	defer func() { _ = copyResp.Content.Close() }()
 
-	tr := tar.NewReader(reader)
+	tr := tar.NewReader(copyResp.Content)
 	if _, err := tr.Next(); err != nil {
 		return "", fmt.Errorf("read tar: %w", err)
 	}
@@ -468,16 +473,16 @@ func (m *Manager) WriteVolumeFile(ctx context.Context, workspace, filePath, cont
 	volName := fmt.Sprintf("praktor-wk-%s", sanitizeVolumeName(workspace))
 	containerName := fmt.Sprintf("praktor-vol-tmp-%s-%d", sanitizeVolumeName(workspace), time.Now().UnixNano())
 
-	resp, err := m.docker.ContainerCreate(ctx,
-		&dockercontainer.Config{Image: image, Entrypoint: []string{"true"}},
-		&dockercontainer.HostConfig{Binds: []string{volName + ":/vol"}},
-		nil, nil, containerName,
-	)
+	resp, err := m.docker.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:     &dockercontainer.Config{Image: image, Entrypoint: []string{"true"}},
+		HostConfig: &dockercontainer.HostConfig{Binds: []string{volName + ":/vol"}},
+		Name:       containerName,
+	})
 	if err != nil {
 		return fmt.Errorf("create temp container: %w", err)
 	}
 	defer func() {
-		_ = m.docker.ContainerRemove(ctx, resp.ID, dockercontainer.RemoveOptions{Force: true})
+		_, _ = m.docker.ContainerRemove(ctx, resp.ID, client.ContainerRemoveOptions{Force: true})
 	}()
 
 	// Build tar archive with the file
@@ -498,7 +503,10 @@ func (m *Manager) WriteVolumeFile(ctx context.Context, workspace, filePath, cont
 	}
 
 	dstDir := path.Join("/vol", path.Dir(filePath))
-	if err := m.docker.CopyToContainer(ctx, resp.ID, dstDir, &buf, dockercontainer.CopyToContainerOptions{}); err != nil {
+	if _, err := m.docker.CopyToContainer(ctx, resp.ID, client.CopyToContainerOptions{
+		DestinationPath: dstDir,
+		Content:         &buf,
+	}); err != nil {
 		return fmt.Errorf("copy to volume: %w", err)
 	}
 	return nil
@@ -511,16 +519,16 @@ func (m *Manager) WriteVolumeBytes(ctx context.Context, workspace, filePath stri
 	volName := fmt.Sprintf("praktor-wk-%s", sanitizeVolumeName(workspace))
 	containerName := fmt.Sprintf("praktor-vol-tmp-%s-%d", sanitizeVolumeName(workspace), time.Now().UnixNano())
 
-	resp, err := m.docker.ContainerCreate(ctx,
-		&dockercontainer.Config{Image: image, Entrypoint: []string{"true"}},
-		&dockercontainer.HostConfig{Binds: []string{volName + ":/vol"}},
-		nil, nil, containerName,
-	)
+	resp, err := m.docker.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:     &dockercontainer.Config{Image: image, Entrypoint: []string{"true"}},
+		HostConfig: &dockercontainer.HostConfig{Binds: []string{volName + ":/vol"}},
+		Name:       containerName,
+	})
 	if err != nil {
 		return fmt.Errorf("create temp container: %w", err)
 	}
 	defer func() {
-		_ = m.docker.ContainerRemove(ctx, resp.ID, dockercontainer.RemoveOptions{Force: true})
+		_, _ = m.docker.ContainerRemove(ctx, resp.ID, client.ContainerRemoveOptions{Force: true})
 	}()
 
 	// Build tar archive with directory entries and the file
@@ -561,7 +569,10 @@ func (m *Manager) WriteVolumeBytes(ctx context.Context, workspace, filePath stri
 		return fmt.Errorf("close tar: %w", err)
 	}
 
-	if err := m.docker.CopyToContainer(ctx, resp.ID, "/", &buf, dockercontainer.CopyToContainerOptions{}); err != nil {
+	if _, err := m.docker.CopyToContainer(ctx, resp.ID, client.CopyToContainerOptions{
+		DestinationPath: "/",
+		Content:         &buf,
+	}); err != nil {
 		return fmt.Errorf("copy to volume: %w", err)
 	}
 	return nil

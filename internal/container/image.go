@@ -7,9 +7,8 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/docker/docker/api/types/build"
-	"github.com/docker/docker/client"
 	goarchive "github.com/moby/go-archive"
+	"github.com/moby/moby/client"
 )
 
 func BuildAgentImage(ctx context.Context, docker *client.Client, imageName string) error {
@@ -21,7 +20,7 @@ func BuildAgentImage(ctx context.Context, docker *client.Client, imageName strin
 		return fmt.Errorf("create build context: %w", err)
 	}
 
-	resp, err := docker.ImageBuild(ctx, tar, build.ImageBuildOptions{
+	resp, err := docker.ImageBuild(ctx, tar, client.ImageBuildOptions{
 		Tags:       []string{imageName},
 		Dockerfile: "Dockerfile.agent",
 		Remove:     true,
