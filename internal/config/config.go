@@ -44,12 +44,33 @@ type TelegramConfig struct {
 }
 
 type DefaultsConfig struct {
-	Image           string        `yaml:"image"`
-	Model           string        `yaml:"model"`
-	MaxRunning      int           `yaml:"max_running"`
-	IdleTimeout     time.Duration `yaml:"idle_timeout"`
-	AnthropicAPIKey string        `yaml:"anthropic_api_key"`
-	OAuthToken      string        `yaml:"oauth_token"`
+	Image           string         `yaml:"image"`
+	Model           string         `yaml:"model"`
+	MaxRunning      int            `yaml:"max_running"`
+	IdleTimeout     time.Duration  `yaml:"idle_timeout"`
+	AnthropicAPIKey string         `yaml:"anthropic_api_key"`
+	OAuthToken      string         `yaml:"oauth_token"`
+	Security        SecurityConfig `yaml:"security"`
+}
+
+// SecurityConfig controls Docker hardening flags applied to agent containers.
+// Defaults are the "Balanced" profile (see defaults()). All fields are
+// reloadable via hot config reload and overridable per-agent.
+//
+// Caveats for this stack:
+//   - NoNewPrivileges blocks setuid binaries from elevating, which breaks
+//     Chromium's setuid sandbox on hosts without unprivileged user namespaces.
+//   - DropCapabilities removes CAP_SYS_ADMIN, so nix *source* builds (which use
+//     the build sandbox) fail; binary-cache fetches are unaffected.
+type SecurityConfig struct {
+	NoNewPrivileges  bool     `yaml:"no_new_privileges"`
+	DropCapabilities bool     `yaml:"drop_capabilities"` // cap-drop ALL, then add back AddCapabilities
+	AddCapabilities  []string `yaml:"add_capabilities"`
+	PidsLimit        int64    `yaml:"pids_limit"` // 0 = unlimited
+	MemoryMB         int64    `yaml:"memory_mb"`  // 0 = unlimited
+	CPUs             float64  `yaml:"cpus"`       // 0 = unlimited
+	Tmpfs            bool     `yaml:"tmpfs"`      // mount hardened /tmp and /var/tmp
+	ReadonlyRootfs   bool     `yaml:"readonly_rootfs"`
 }
 
 const (
@@ -69,6 +90,7 @@ type AgentDefinition struct {
 	AllowedTools     []string          `yaml:"allowed_tools"`
 	NixEnabled       bool              `yaml:"nix_enabled"`
 	AgentMailInboxID string            `yaml:"agentmail_inbox_id"`
+	Security         *SecurityConfig   `yaml:"security"` // nil = inherit defaults.security
 }
 
 type FileMount struct {
@@ -102,6 +124,17 @@ func defaults() Config {
 			Model:       "claude-opus-4-7",
 			MaxRunning:  5,
 			IdleTimeout: 10 * time.Minute,
+			// Balanced hardening profile.
+			Security: SecurityConfig{
+				NoNewPrivileges:  true,
+				DropCapabilities: true,
+				AddCapabilities:  []string{"CHOWN", "DAC_OVERRIDE", "FOWNER", "SETUID", "SETGID"},
+				PidsLimit:        1024,
+				MemoryMB:         0,
+				CPUs:             0,
+				Tmpfs:            true,
+				ReadonlyRootfs:   false,
+			},
 		},
 		NATS: NATSConfig{
 			DataDir: "data/nats",

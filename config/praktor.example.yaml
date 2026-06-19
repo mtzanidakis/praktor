@@ -11,6 +11,25 @@ defaults:
   anthropic_api_key: "${ANTHROPIC_API_KEY}"
   oauth_token: "${CLAUDE_CODE_OAUTH_TOKEN}"
 
+  # Docker hardening applied to agent containers (reloadable; per-agent
+  # override via `security:` under an agent). Values below are the built-in
+  # "Balanced" defaults — omit the whole block to use them.
+  security:
+    no_new_privileges: true              # block privilege escalation (setuid)
+    drop_capabilities: true              # cap-drop ALL, then add back the list
+    add_capabilities: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
+    pids_limit: 1024                     # 0 = unlimited
+    memory_mb: 0                         # per-container memory cap; 0 = unlimited
+    cpus: 0                              # per-container CPU cap; 0 = unlimited
+    tmpfs: true                          # mount nosuid /tmp + noexec,nosuid /var/tmp
+    readonly_rootfs: false               # writable only via volumes + tmpfs
+    # Caveats for this stack:
+    #  - no_new_privileges breaks Chromium's setuid sandbox on hosts without
+    #    unprivileged user namespaces — set false there if the browser fails.
+    #  - drop_capabilities removes CAP_SYS_ADMIN, so nix *source* builds fail;
+    #    binary-cache fetches still work. Add SYS_ADMIN back if you build nix
+    #    packages from source.
+
 agents:
   general:
     description: "General-purpose assistant for everyday tasks"

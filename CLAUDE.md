@@ -231,6 +231,22 @@ All containers use Docker named volumes (no host path dependencies):
 
 The gateway uses `praktor-data` for SQLite/NATS and `praktor-global` for global instructions. Both gateway and agents run as non-root user `praktor` (uid 10321).
 
+## Container Security Hardening
+
+Agent containers are hardened via `defaults.security` (reloadable; per-agent override via `security:` on an agent definition, `nil` inherits defaults). Built-in profile is "Balanced". Applied in `internal/container/manager.go` (`applySecurity`) onto the Docker `HostConfig`:
+
+| Field | Default | Effect |
+|-------|---------|--------|
+| `no_new_privileges` | `true` | `--security-opt no-new-privileges=true` (blocks setuid escalation; `docker exec --user root` still works — daemon-granted, not setuid) |
+| `drop_capabilities` | `true` | `--cap-drop ALL` then `--cap-add` the list below |
+| `add_capabilities` | `[CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]` | needed for the root `chown` exec + nix build-user switching |
+| `pids_limit` | `1024` | `--pids-limit` (0 = unlimited) |
+| `memory_mb` / `cpus` | `0` / `0` | per-container memory/CPU caps (0 = unlimited) |
+| `tmpfs` | `true` | tmpfs `/tmp` (`nosuid`) + `/var/tmp` (`noexec,nosuid`) |
+| `readonly_rootfs` | `false` | writable only via volumes + tmpfs |
+
+**Stack caveats:** `no_new_privileges` breaks Chromium's setuid sandbox on hosts without unprivileged user namespaces (set `false` there). `drop_capabilities` removes `CAP_SYS_ADMIN`, so nix *source* builds fail (binary-cache fetches are fine; add `SYS_ADMIN` back to build from source). The temp volume-IO containers (`ReadVolumeFile`/`WriteVolumeFile`) are unhardened by design — they only run `true` and copy files.
+
 ## Go Dependencies
 
 - `mymmrac/telego` - Telegram bot
