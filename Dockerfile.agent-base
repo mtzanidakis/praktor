@@ -82,14 +82,14 @@ RUN NPM_GLOBAL=$(npm root -g) && \
       > onnxruntime-node/index.js
 
 # Install agent-browser binary from GitHub release
-ARG AGENT_BROWSER_VERSION=v0.27.2
+ARG AGENT_BROWSER_VERSION=v0.28.0
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "amd64" ]; then \
       AB_ARCH="linux-x64"; \
-      AB_SHA256="cfc158bf92ea92780c67909777739ed47c25d8ad2f0161de5ef85e0d545d92fc"; \
+      AB_SHA256="c0bef69599d6ed123bf147bd6747755978330948d2ef5eaae492ef171b659556"; \
     elif [ "$ARCH" = "arm64" ]; then \
       AB_ARCH="linux-arm64"; \
-      AB_SHA256="3350efa628cd24b6a93228269daf71acd23c355ee04373c5c13d372ae0d5a936"; \
+      AB_SHA256="cceff680589c78b8582b425f4dc44b14179546d09b84c61b62dc5265baba7463"; \
     else \
       echo "Unsupported architecture: $ARCH" && exit 1; \
     fi && \
@@ -98,21 +98,10 @@ RUN ARCH=$(dpkg --print-architecture) && \
     echo "${AB_SHA256}  /usr/local/bin/agent-browser" | sha256sum -c - && \
     chmod 555 /usr/local/bin/agent-browser
 
-# Download agent-browser skill and config. In v0.26.0 the usage guide moved
-# from skills/agent-browser/ to skill-data/core/ and was renamed to `core`.
-RUN mkdir -p /usr/local/share/agent-browser/skills/core/references \
-             /usr/local/share/agent-browser/skills/core/templates && \
-    cd /usr/local/share/agent-browser/skills/core && \
-    BASE="https://raw.githubusercontent.com/vercel-labs/agent-browser/${AGENT_BROWSER_VERSION}/skill-data/core" && \
-    curl -fsSL -O "${BASE}/SKILL.md" && \
-    cd references && \
-    for f in authentication commands profiling proxy-support session-management snapshot-refs trust-boundaries video-recording; do \
-      curl -fsSL -O "${BASE}/references/${f}.md"; \
-    done && \
-    cd ../templates && \
-    for f in authenticated-session capture-workflow form-automation; do \
-      curl -fsSL -O "${BASE}/templates/${f}.sh"; \
-    done && \
+# Generate agent-browser config pointing at the system Chromium. Agents drive
+# the browser through `agent-browser mcp` (typed tools), so the usage-guide
+# skill (skill-data/core SKILL.md + references + templates) is not fetched.
+RUN mkdir -p /usr/local/share/agent-browser && \
     echo '{"contentBoundaries":true,"downloadPath":"/workspace/agent/Downloads","executablePath":"/usr/bin/chromium","args":"--disable-gpu,--disable-dev-shm-usage"}' \
       > /usr/local/share/agent-browser/config.json
 
