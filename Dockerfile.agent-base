@@ -9,12 +9,15 @@ RUN CGO_ENABLED=0 go build -o /getcc ./cmd/getcc
 # Runtime image — Debian-based (glibc, no musl compatibility issues)
 FROM debian:trixie-slim
 
-# Install system packages
+# Install system packages.
+# chromium-sandbox is intentionally omitted: agent-browser always launches
+# Chromium with --no-sandbox (Docker's default seccomp blocks the
+# unshare(CLONE_NEWUSER) the in-process sandboxes need), so the setuid-root
+# chrome-sandbox helper would never run — it would only be unused attack surface.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     ca-certificates \
     chromium \
-    chromium-sandbox \
     curl \
     git \
     jq \
@@ -34,8 +37,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# enable nix-command and flakes
-RUN echo "extra-experimental-features = nix-command flakes" >> /etc/nix/nix.conf
+# enable nix-command and flakes; force binary-only installs.
+# max-jobs = 0 makes nix never build locally — it only fetches prebuilt
+# packages from the binary cache and errors out if none exists, instead of
+# compiling from source. This also means nix never needs the build sandbox
+# (CAP_SYS_ADMIN), so it works under the hardened cap-drop profile.
+RUN printf '%s\n' \
+    "extra-experimental-features = nix-command flakes" \
+    "max-jobs = 0" \
+    "substitute = true" \
+    "fallback = false" \
+    >> /etc/nix/nix.conf
 
 # Install Node.js 24 + npm from NodeSource
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \

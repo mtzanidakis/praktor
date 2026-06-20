@@ -56,6 +56,7 @@ type AgentOpts struct {
 	SecretFiles  []SecretFile
 	AllowedTools []string
 	NixEnabled   bool
+	Security     *config.SecurityConfig // nil = use manager defaults
 }
 
 type SecretFile struct {
@@ -179,6 +180,7 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 		Binds:       mounts,
 		NetworkMode: dockercontainer.NetworkMode(m.networkName),
 	}
+	m.applySecurity(hostCfg, opts.Security)
 
 	networkCfg := &network.NetworkingConfig{}
 
@@ -243,6 +245,46 @@ func (m *Manager) StartAgent(ctx context.Context, opts AgentOpts) (*ContainerInf
 
 	slog.Info("agent container started", "agent", opts.AgentID, "container", resp.ID[:12])
 	return info, nil
+}
+
+// applySecurity applies the resolved Docker hardening profile to the
+// container's HostConfig. A per-agent override takes precedence over the
+// manager's deployment-wide defaults; both are reloadable via hot config
+// reload. Zero-valued limits (PidsLimit/MemoryMB/CPUs) mean "unlimited".
+func (m *Manager) applySecurity(hostCfg *dockercontainer.HostConfig, override *config.SecurityConfig) {
+	sec := m.cfg.Security
+	if override != nil {
+		sec = *override
+	}
+
+	if sec.NoNewPrivileges {
+		hostCfg.SecurityOpt = append(hostCfg.SecurityOpt, "no-new-privileges=true")
+	}
+	if sec.DropCapabilities {
+		hostCfg.CapDrop = []string{"ALL"}
+		hostCfg.CapAdd = sec.AddCapabilities
+	}
+	if sec.PidsLimit > 0 {
+		limit := sec.PidsLimit
+		hostCfg.PidsLimit = &limit
+	}
+	if sec.MemoryMB > 0 {
+		hostCfg.Memory = sec.MemoryMB * 1024 * 1024
+	}
+	if sec.CPUs > 0 {
+		hostCfg.NanoCPUs = int64(sec.CPUs * 1e9)
+	}
+	if sec.ReadonlyRootfs {
+		hostCfg.ReadonlyRootfs = true
+	}
+	if sec.Tmpfs {
+		if hostCfg.Tmpfs == nil {
+			hostCfg.Tmpfs = make(map[string]string)
+		}
+		// /tmp keeps exec (nix and build tools exec from it); /var/tmp does not.
+		hostCfg.Tmpfs["/tmp"] = "rw,nosuid,size=512m"
+		hostCfg.Tmpfs["/var/tmp"] = "rw,noexec,nosuid,size=256m"
+	}
 }
 
 func (m *Manager) copyFileToContainer(ctx context.Context, containerID string, sf SecretFile) error {

@@ -231,6 +231,22 @@ All containers use Docker named volumes (no host path dependencies):
 
 The gateway uses `praktor-data` for SQLite/NATS and `praktor-global` for global instructions. Both gateway and agents run as non-root user `praktor` (uid 10321).
 
+## Container Security Hardening
+
+Agent containers are hardened via `defaults.security` (reloadable; per-agent override via `security:` on an agent definition, `nil` inherits defaults). Built-in profile is "Balanced". Applied in `internal/container/manager.go` (`applySecurity`) onto the Docker `HostConfig`:
+
+| Field | Default | Effect |
+|-------|---------|--------|
+| `no_new_privileges` | `true` | `--security-opt no-new-privileges=true` (blocks setuid escalation; `docker exec --user root` still works — daemon-granted, not setuid) |
+| `drop_capabilities` | `true` | `--cap-drop ALL` then `--cap-add` the list below |
+| `add_capabilities` | `[CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]` | needed for the root `chown` exec + nix build-user switching |
+| `pids_limit` | `1024` | `--pids-limit` (0 = unlimited) |
+| `memory_mb` / `cpus` | `0` / `0` | per-container memory/CPU caps (0 = unlimited) |
+| `tmpfs` | `true` | tmpfs `/tmp` (`nosuid`) + `/var/tmp` (`noexec,nosuid`) |
+| `readonly_rootfs` | `false` | writable only via volumes + tmpfs |
+
+**Stack caveats:** `no_new_privileges` has **no impact on Chromium** here — agent-browser always launches Chromium with `--no-sandbox` (Docker's default seccomp blocks the `unshare(CLONE_NEWUSER)` the in-process sandboxes need), so the constraint is the container's seccomp/caps, not the host, and host unprivileged-userns support is irrelevant. Because the setuid sandbox never runs, `chromium-sandbox` is intentionally not installed in `Dockerfile.agent-base` (one fewer setuid-root binary). `drop_capabilities` removes `CAP_SYS_ADMIN`, but this has **no impact on nix**: the agent image sets `max-jobs = 0` in `/etc/nix/nix.conf`, so nix only installs prebuilt packages from the binary cache and never builds locally — it never needs the build sandbox. (If you re-enable source builds, add `SYS_ADMIN` back.) The temp volume-IO containers (`ReadVolumeFile`/`WriteVolumeFile`) are unhardened by design — they only run `true` and copy files.
+
 ## Go Dependencies
 
 - `mymmrac/telego` - Telegram bot
@@ -325,7 +341,7 @@ All agent containers include [agent-browser](https://github.com/vercel-labs/agen
 - Persistent memory - SQLite-backed per-agent memory (`/workspace/agent/memory.db`) with MCP tools (memory_store, memory_recall, memory_list, memory_delete, memory_forget). Uses hybrid search combining FTS5 keyword matching with vector semantic similarity (all-MiniLM-L6-v2, 384 dims, quantized int8 via `@huggingface/transformers`) using Reciprocal Rank Fusion. Embeddings are computed async on store and backfilled on first MCP server start for existing memories. Existing memory keys are listed in the system prompt so agents know what's stored.
 - Scheduled tasks - Cron/interval/relative delay (+30s, +5m, +2h)/one-shot jobs that run Claude and deliver results. Tasks execute in parallel (up to `MAX_PARALLEL_TASKS`, default 3) with fresh sessions, while regular user messages remain sequential with conversation continuity
 - Web access - Agents can use WebSearch and WebFetch tools
-- Nix package manager - Agents with `nix_enabled: true` can install packages on demand via MCP tools (nix_search, nix_add, nix_list_installed, nix_remove, nix_upgrade). When nix-daemon is detected, the system prompt instructs agents to auto-install missing tools. The `/nix` Telegram command provides direct user control over agent packages.
+- Nix package manager - Agents with `nix_enabled: true` can install packages on demand via MCP tools (nix_search, nix_add, nix_list_installed, nix_remove, nix_upgrade). Installs are binary-only (`max-jobs = 0` in the image's nix.conf): nix fetches prebuilt packages from the cache and never builds from source, so it works under the hardened cap-drop profile. When nix-daemon is detected, the system prompt instructs agents to auto-install missing tools. The `/nix` Telegram command provides direct user control over agent packages.
 - File sending - Agents can send files (screenshots, PDFs, etc.) to Telegram via the `file_send` MCP tool. Images are sent as photos, other files as documents. Max 12MB per file.
 - File receiving - Files sent to the bot in Telegram (documents, photos, audio, video, voice, video notes, animations) are downloaded and saved to the agent's workspace at `/workspace/agent/uploads/{timestamp}_{filename}`. The agent receives the file path in the message. Supports Telegram's 20MB download limit.
 - Voice transcription (STT) - Voice messages and video notes are automatically transcribed to text via OpenAI Whisper API. Agents receive `[Voice message] <transcribed text>` instead of raw audio files. Requires `OPENAI_API_KEY`. Falls back to file attachment on transcription failure.

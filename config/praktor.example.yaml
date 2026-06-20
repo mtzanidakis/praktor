@@ -11,6 +11,30 @@ defaults:
   anthropic_api_key: "${ANTHROPIC_API_KEY}"
   oauth_token: "${CLAUDE_CODE_OAUTH_TOKEN}"
 
+  # Docker hardening applied to agent containers (reloadable; per-agent
+  # override via `security:` under an agent). Values below are the built-in
+  # "Balanced" defaults — omit the whole block to use them.
+  security:
+    no_new_privileges: true              # block privilege escalation (setuid)
+    drop_capabilities: true              # cap-drop ALL, then add back the list
+    add_capabilities: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
+    pids_limit: 1024                     # 0 = unlimited
+    memory_mb: 0                         # per-container memory cap; 0 = unlimited
+    cpus: 0                              # per-container CPU cap; 0 = unlimited
+    tmpfs: true                          # mount nosuid /tmp + noexec,nosuid /var/tmp
+    readonly_rootfs: false               # writable only via volumes + tmpfs
+    # Caveats for this stack:
+    #  - Chromium: no impact. agent-browser always launches Chromium with
+    #    --no-sandbox (Docker's default seccomp blocks the unshare(CLONE_NEWUSER)
+    #    the in-process sandboxes need), so no_new_privileges changes nothing.
+    #    The unused setuid chrome-sandbox helper is not even installed. Host
+    #    unprivileged-userns support is irrelevant — the limit is the
+    #    container's seccomp/caps, not the host.
+    #  - nix: no impact. The agent image sets max-jobs = 0, so nix only
+    #    installs prebuilt packages from the binary cache and never builds
+    #    locally — it never needs the build sandbox (CAP_SYS_ADMIN). If you
+    #    ever change that to allow source builds, add SYS_ADMIN back here.
+
 agents:
   general:
     description: "General-purpose assistant for everyday tasks"
