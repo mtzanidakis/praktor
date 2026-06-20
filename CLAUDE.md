@@ -245,7 +245,7 @@ Agent containers are hardened via `defaults.security` (reloadable; per-agent ove
 | `tmpfs` | `true` | tmpfs `/tmp` (`nosuid`) + `/var/tmp` (`noexec,nosuid`) |
 | `readonly_rootfs` | `false` | writable only via volumes + tmpfs |
 
-**Stack caveats:** `no_new_privileges` has **no impact on Chromium** here — its sandbox is already non-functional inside Docker because the default seccomp profile blocks `unshare(CLONE_NEWUSER)` without `CAP_SYS_ADMIN`, so agent-browser already launches Chromium with `--no-sandbox` regardless (host unprivileged-userns support is irrelevant; the constraint is the container's seccomp/caps, not the host). `drop_capabilities` removes `CAP_SYS_ADMIN`, so nix *source* builds fail (binary-cache fetches are fine; add `SYS_ADMIN` back to build from source — that also re-enables Chromium's userns sandbox). The temp volume-IO containers (`ReadVolumeFile`/`WriteVolumeFile`) are unhardened by design — they only run `true` and copy files.
+**Stack caveats:** `no_new_privileges` has **no impact on Chromium** here — agent-browser always launches Chromium with `--no-sandbox` (Docker's default seccomp blocks the `unshare(CLONE_NEWUSER)` the in-process sandboxes need), so the constraint is the container's seccomp/caps, not the host, and host unprivileged-userns support is irrelevant. Because the setuid sandbox never runs, `chromium-sandbox` is intentionally not installed in `Dockerfile.agent-base` (one fewer setuid-root binary). `drop_capabilities` removes `CAP_SYS_ADMIN`, so nix *source* builds fail (binary-cache fetches are fine; add `SYS_ADMIN` back to build from source). The temp volume-IO containers (`ReadVolumeFile`/`WriteVolumeFile`) are unhardened by design — they only run `true` and copy files.
 
 ## Go Dependencies
 

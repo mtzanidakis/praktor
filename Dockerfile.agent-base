@@ -9,12 +9,15 @@ RUN CGO_ENABLED=0 go build -o /getcc ./cmd/getcc
 # Runtime image — Debian-based (glibc, no musl compatibility issues)
 FROM debian:trixie-slim
 
-# Install system packages
+# Install system packages.
+# chromium-sandbox is intentionally omitted: agent-browser always launches
+# Chromium with --no-sandbox (Docker's default seccomp blocks the
+# unshare(CLONE_NEWUSER) the in-process sandboxes need), so the setuid-root
+# chrome-sandbox helper would never run — it would only be unused attack surface.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     ca-certificates \
     chromium \
-    chromium-sandbox \
     curl \
     git \
     jq \

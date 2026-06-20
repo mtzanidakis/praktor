@@ -24,14 +24,15 @@ defaults:
     tmpfs: true                          # mount nosuid /tmp + noexec,nosuid /var/tmp
     readonly_rootfs: false               # writable only via volumes + tmpfs
     # Caveats for this stack:
-    #  - Chromium: no impact. Its sandbox is already non-functional inside
-    #    Docker here — the default seccomp profile blocks unshare(CLONE_NEWUSER)
-    #    without CAP_SYS_ADMIN, so agent-browser already runs Chromium with
-    #    --no-sandbox regardless of no_new_privileges. (Host unprivileged-userns
-    #    support doesn't change this; the limit is the container's seccomp/caps.)
+    #  - Chromium: no impact. agent-browser always launches Chromium with
+    #    --no-sandbox (Docker's default seccomp blocks the unshare(CLONE_NEWUSER)
+    #    the in-process sandboxes need), so no_new_privileges changes nothing.
+    #    The unused setuid chrome-sandbox helper is not even installed. Host
+    #    unprivileged-userns support is irrelevant — the limit is the
+    #    container's seccomp/caps, not the host.
     #  - drop_capabilities removes CAP_SYS_ADMIN, so nix *source* builds fail;
     #    binary-cache fetches still work. Add SYS_ADMIN back if you build nix
-    #    packages from source (this also re-enables Chromium's userns sandbox).
+    #    packages from source.
 
 agents:
   general:
