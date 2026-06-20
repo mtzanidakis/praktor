@@ -30,9 +30,10 @@ defaults:
     #    The unused setuid chrome-sandbox helper is not even installed. Host
     #    unprivileged-userns support is irrelevant — the limit is the
     #    container's seccomp/caps, not the host.
-    #  - drop_capabilities removes CAP_SYS_ADMIN, so nix *source* builds fail;
-    #    binary-cache fetches still work. Add SYS_ADMIN back if you build nix
-    #    packages from source.
+    #  - nix: no impact. The agent image sets max-jobs = 0, so nix only
+    #    installs prebuilt packages from the binary cache and never builds
+    #    locally — it never needs the build sandbox (CAP_SYS_ADMIN). If you
+    #    ever change that to allow source builds, add SYS_ADMIN back here.
 
 agents:
   general:
