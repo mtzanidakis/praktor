@@ -27,13 +27,12 @@ const ALLOWED_TOOLS_ENV = process.env.ALLOWED_TOOLS || "";
 const MAX_TURNS = parseInt(process.env.MAX_TURNS || "200", 10);
 const SWARM_CHAT_TOPIC = process.env.SWARM_CHAT_TOPIC || "";
 const SWARM_ROLE = process.env.SWARM_ROLE || "";
-// PROTOTYPE (agent-browser v0.28.0): opt into the typed MCP server instead of
-// the default Bash-command interface. Set to a tool-profile string
-// (e.g. "core" or "core,network,react") via an agent's env config. Empty =
-// keep the default Bash + SKILL.md path. See agent-browser mcp --help.
-const AGENT_BROWSER_MCP = (process.env.AGENT_BROWSER_MCP || "").trim();
+// agent-browser is driven through its typed MCP server (v0.28.0+).
+// AGENT_BROWSER_MCP selects the tool profile passed to `agent-browser mcp
+// --tools` (default "core"; composable, e.g. "core,network,react").
+// See `agent-browser mcp --help`.
 const AGENT_BROWSER_INSTALLED = existsSync("/usr/local/bin/agent-browser");
-const USE_AGENT_BROWSER_MCP = AGENT_BROWSER_MCP !== "" && AGENT_BROWSER_INSTALLED;
+const AGENT_BROWSER_MCP_TOOLS = (process.env.AGENT_BROWSER_MCP || "core").trim() || "core";
 
 let bridge: NatsBridge;
 let isProcessing = false;
@@ -148,20 +147,22 @@ function ensureAgentMd(): void {
 }
 
 function setupAgentBrowser(): void {
-  // In agent-browser v0.26.0 the usage-guide skill was renamed from
-  // `agent-browser` to `core` and moved to skill-data/core/.
-  const skillSource = "/usr/local/share/agent-browser/skills/core";
+  // agent-browser is driven via its typed MCP server, so no usage-guide skill
+  // is injected — only the config symlink (chromium path) is needed.
   const configSource = "/usr/local/share/agent-browser/config.json";
-  if (!existsSync(skillSource)) return; // agent-browser not installed
+  if (!AGENT_BROWSER_INSTALLED) return;
 
   try {
     const skillsDir = "/home/praktor/.claude/skills";
     mkdirSync(skillsDir, { recursive: true });
 
-    // Remove stale symlinks from previous image versions
+    // Remove stale skill symlinks from previous image versions (the old
+    // playwright-cli / agent-browser links, and the `core` usage-guide skill
+    // that earlier versions injected before the switch to the MCP server).
     for (const [name, target] of [
       ["playwright-cli", "/opt/playwright-cli/skill"],
       ["agent-browser", "/usr/local/share/agent-browser/skills/agent-browser"],
+      ["core", "/usr/local/share/agent-browser/skills/core"],
     ] as const) {
       const staleLink = join(skillsDir, name);
       try {
@@ -172,11 +173,6 @@ function setupAgentBrowser(): void {
       } catch { /* doesn't exist */ }
     }
 
-    // Force-update skill symlink
-    const skillLink = join(skillsDir, "core");
-    try { unlinkSync(skillLink); } catch { /* doesn't exist */ }
-    symlinkSync(skillSource, skillLink);
-
     // Force-update config symlink
     const configDir = "/home/praktor/.agent-browser";
     mkdirSync(configDir, { recursive: true });
@@ -184,7 +180,7 @@ function setupAgentBrowser(): void {
     try { unlinkSync(configLink); } catch { /* doesn't exist */ }
     symlinkSync(configSource, configLink);
 
-    console.log("[agent] agent-browser configured");
+    console.log("[agent] agent-browser configured (MCP)");
   } catch (err) {
     console.warn("[agent] could not configure agent-browser:", err);
   }
@@ -342,29 +338,17 @@ function loadSystemPrompt(includeIdentity = true): string {
     console.warn("[agent] could not load memory keys:", err);
   }
 
-  // agent-browser: inform agent it's pre-installed with system chromium.
-  // Two interfaces: the default Bash commands, or (prototype) the typed MCP
-  // server selected via AGENT_BROWSER_MCP.
+  // agent-browser: inform agent it's pre-installed (system chromium) and
+  // exposed through its typed MCP tools.
   if (AGENT_BROWSER_INSTALLED) {
-    if (USE_AGENT_BROWSER_MCP) {
-      parts.push(
-        "AGENT-BROWSER — Pre-installed, using the typed MCP interface. Do NOT install browsers via npm, npx, nix, or any other method.\n" +
-        "- Browser automation is exposed as `mcp__agent-browser__agent_browser_*` tools (configured to use the system Chromium).\n" +
-        "- Use `agent_browser_open` to start a session, then `agent_browser_snapshot` to see the page.\n" +
-        "- Do NOT call the `agent-browser` CLI via Bash — use the MCP tools instead.\n" +
-        "- The browser persists across messages. Reuse the existing session.\n" +
-        "- When executing a scheduled task, ALWAYS call `agent_browser_close` when done to free resources."
-      );
-    } else {
-      parts.push(
-        "AGENT-BROWSER — Pre-installed and configured. Do NOT install browsers via npm, npx, nix, or any other method.\n" +
-        "- `agent-browser` is already in PATH and ready to use.\n" +
-        "- It is configured to use the system Chromium.\n" +
-        "- Run `agent-browser open <url>` to start a browser session, then `agent-browser snapshot -i` to see the page.\n" +
-        "- The browser persists across messages. Reuse the existing session.\n" +
-        "- When executing a scheduled task, ALWAYS run `agent-browser close` when done to free resources."
-      );
-    }
+    parts.push(
+      "AGENT-BROWSER — Pre-installed, exposed as typed MCP tools. Do NOT install browsers via npm, npx, nix, or any other method.\n" +
+      "- Browser automation is available as `mcp__agent-browser__agent_browser_*` tools (configured to use the system Chromium).\n" +
+      "- Use `agent_browser_open` to start a session, then `agent_browser_snapshot` to see the page.\n" +
+      "- Do NOT call the `agent-browser` CLI via Bash — use the MCP tools instead.\n" +
+      "- The browser persists across messages. Reuse the existing session.\n" +
+      "- When executing a scheduled task, ALWAYS call `agent_browser_close` when done to free resources."
+    );
   }
 
   // AgentMail: inbox-locked restrictions when configured
@@ -389,9 +373,6 @@ function loadSystemPrompt(includeIdentity = true): string {
       const entries = readdirSync(skillsDir, { withFileTypes: true });
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
-        // In MCP mode the agent-browser `core` skill is redundant with the
-        // typed tool schemas — skip it so we don't pay for both.
-        if (USE_AGENT_BROWSER_MCP && entry.name === "core") continue;
         const skillMd = join(skillsDir, entry.name, "SKILL.md");
         try {
           const content = readFileSync(skillMd, "utf-8");
@@ -419,9 +400,9 @@ function buildRunOptions(sessionId?: string) {
   const systemPrompt = loadSystemPrompt();
   const cwd = "/workspace/agent";
   const tools = parseAllowedTools(ALLOWED_TOOLS_ENV);
-  // If tools are restricted and the agent-browser MCP is on, make sure its
-  // typed tools are allowlisted (the praktor-* wildcard wouldn't cover them).
-  if (tools && USE_AGENT_BROWSER_MCP && !tools.includes("mcp__agent-browser__*")) {
+  // If tools are restricted, make sure the agent-browser MCP tools are
+  // allowlisted (the praktor-* wildcard wouldn't cover them).
+  if (tools && AGENT_BROWSER_INSTALLED && !tools.includes("mcp__agent-browser__*")) {
     tools.push("mcp__agent-browser__*");
   }
 
@@ -475,13 +456,13 @@ function buildRunOptions(sessionId?: string) {
       env: { NATS_URL, AGENT_ID, SWARM_CHAT_TOPIC },
     };
   }
-  // PROTOTYPE: agent-browser typed MCP server (v0.28.0+), opt-in via
-  // AGENT_BROWSER_MCP=<profile>. Tools surface as mcp__agent-browser__*.
-  if (USE_AGENT_BROWSER_MCP) {
+  // agent-browser typed MCP server (v0.28.0+). Tools surface as
+  // mcp__agent-browser__*; profile selected by AGENT_BROWSER_MCP (default core).
+  if (AGENT_BROWSER_INSTALLED) {
     mcpServers["agent-browser"] = {
       type: "stdio",
       command: "/usr/local/bin/agent-browser",
-      args: ["mcp", "--tools", AGENT_BROWSER_MCP],
+      args: ["mcp", "--tools", AGENT_BROWSER_MCP_TOOLS],
       env: {},
     };
   }

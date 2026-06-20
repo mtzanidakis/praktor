@@ -98,21 +98,10 @@ RUN ARCH=$(dpkg --print-architecture) && \
     echo "${AB_SHA256}  /usr/local/bin/agent-browser" | sha256sum -c - && \
     chmod 555 /usr/local/bin/agent-browser
 
-# Download agent-browser skill and config. In v0.26.0 the usage guide moved
-# from skills/agent-browser/ to skill-data/core/ and was renamed to `core`.
-RUN mkdir -p /usr/local/share/agent-browser/skills/core/references \
-             /usr/local/share/agent-browser/skills/core/templates && \
-    cd /usr/local/share/agent-browser/skills/core && \
-    BASE="https://raw.githubusercontent.com/vercel-labs/agent-browser/${AGENT_BROWSER_VERSION}/skill-data/core" && \
-    curl -fsSL -O "${BASE}/SKILL.md" && \
-    cd references && \
-    for f in authentication commands profiling proxy-support session-management snapshot-refs trust-boundaries video-recording; do \
-      curl -fsSL -O "${BASE}/references/${f}.md"; \
-    done && \
-    cd ../templates && \
-    for f in authenticated-session capture-workflow form-automation; do \
-      curl -fsSL -O "${BASE}/templates/${f}.sh"; \
-    done && \
+# Generate agent-browser config pointing at the system Chromium. Agents drive
+# the browser through `agent-browser mcp` (typed tools), so the usage-guide
+# skill (skill-data/core SKILL.md + references + templates) is not fetched.
+RUN mkdir -p /usr/local/share/agent-browser && \
     echo '{"contentBoundaries":true,"downloadPath":"/workspace/agent/Downloads","executablePath":"/usr/bin/chromium","args":"--disable-gpu,--disable-dev-shm-usage"}' \
       > /usr/local/share/agent-browser/config.json
 

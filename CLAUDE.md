@@ -315,24 +315,20 @@ Each MCP tool domain lives in its own file under `agent-runner/src/mcp-*.ts`. To
 
 ## Browser Automation (agent-browser)
 
-All agent containers include [agent-browser](https://github.com/vercel-labs/agent-browser) and are configured to use the system Chromium on Debian. Agents interact with browsers via Bash commands (more token-efficient than MCP).
+All agent containers include [agent-browser](https://github.com/vercel-labs/agent-browser) and are configured to use the system Chromium on Debian. Agents drive the browser exclusively through agent-browser's typed **MCP server** (`agent-browser mcp`, v0.28.0+) — the older Bash-command interface and its `core` usage-guide skill were removed after the MCP path was verified to produce byte-identical results at the same context cost (~5k tokens, cacheable).
 
 **Build-time setup** (`Dockerfile.agent-base`):
 - The prebuilt `agent-browser` binary is downloaded from the GitHub release (pinned by `AGENT_BROWSER_VERSION`) to `/usr/local/bin/agent-browser` and verified against SHA-256
-- The `core` skill (renamed from `agent-browser` in v0.26.0) is fetched from `skill-data/core/` and installed to `/usr/local/share/agent-browser/skills/core/`, together with its `references/` and `templates/`
-- A `config.json` is generated at `/usr/local/share/agent-browser/config.json` pointing to system Chromium at `/usr/bin/chromium`
+- A `config.json` is generated at `/usr/local/share/agent-browser/config.json` pointing to system Chromium at `/usr/bin/chromium` (the usage-guide skill is no longer fetched — the MCP server provides tool schemas directly)
 
 **Runtime setup** (`agent-runner/src/index.ts` → `setupAgentBrowser()`):
-- Symlinks `/usr/local/share/agent-browser/skills/core` → `/home/praktor/.claude/skills/core` (skill loaded into system prompt)
 - Symlinks `/usr/local/share/agent-browser/config.json` → `/home/praktor/.agent-browser/config.json` (agent-browser resolves config from `~/.agent-browser/`)
 - Symlinks (not copies) ensure agents always use the image's version — updates come from rebuilding the image
-- Cleans up stale symlinks from previous image versions (e.g. the old `playwright-cli` and `agent-browser` skill links)
+- Cleans up stale skill symlinks from previous image versions (`playwright-cli`, the old `agent-browser` skill, and the `core` usage-guide skill)
 
 **Browser lifecycle:** The browser session persists across messages within the same agent session. Everything shuts down with the container on idle timeout.
 
-**System prompt:** When `/usr/local/bin/agent-browser` exists, a prompt section tells agents that agent-browser is pre-installed and to never install browsers via npm, npx, or nix.
-
-**MCP mode (prototype, opt-in):** agent-browser v0.28.0+ ships a typed stdio MCP server (`agent-browser mcp --tools <profile>`). Set `AGENT_BROWSER_MCP=<profile>` (e.g. `core`, or `core,network,react`) in an agent's `env` to register it as the `agent-browser` MCP server (tools surface as `mcp__agent-browser__*`) instead of the default Bash interface. When enabled, agent-runner swaps the system-prompt guidance to the MCP tools, skips loading the redundant `core` SKILL.md, and auto-allowlists `mcp__agent-browser__*` for tool-restricted agents. Empty/unset = unchanged Bash behavior. Context cost is roughly a wash (`core` SKILL.md ≈ 5.0k tokens vs `core` MCP profile ≈ 5.1k tokens / 28 tools, both cacheable), so the trade-off is typed-tool robustness vs the battle-tested Bash path — measure before flipping the default. Implemented in `agent-runner/src/index.ts` (`AGENT_BROWSER_MCP`, `USE_AGENT_BROWSER_MCP`).
+**MCP server** (`agent-runner/src/index.ts`): `agent-browser mcp --tools <profile>` is registered as the `agent-browser` MCP server, so tools surface as `mcp__agent-browser__*`. The tool profile defaults to `core` and is overridable per-agent via `AGENT_BROWSER_MCP` in the agent's `env` (composable, e.g. `core,network,react` — see `agent-browser mcp --help`). The system prompt points agents at the `agent_browser_*` tools, and `mcp__agent-browser__*` is auto-allowlisted for tool-restricted agents. A prompt section also tells agents that agent-browser is pre-installed and to never install browsers via npm, npx, or nix.
 
 ## What it supports
 
@@ -348,7 +344,7 @@ All agent containers include [agent-browser](https://github.com/vercel-labs/agen
 - File receiving - Files sent to the bot in Telegram (documents, photos, audio, video, voice, video notes, animations) are downloaded and saved to the agent's workspace at `/workspace/agent/uploads/{timestamp}_{filename}`. The agent receives the file path in the message. Supports Telegram's 20MB download limit.
 - Voice transcription (STT) - Voice messages and video notes are automatically transcribed to text via OpenAI Whisper API. Agents receive `[Voice message] <transcribed text>` instead of raw audio files. Requires `OPENAI_API_KEY`. Falls back to file attachment on transcription failure.
 - Voice responses (TTS) - When `speech.tts_enabled` is true, agent responses can be sent back as Telegram voice messages via OpenAI TTS API. `tts_mode`: `"voice"` (respond with voice only when user sends voice), `"always"` (all responses), `"never"` (disabled). Configurable voice (alloy, echo, fable, onyx, nova, shimmer).
-- Browser automation - [agent-browser](https://github.com/vercel-labs/agent-browser) pre-installed with system Chromium, skill auto-loaded into system prompt. Browser session persists across messages, shuts down with container.
+- Browser automation - [agent-browser](https://github.com/vercel-labs/agent-browser) pre-installed with system Chromium, exposed as typed `mcp__agent-browser__*` MCP tools. Browser session persists across messages, shuts down with container.
 - Container isolation - Agents sandboxed in Docker containers with NATS communication
 - Agent swarms - Graph-based orchestration: fan-out (parallel), pipeline (sequential with context passing), and collaborative (real-time chat) execution patterns. Visual graph editor in Mission Control, `@swarm` Telegram integration
 - Secure vault - AES-256-GCM encrypted secrets, injected as env vars or files at container start (never exposed to LLM)
