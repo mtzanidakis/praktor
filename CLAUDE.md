@@ -332,6 +332,8 @@ All agent containers include [agent-browser](https://github.com/vercel-labs/agen
 
 **System prompt:** When `/usr/local/bin/agent-browser` exists, a prompt section tells agents that agent-browser is pre-installed and to never install browsers via npm, npx, or nix.
 
+**MCP mode (prototype, opt-in):** agent-browser v0.28.0+ ships a typed stdio MCP server (`agent-browser mcp --tools <profile>`). Set `AGENT_BROWSER_MCP=<profile>` (e.g. `core`, or `core,network,react`) in an agent's `env` to register it as the `agent-browser` MCP server (tools surface as `mcp__agent-browser__*`) instead of the default Bash interface. When enabled, agent-runner swaps the system-prompt guidance to the MCP tools, skips loading the redundant `core` SKILL.md, and auto-allowlists `mcp__agent-browser__*` for tool-restricted agents. Empty/unset = unchanged Bash behavior. Context cost is roughly a wash (`core` SKILL.md ≈ 5.0k tokens vs `core` MCP profile ≈ 5.1k tokens / 28 tools, both cacheable), so the trade-off is typed-tool robustness vs the battle-tested Bash path — measure before flipping the default. Implemented in `agent-runner/src/index.ts` (`AGENT_BROWSER_MCP`, `USE_AGENT_BROWSER_MCP`).
+
 ## What it supports
 
 - Telegram I/O - Message Claude from your phone
