@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -819,13 +820,13 @@ func (b *Bot) handleSwarmCommand(ctx context.Context, chatID int64, message stri
 	}
 
 	// Split at first ": " to get agents spec and task
-	colonIdx := strings.Index(message, ": ")
-	if colonIdx < 0 {
+	rawSpec, rawTask, found := strings.Cut(message, ": ")
+	if !found {
 		_ = b.SendMessage(ctx, chatID, "Invalid swarm syntax. Use: `agent1,agent2: task` or `agent1>agent2: task` or `agent1<>agent2: task`")
 		return
 	}
-	agentSpec := strings.TrimSpace(message[:colonIdx])
-	task := strings.TrimSpace(message[colonIdx+2:])
+	agentSpec := strings.TrimSpace(rawSpec)
+	task := strings.TrimSpace(rawTask)
 	if task == "" {
 		_ = b.SendMessage(ctx, chatID, "Task is required after the colon.")
 		return
@@ -906,8 +907,7 @@ func (b *Bot) parseSwarmSpec(spec string) ([]swarm.SwarmAgent, []swarm.Synapse, 
 
 	// Check for collaborative syntax (<>)
 	// Split by comma first, then check each segment for <>
-	segments := strings.Split(spec, ",")
-	for _, seg := range segments {
+	for seg := range strings.SplitSeq(spec, ",") {
 		seg = strings.TrimSpace(seg)
 		if strings.Contains(seg, "<>") {
 			pair := strings.SplitN(seg, "<>", 2)
@@ -944,10 +944,8 @@ func (b *Bot) allowedUser(msg telego.Message) bool {
 	if len(b.cfg.AllowFrom) == 0 {
 		return true
 	}
-	for _, id := range b.cfg.AllowFrom {
-		if id == msg.From.ID {
-			return true
-		}
+	if slices.Contains(b.cfg.AllowFrom, msg.From.ID) {
+		return true
 	}
 	slog.Warn("unauthorized telegram user", "user_id", msg.From.ID, "chat_id", msg.Chat.ID)
 	return false
@@ -1103,8 +1101,8 @@ func (b *Bot) cmdPkg(ctx context.Context, chatID int64, payload string) {
 	var agentHint string
 	var cleanArgs []string
 	for _, a := range args {
-		if strings.HasPrefix(a, "@") {
-			agentHint = strings.TrimPrefix(a, "@")
+		if hint, ok := strings.CutPrefix(a, "@"); ok {
+			agentHint = hint
 		} else {
 			cleanArgs = append(cleanArgs, a)
 		}
