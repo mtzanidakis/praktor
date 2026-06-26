@@ -425,7 +425,7 @@ func (b *Bot) processMediaGroup(ctx context.Context, msgs []telego.Message) {
 			slog.Error("file download failed", "file_id", att.FileID, "error", err)
 			continue
 		}
-		volumePath := fmt.Sprintf("uploads/%d_%s", time.Now().UnixNano(), att.Name)
+		volumePath := fmt.Sprintf("uploads/%d_%s", time.Now().UnixNano(), path.Base(att.Name))
 		containerPath := "/workspace/agent/" + volumePath
 		if err := b.orch.WriteVolumeBytes(ctx, ag.Workspace, volumePath, data, image); err != nil {
 			slog.Error("file write to volume failed", "path", volumePath, "error", err)
@@ -565,7 +565,7 @@ func (b *Bot) processMessage(ctx context.Context, msg telego.Message) {
 			}
 
 			image := b.registry.ResolveImage(agentID)
-			volumePath := fmt.Sprintf("uploads/%d_%s", time.Now().Unix(), attachment.Name)
+			volumePath := fmt.Sprintf("uploads/%d_%s", time.Now().Unix(), path.Base(attachment.Name))
 			containerPath := "/workspace/agent/" + volumePath
 
 			if err := b.orch.WriteVolumeBytes(ctx, ag.Workspace, volumePath, data, image); err != nil {
