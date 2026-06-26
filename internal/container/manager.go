@@ -577,8 +577,13 @@ func (m *Manager) WriteVolumeBytes(ctx context.Context, workspace, filePath stri
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 
-	targetPath := path.Join("/vol", filePath)
-	targetPath = strings.TrimPrefix(targetPath, "/")
+	// Defense-in-depth: reject any filePath that escapes /vol after path.Join
+	// collapses "../" sequences (e.g. a traversal-laden upload filename).
+	cleaned := path.Join("/vol", filePath)
+	if cleaned != "/vol" && !strings.HasPrefix(cleaned, "/vol/") {
+		return fmt.Errorf("invalid file path %q: escapes volume root", filePath)
+	}
+	targetPath := strings.TrimPrefix(cleaned, "/")
 
 	// Create parent directory entries with correct ownership
 	parts := strings.Split(path.Dir(targetPath), "/")
