@@ -82,14 +82,14 @@ RUN NPM_GLOBAL=$(npm root -g) && \
       > onnxruntime-node/index.js
 
 # Install agent-browser binary from GitHub release
-ARG AGENT_BROWSER_VERSION=v0.31.0
+ARG AGENT_BROWSER_VERSION=v0.31.1
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "amd64" ]; then \
       AB_ARCH="linux-x64"; \
-      AB_SHA256="71dbe415ab3ded286c71eca67933575eb9f451be9155283a2e3a1ab878d75eff"; \
+      AB_SHA256="72c13bcfd2fd6b188325bdd23c646d06ca69a1a964a9cdaab37e4ff8f47aa5c6"; \
     elif [ "$ARCH" = "arm64" ]; then \
       AB_ARCH="linux-arm64"; \
-      AB_SHA256="bb2827dede43536e402cba8bc74249cdaa5af9aee291d185083c7bbdb7d62b14"; \
+      AB_SHA256="5f80bff26b25e9a9f712be64dda1f8ea2b22213a1a07c0f97ea8f9f226c2894b"; \
     else \
       echo "Unsupported architecture: $ARCH" && exit 1; \
     fi && \
