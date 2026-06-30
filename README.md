@@ -64,7 +64,7 @@ telegram:
   main_chat_id: 0           # Chat ID for scheduled task / swarm results
 
 defaults:
-  model: "claude-sonnet-4-6"
+  model: "claude-sonnet-5"
   max_running: 5
   idle_timeout: 10m
 
