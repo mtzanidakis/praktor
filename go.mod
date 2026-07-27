@@ -9,7 +9,7 @@ require (
 	github.com/klauspost/compress v1.19.1
 	github.com/moby/go-archive v0.2.1
 	github.com/moby/moby/api v1.55.0
-	github.com/moby/moby/client v0.5.0
+	github.com/moby/moby/client v0.5.1
 	github.com/mymmrac/telego v1.11.1
 	github.com/nats-io/nats-server/v2 v2.14.3
 	github.com/nats-io/nats.go v1.52.0
