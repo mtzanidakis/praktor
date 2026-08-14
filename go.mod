@@ -7,7 +7,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/klauspost/compress v1.19.2
-	github.com/moby/go-archive v0.2.1
+	github.com/moby/go-archive v0.3.3
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.1
 	github.com/mymmrac/telego v1.11.1
