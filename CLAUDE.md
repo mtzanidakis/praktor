@@ -349,7 +349,7 @@ All agent containers include [agent-browser](https://github.com/vercel-labs/agen
 - Container isolation - Agents sandboxed in Docker containers with NATS communication
 - Agent swarms - Graph-based orchestration: fan-out (parallel), pipeline (sequential with context passing), and collaborative (real-time chat) execution patterns. Visual graph editor in Mission Control, `@swarm` Telegram integration
 - Secure vault - AES-256-GCM encrypted secrets, injected as env vars or files at container start (never exposed to LLM)
-- AgentMail integration - Agents with `agentmail_inbox_id` can send and receive email via the agentmail CLI. Gateway maintains a WebSocket connection to AgentMail for real-time `message.received` events, which are dispatched to the appropriate agent. Each agent is locked to its own inbox ID.
+- AgentMail integration - Agents with `agentmail_inbox_id` can send and receive email via the agentmail CLI (v1.x: nested subcommands are space-separated, `agentmail inboxes messages send`, not the 0.7.x `inboxes:messages` colon form). Gateway maintains a WebSocket connection to AgentMail for real-time `message.received` events, which are dispatched to the appropriate agent. Each agent is locked to its own inbox ID.
 - Backup & restore - `praktor backup` and `praktor restore` create/restore zstd-compressed tarballs of all `praktor-*` Docker volumes
 - Hot config reload - Config file changes are detected automatically (file polling every 3s) or via SIGHUP; only affected agents are restarted
 - Mission Control UI - Real-time dashboard with WebSocket updates

@@ -67,7 +67,7 @@ RUN useradd \
 COPY --from=go-build /ptask /usr/local/bin/ptask
 COPY --from=go-build /getcc /usr/local/bin/getcc
 RUN NPM_GLOBAL=$(npm root -g) && \
-    npm install --loglevel=error -g agentmail-cli@0.7.14 @huggingface/transformers@3 && \
+    npm install --loglevel=error -g agentmail-cli@1.3.0 @huggingface/transformers@3 && \
     rm -rf -- /root/.npm /tmp/node-compile-cache && \
     cd "$NPM_GLOBAL/@huggingface/transformers/node_modules" && \
     rm -rf onnxruntime-node && mkdir -p onnxruntime-node && \
@@ -112,10 +112,16 @@ RUN mkdir -p /opt/models && \
     node -e "const{pipeline}=require('@huggingface/transformers');pipeline('feature-extraction','Xenova/all-MiniLM-L6-v2',{dtype:'q8',cache_dir:'/opt/models'}).then(()=>console.log('model downloaded'))" && \
     chown -R praktor:praktor /opt/models
 
-# Download agentmail-cli skill for agents with email capabilities
-RUN mkdir -p /opt/agentmail-skill && \
-    curl -so /opt/agentmail-skill/SKILL.md \
-    https://raw.githubusercontent.com/agentmail-to/agentmail-skills/main/agentmail-cli/SKILL.md
+# Generate agentmail-cli skills for agents with email capabilities.
+# `generate-skills` emits skills from the CLI's own embedded OpenAPI spec, so
+# they always match the installed CLI (the externally hosted agentmail-skills
+# SKILL.md still documents the 0.7.x `inboxes:messages` colon syntax, which
+# 1.x replaced with space-separated nesting). Only the resources agents are
+# allowed to touch are kept — pods, webhooks, domains, api-keys and the other
+# admin surfaces are dropped to match the AGENTMAIL prompt rules.
+RUN agentmail generate-skills --output-dir /opt/agentmail-skills && \
+    cd /opt/agentmail-skills && \
+    ls -d */ | grep -vE '^agentmail-(shared|inboxes|threads|drafts)/$' | xargs -r rm -rf
 
 # Pre-create volume mount points with correct ownership so Docker
 # populates new named volumes with the right permissions and structure.

@@ -187,20 +187,32 @@ function setupAgentBrowser(): void {
 }
 
 function setupAgentMail(): void {
-  const skillSource = "/opt/agentmail-skill";
-  if (!process.env.AGENTMAIL_API_KEY || !existsSync(join(skillSource, "SKILL.md"))) return;
+  const skillsDir = "/home/praktor/.claude/skills";
+
+  // agentmail-cli 1.x ships one generated skill per API resource, so the
+  // image holds a directory of them instead of a single SKILL.md. Drop the
+  // symlink the pre-1.x images left behind on the home volume.
+  try { unlinkSync(join(skillsDir, "agentmail-cli")); } catch { /* not present */ }
+
+  const skillSource = "/opt/agentmail-skills";
+  if (!process.env.AGENTMAIL_API_KEY || !existsSync(skillSource)) return;
 
   try {
-    const skillsDir = "/home/praktor/.claude/skills";
     mkdirSync(skillsDir, { recursive: true });
 
-    const skillLink = join(skillsDir, "agentmail-cli");
-    try { unlinkSync(skillLink); } catch { /* doesn't exist */ }
-    symlinkSync(skillSource, skillLink);
+    const names = readdirSync(skillSource, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
 
-    console.log("[agent] agentmail-cli skill configured");
+    for (const name of names) {
+      const skillLink = join(skillsDir, name);
+      try { unlinkSync(skillLink); } catch { /* doesn't exist */ }
+      symlinkSync(join(skillSource, name), skillLink);
+    }
+
+    console.log(`[agent] agentmail skills configured (${names.join(", ")})`);
   } catch (err) {
-    console.warn("[agent] could not configure agentmail-cli:", err);
+    console.warn("[agent] could not configure agentmail skills:", err);
   }
 }
 
