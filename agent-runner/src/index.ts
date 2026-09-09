@@ -471,7 +471,11 @@ function buildRunOptions(sessionId?: string) {
       model: CLAUDE_MODEL,
       cwd,
       pathToClaudeCodeExecutable: "/usr/local/bin/claude",
-      systemPrompt: systemPrompt || undefined,
+      // snapshot: false — the SDK records the system prompt on a conversation's
+      // first request and replays it on every resume by default. This prompt is
+      // rebuilt per message (stored memory keys, USER.md, installed skills), so
+      // recording it would freeze that list for the life of the session.
+      ...(systemPrompt ? { systemPrompt: { type: "custom" as const, prompt: systemPrompt, snapshot: false } } : {}),
       ...(sessionId ? { resume: sessionId } : {}),
       ...(tools ? { tools } : {}),
       maxTurns: MAX_TURNS,
