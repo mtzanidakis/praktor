@@ -1,6 +1,6 @@
 [tools]
-go = "1.26.5"
-golangci-lint = "2.12.2"
+go = "1.27.1"
+golangci-lint = "2.13.2"
 node = "24"
 "aqua:nats-io/natscli" = "latest"
 jq = "latest"
