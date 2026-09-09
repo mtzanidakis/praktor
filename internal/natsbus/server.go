@@ -22,8 +22,13 @@ func New(cfg config.NATSConfig) (*Bus, error) {
 }
 
 // NewForTest creates a Bus on a random port for testing.
+//
+// The port must be natsserver.RANDOM_PORT (-1), not 0: NATS treats 0 as
+// "unset" and substitutes DEFAULT_PORT (4222), which would make every
+// concurrently running test binary contend for the same fixed port — and
+// for the port of a gateway already running on the machine.
 func NewForTest(cfg config.NATSConfig) (*Bus, error) {
-	return newBus(cfg, 0)
+	return newBus(cfg, natsserver.RANDOM_PORT)
 }
 
 func newBus(cfg config.NATSConfig, port int) (*Bus, error) {
@@ -51,7 +56,7 @@ func newBus(cfg config.NATSConfig, port int) (*Bus, error) {
 		return nil, fmt.Errorf("nats server not ready")
 	}
 
-	// Resolve actual port (may differ from requested when port=0)
+	// Resolve actual port (differs from requested when port is RANDOM_PORT)
 	actualPort := ns.Addr().(*net.TCPAddr).Port
 
 	return &Bus{
