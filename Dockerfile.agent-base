@@ -82,14 +82,14 @@ RUN NPM_GLOBAL=$(npm root -g) && \
       > onnxruntime-node/index.js
 
 # Install agent-browser binary from GitHub release
-ARG AGENT_BROWSER_VERSION=v0.33.0
+ARG AGENT_BROWSER_VERSION=v0.37.1
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "amd64" ]; then \
       AB_ARCH="linux-x64"; \
-      AB_SHA256="b77d85eb8d0d305be4170f9477c59f0304b3609dc39bf0e8b8c740a1abd1e08a"; \
+      AB_SHA256="f8e5f9294bd0da70dda61854f12004fd61c668cd682bfb600cdf6d0df73dea69"; \
     elif [ "$ARCH" = "arm64" ]; then \
       AB_ARCH="linux-arm64"; \
-      AB_SHA256="fa7b238d76ab45a429c089629417f4f15d68cac9c4369932e5d09d62dada9264"; \
+      AB_SHA256="d54d3e1262dc1aa0906e0677adc6d0cbb40d1274631f4cf77136bf23a0bc20e9"; \
     else \
       echo "Unsupported architecture: $ARCH" && exit 1; \
     fi && \
@@ -127,6 +127,10 @@ RUN mkdir -p /workspace/agent /workspace/global && \
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 ENV AGENT_BROWSER_IDLE_TIMEOUT_MS=180000
+# WebMCP (agent-browser >= 0.36) lets the visited page declare its own MCP
+# tools, which navigation responses then advertise to the agent. Agents here
+# browse arbitrary untrusted pages, so keep that surface off.
+ENV AGENT_BROWSER_NO_WEBMCP=1
 ENV DISABLE_AUTOUPDATER=true
 ENV NIX_PROFILES="/nix/var/nix/profiles/default /home/praktor/.nix-profile"
 ENV NIX_SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt

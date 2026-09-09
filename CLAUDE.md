@@ -320,6 +320,7 @@ All agent containers include [agent-browser](https://github.com/vercel-labs/agen
 **Build-time setup** (`Dockerfile.agent-base`):
 - The prebuilt `agent-browser` binary is downloaded from the GitHub release (pinned by `AGENT_BROWSER_VERSION`) to `/usr/local/bin/agent-browser` and verified against SHA-256
 - A `config.json` is generated at `/usr/local/share/agent-browser/config.json` pointing to system Chromium at `/usr/bin/chromium` (the usage-guide skill is no longer fetched — the MCP server provides tool schemas directly)
+- `AGENT_BROWSER_NO_WEBMCP=1` is set in the image. Since v0.36.0 agent-browser lets the *visited page* declare its own MCP tools (WebMCP) and advertises them on every successful navigation; agents here browse untrusted pages, so that surface stays off
 
 **Runtime setup** (`agent-runner/src/index.ts` → `setupAgentBrowser()`):
 - Symlinks `/usr/local/share/agent-browser/config.json` → `/home/praktor/.agent-browser/config.json` (agent-browser resolves config from `~/.agent-browser/`)
