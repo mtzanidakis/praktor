@@ -1,4 +1,4 @@
-import { query, startup, type McpServerConfig, type WarmQuery } from "@anthropic-ai/claude-agent-sdk";
+import { query, startup, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, type McpServerConfig, type WarmQuery } from "@anthropic-ai/claude-agent-sdk";
 import { NatsBridge } from "./nats-bridge.js";
 import { applyExtensions } from "./extensions.js";
 import { readFileSync, readdirSync, mkdirSync, writeFileSync, rmSync, symlinkSync, existsSync, lstatSync, readlinkSync, unlinkSync } from "fs";
@@ -220,8 +220,25 @@ function setupAgentMail(): void {
   }
 }
 
-function loadSystemPrompt(includeIdentity = true): string {
+const SYSTEM_PROMPT_SEPARATOR = "\n\n---\n\n";
+
+// Joins the system prompt into cache-aware blocks. Everything before
+// SYSTEM_PROMPT_DYNAMIC_BOUNDARY is eligible for cross-session prompt caching
+// (fresh-session scheduled tasks reuse it); the dynamic suffix holds what
+// changes within a session, so updating it doesn't invalidate the prefix.
+export function assembleSystemPrompt(staticParts: string[], dynamicParts: string[]): string[] {
+  const blocks = [staticParts.join(SYSTEM_PROMPT_SEPARATOR)];
+  if (dynamicParts.length > 0) {
+    blocks.push(SYSTEM_PROMPT_DYNAMIC_BOUNDARY, dynamicParts.join(SYSTEM_PROMPT_SEPARATOR));
+  }
+  return blocks;
+}
+
+function loadSystemPrompt(includeIdentity = true): string[] {
   const parts: string[] = [];
+  // Parts that change mid-session (stored memory keys) go after the cache
+  // boundary.
+  const dynamicParts: string[] = [];
 
   // User profile (loaded before global instructions so agents know the user)
   try {
@@ -349,7 +366,7 @@ function loadSystemPrompt(includeIdentity = true): string {
         memorySection += " memory_recall uses hybrid search combining keyword matching with semantic similarity — use natural language queries for best results.";
       }
     }
-    parts.push(memorySection);
+    dynamicParts.push(memorySection);
   } catch (err) {
     console.warn("[agent] could not load memory keys:", err);
   }
@@ -403,7 +420,7 @@ function loadSystemPrompt(includeIdentity = true): string {
     // skills directory not accessible, skip
   }
 
-  return parts.join("\n\n---\n\n");
+  return assembleSystemPrompt(parts, dynamicParts);
 }
 
 export function inferTerminalReason(errorMsg: string): string | undefined {
@@ -413,7 +430,12 @@ export function inferTerminalReason(errorMsg: string): string | undefined {
   return undefined;
 }
 
-function buildRunOptions(sessionId?: string) {
+// verbatimPrompts: the prompt is delivered as written — no `@path` expansion
+// or slash-command dispatch. Used for prompts assembled from text the user did
+// not type (inbound email, routing). Trade-off: the CLI also skips its
+// turn-start attachments (skill listings, nested CLAUDE.md) until the turn's
+// first tool call.
+function buildRunOptions(sessionId?: string, verbatimPrompts = false) {
   const systemPrompt = loadSystemPrompt();
   const cwd = "/workspace/agent";
   const tools = parseAllowedTools(ALLOWED_TOOLS_ENV);
@@ -492,12 +514,13 @@ function buildRunOptions(sessionId?: string) {
       // first request and replays it on every resume by default. This prompt is
       // rebuilt per message (stored memory keys, USER.md, installed skills), so
       // recording it would freeze that list for the life of the session.
-      ...(systemPrompt ? { systemPrompt: { type: "custom" as const, prompt: systemPrompt, snapshot: false } } : {}),
+      systemPrompt: { type: "custom" as const, prompt: systemPrompt, snapshot: false },
       ...(sessionId ? { resume: sessionId } : {}),
       ...(tools ? { tools } : {}),
       maxTurns: MAX_TURNS,
       mcpServers,
       settings: CLAUDE_SETTINGS,
+      ...(verbatimPrompts ? { verbatimPrompts: true } : {}),
       permissionMode: "bypassPermissions" as const,
       allowDangerouslySkipPermissions: true,
       stderr: (data: string) => {
@@ -506,8 +529,8 @@ function buildRunOptions(sessionId?: string) {
   };
 }
 
-function buildQueryOptions(prompt: string, sessionId?: string) {
-  return { prompt, options: buildRunOptions(sessionId) };
+function buildQueryOptions(prompt: string, sessionId?: string, verbatimPrompts = false) {
+  return { prompt, options: buildRunOptions(sessionId, verbatimPrompts) };
 }
 
 // Execute a scheduled task in parallel (fresh session, no resume)
@@ -690,6 +713,15 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
     // Use the pre-warmed subprocess if available and fresh for the current
     // session; otherwise spawn a new one. The warm path skips the CLI
     // spawn + initialize handshake latency on the first token.
+    // Inbound email carries text from arbitrary senders: deliver it verbatim.
+    // The warm handle was started without that option, so drop it (rewarm()
+    // in finally starts a fresh one for the next message).
+    const verbatim = sender === "agentmail";
+    if (verbatim && warmHandle) {
+      try { warmHandle.close(); } catch { /* ignore */ }
+      warmHandle = null;
+    }
+
     let result;
     if (warmHandle && warmForSessionId === lastSessionId && !SWARM_CHAT_TOPIC) {
       console.log(`[agent] starting claude query (warm)`);
@@ -704,7 +736,7 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
     }
     if (!result) {
       console.log(`[agent] starting claude query`);
-      const opts = buildQueryOptions(augmentedText, lastSessionId);
+      const opts = buildQueryOptions(augmentedText, lastSessionId, verbatim);
       result = query(opts);
     }
 
@@ -827,9 +859,12 @@ async function handleRoute(
         model: CLAUDE_MODEL,
         cwd,
         pathToClaudeCodeExecutable: "/usr/local/bin/claude",
-        systemPrompt: systemPrompt || undefined,
+        systemPrompt,
         tools: [],
         settings: CLAUDE_SETTINGS,
+        // The routing prompt embeds the user's message; never expand `@path`
+        // mentions or dispatch slash commands from it.
+        verbatimPrompts: true,
         permissionMode: "bypassPermissions" as const,
         allowDangerouslySkipPermissions: true,
       },
