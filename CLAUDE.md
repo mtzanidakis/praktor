@@ -154,6 +154,8 @@ Extensions are stored per-agent in normalized DB tables (not YAML config) and ma
 
 Updating extensions via PUT stops the running agent container so it picks up changes on the next message.
 
+Claude Code's claude.ai account sync (`syncClaudeAiSkills` / `syncClaudeAiPlugins`) is turned off for every agent query (`CLAUDE_SETTINGS` in `agent-runner/src/index.ts`), so agents only load the skills and plugins configured as extensions.
+
 ### Hot Config Reload
 
 The gateway watches the config file for changes (mtime polled every 3s, SHA-256 hash verified on mtime change). When a change is detected, it automatically reloads without restarting the gateway process. SIGHUP also triggers a reload.
@@ -329,7 +331,7 @@ All agent containers include [agent-browser](https://github.com/vercel-labs/agen
 
 **Browser lifecycle:** The browser session persists across messages within the same agent session. Everything shuts down with the container on idle timeout.
 
-**MCP server** (`agent-runner/src/index.ts`): `agent-browser mcp --tools <profile>` is registered as the `agent-browser` MCP server, so tools surface as `mcp__agent-browser__*`. The tool profile defaults to `core` and is overridable per-agent via `AGENT_BROWSER_MCP` in the agent's `env` (composable, e.g. `core,network,react` — see `agent-browser mcp --help`). The system prompt points agents at the `agent_browser_*` tools, and `mcp__agent-browser__*` is auto-allowlisted for tool-restricted agents. A prompt section also tells agents that agent-browser is pre-installed and to never install browsers via npm, npx, or nix.
+**MCP server** (`agent-runner/src/index.ts`): `agent-browser mcp --tools <profile>` is registered as the `agent-browser` MCP server, so tools surface as `mcp__agent-browser__*`. The tool profile defaults to `core` and is overridable per-agent via `AGENT_BROWSER_MCP` in the agent's `env` (composable, e.g. `core,network,react` — see `agent-browser mcp --help`). The system prompt points agents at the `agent_browser_*` tools (and at `snapshot` `delta` / `screenshot` `ifChanged` for re-checking pages cheaply), and `mcp__agent-browser__*` is auto-allowlisted for tool-restricted agents. A prompt section also tells agents that agent-browser is pre-installed and to never install browsers via npm, npx, or nix.
 
 ## What it supports
 
