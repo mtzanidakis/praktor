@@ -33,6 +33,10 @@ const SWARM_ROLE = process.env.SWARM_ROLE || "";
 // See `agent-browser mcp --help`.
 const AGENT_BROWSER_INSTALLED = existsSync("/usr/local/bin/agent-browser");
 const AGENT_BROWSER_MCP_TOOLS = (process.env.AGENT_BROWSER_MCP || "core").trim() || "core";
+// Claude Code (2.1.275+) syncs the skills and plugins enabled on the claude.ai
+// account behind CLAUDE_CODE_OAUTH_TOKEN into every session. Agents get their
+// skills and plugins from per-agent extensions only, so opt out of both.
+const CLAUDE_SETTINGS = { syncClaudeAiSkills: false, syncClaudeAiPlugins: false };
 
 let bridge: NatsBridge;
 let isProcessing = false;
@@ -357,6 +361,7 @@ function loadSystemPrompt(includeIdentity = true): string {
       "AGENT-BROWSER — Pre-installed, exposed as typed MCP tools. Do NOT install browsers via npm, npx, nix, or any other method.\n" +
       "- Browser automation is available as `mcp__agent-browser__agent_browser_*` tools (configured to use the system Chromium).\n" +
       "- Use `agent_browser_open` to start a session, then `agent_browser_snapshot` to see the page.\n" +
+      "- When re-checking a page you already looked at (polling, scheduled checks), pass `delta: true` to `agent_browser_snapshot` to get only what changed, and `ifChanged: true` to `agent_browser_screenshot` to skip unchanged captures.\n" +
       "- Do NOT call the `agent-browser` CLI via Bash — use the MCP tools instead.\n" +
       "- The browser persists across messages. Reuse the existing session.\n" +
       "- When executing a scheduled task, ALWAYS call `agent_browser_close` when done to free resources."
@@ -492,6 +497,7 @@ function buildRunOptions(sessionId?: string) {
       ...(tools ? { tools } : {}),
       maxTurns: MAX_TURNS,
       mcpServers,
+      settings: CLAUDE_SETTINGS,
       permissionMode: "bypassPermissions" as const,
       allowDangerouslySkipPermissions: true,
       stderr: (data: string) => {
@@ -823,6 +829,7 @@ async function handleRoute(
         pathToClaudeCodeExecutable: "/usr/local/bin/claude",
         systemPrompt: systemPrompt || undefined,
         tools: [],
+        settings: CLAUDE_SETTINGS,
         permissionMode: "bypassPermissions" as const,
         allowDangerouslySkipPermissions: true,
       },

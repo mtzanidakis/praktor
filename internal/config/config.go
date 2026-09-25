@@ -121,7 +121,7 @@ func defaults() Config {
 	return Config{
 		Defaults: DefaultsConfig{
 			Image:       "praktor-agent:latest",
-			Model:       "claude-opus-4-7",
+			Model:       "claude-opus-5-5",
 			MaxRunning:  5,
 			IdleTimeout: 10 * time.Minute,
 			// Balanced hardening profile.
