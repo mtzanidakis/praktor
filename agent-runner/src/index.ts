@@ -668,7 +668,7 @@ async function executeTask(data: Record<string, unknown>): Promise<void> {
       if (decision.warn) {
         console.warn(`[task] completed with no output (msg_id=${msgId}, terminal=${terminalReason ?? "none"})`);
       }
-      await bridge.publishResult(decision.content, msgId, terminalReason);
+      await bridge.publishResult(decision.content, msgId, terminalReason, hasFileSent);
     }
     if (terminalReason && terminalReason !== "completed") {
       console.log(`[task] completed (terminal_reason: ${terminalReason})`);

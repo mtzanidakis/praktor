@@ -64,7 +64,7 @@ func TestGatedTaskLoggedOnlyWhenRunReplies(t *testing.T) {
 
 	// run tracks a gated task the way executeMessage does, then feeds the
 	// runner's result back through the output handler.
-	run := func(msgID, reply string) {
+	run := func(msgID, reply string, fileSent ...bool) {
 		t.Helper()
 		meta := map[string]string{"sender": "scheduler", "check_command": "echo due"}
 		msg, deferred := incomingMessage("iris", "", meta)
@@ -72,7 +72,11 @@ func TestGatedTaskLoggedOnlyWhenRunReplies(t *testing.T) {
 			t.Fatal("gated task was not deferred")
 		}
 		o.trackPending("iris", msgID, QueuedMessage{AgentID: "iris", Meta: meta, DeferredLog: msg})
-		data, _ := json.Marshal(map[string]string{"type": "result", "content": reply, "msg_id": msgID})
+		out := map[string]any{"type": "result", "content": reply, "msg_id": msgID}
+		if len(fileSent) > 0 && fileSent[0] {
+			out["file_sent"] = true
+		}
+		data, _ := json.Marshal(out)
 		o.handleAgentOutput(&nats.Msg{Subject: "agent.iris.output", Data: data})
 	}
 
@@ -101,5 +105,18 @@ func TestGatedTaskLoggedOnlyWhenRunReplies(t *testing.T) {
 	}
 	if msgs[1].Sender != "agent" || msgs[1].Content != "⏰ Dentist" {
 		t.Errorf("second message = %+v, want the reply", msgs[1])
+	}
+
+	// A run whose only output was a file counts as a reply too.
+	run("file", "", true)
+	msgs, err = s.GetMessages("iris", 10)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	if len(msgs) != 4 {
+		t.Fatalf("got %d messages after file-only run, want 4: %+v", len(msgs), msgs)
+	}
+	if msgs[2].Content != "[check] echo due" || msgs[3].Sender != "agent" || msgs[3].Content != "[file sent]" {
+		t.Errorf("file-only run logged %+v / %+v", msgs[2], msgs[3])
 	}
 }

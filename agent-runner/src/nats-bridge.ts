@@ -30,12 +30,15 @@ export class NatsBridge {
     await this.publish(`agent.${this.agentId}.output`, { type, content, ...(msgId ? { msg_id: msgId } : {}) });
   }
 
-  async publishResult(content: string, msgId?: string, terminalReason?: string): Promise<void> {
+  // fileSent marks a run whose only output was a file_send, so the host can
+  // log it as a reply even though content is empty.
+  async publishResult(content: string, msgId?: string, terminalReason?: string, fileSent?: boolean): Promise<void> {
     await this.publish(`agent.${this.agentId}.output`, {
       type: "result",
       content,
       ...(msgId ? { msg_id: msgId } : {}),
       ...(terminalReason ? { terminal_reason: terminalReason } : {}),
+      ...(fileSent ? { file_sent: true } : {}),
     });
   }
 

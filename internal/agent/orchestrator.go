@@ -394,6 +394,7 @@ func (o *Orchestrator) handleAgentOutput(msg *nats.Msg) {
 		Content        string `json:"content"`
 		MsgID          string `json:"msg_id"`
 		TerminalReason string `json:"terminal_reason,omitempty"`
+		FileSent       bool   `json:"file_sent,omitempty"` // run replied with a file only
 	}
 	if err := json.Unmarshal(msg.Data, &output); err != nil {
 		return
@@ -415,8 +416,8 @@ func (o *Orchestrator) handleAgentOutput(msg *nats.Msg) {
 			meta = o.getLastMeta(agentID)
 		}
 
-		// Save to DB if there's content or an abnormal termination
-		if content != "" || abnormal {
+		// Save to DB if there's content, a file was sent, or an abnormal termination
+		if content != "" || output.FileSent || abnormal {
 			if deferred != nil {
 				_ = o.store.SaveMessage(deferred)
 				o.publishMessageEvent(deferred)
@@ -425,6 +426,9 @@ func (o *Orchestrator) handleAgentOutput(msg *nats.Msg) {
 				AgentID: agentID,
 				Sender:  "agent",
 				Content: content,
+			}
+			if content == "" && output.FileSent {
+				agentMsg.Content = "[file sent]"
 			}
 			if abnormal {
 				agentMsg.Metadata, _ = json.Marshal(map[string]string{"terminal_reason": output.TerminalReason})
