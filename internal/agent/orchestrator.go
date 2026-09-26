@@ -44,6 +44,7 @@ type Orchestrator struct {
 	lastMeta        map[string]map[string]string // agentID → last message meta (fallback for IPC)
 	pendingMeta     map[string]map[string]string // msgID → message meta
 	pendingMsgID    map[string]string            // msgID → agentID (track in-flight messages)
+	pendingLog      map[string]*store.Message    // msgID → incoming message saved only if the run replies
 	mu              sync.RWMutex
 	listeners       []OutputListener
 	fileListeners   []FileListener
@@ -73,6 +74,7 @@ func NewOrchestrator(bus *natsbus.Bus, ctr *container.Manager, s *store.Store, r
 		lastMeta:     make(map[string]map[string]string),
 		pendingMeta:  make(map[string]map[string]string),
 		pendingMsgID: make(map[string]string),
+		pendingLog:   make(map[string]*store.Message),
 	}
 
 	client, err := natsbus.NewClient(bus)
@@ -130,30 +132,51 @@ func (o *Orchestrator) HandleMessage(ctx context.Context, agentID, text string, 
 	}
 
 	// Save incoming message
-	sender := "user"
-	if s, ok := meta["sender"]; ok {
-		sender = s
-	}
-	msg := &store.Message{
-		AgentID: agentID,
-		Sender:  sender,
-		Content: text,
-	}
-	_ = o.store.SaveMessage(msg)
-	o.publishMessageEvent(msg)
-
-	// Enqueue message
-	q := o.getQueue(agentID)
-	q.Enqueue(QueuedMessage{
+	queued := QueuedMessage{
 		AgentID: agentID,
 		Text:    text,
 		Meta:    meta,
-	})
+	}
+	msg, deferred := incomingMessage(agentID, text, meta)
+	if deferred {
+		queued.DeferredLog = msg
+	} else {
+		_ = o.store.SaveMessage(msg)
+		o.publishMessageEvent(msg)
+	}
+
+	// Enqueue message
+	q := o.getQueue(agentID)
+	q.Enqueue(queued)
 
 	// Process queue
 	go o.processQueue(ctx, agentID)
 
 	return nil
+}
+
+// incomingMessage builds the history entry for an incoming message. For a
+// scheduled task gated on a check_command it reports deferred: such runs
+// usually end silently, so the entry is saved only if the run replies, and
+// frequent polling doesn't fill the history with no-op runs.
+func incomingMessage(agentID, text string, meta map[string]string) (msg *store.Message, deferred bool) {
+	sender := "user"
+	if s, ok := meta["sender"]; ok {
+		sender = s
+	}
+	msg = &store.Message{
+		AgentID: agentID,
+		Sender:  sender,
+		Content: text,
+	}
+	cmd := meta["check_command"]
+	if cmd == "" {
+		return msg, false
+	}
+	if strings.TrimSpace(text) == "" {
+		msg.Content = "[check] " + cmd
+	}
+	return msg, true
 }
 
 func (o *Orchestrator) getQueue(agentID string) *AgentQueue {
@@ -263,11 +286,7 @@ func (o *Orchestrator) executeMessage(ctx context.Context, agentID string, msg Q
 	maps.Copy(payload, msg.Meta)
 
 	// Store meta so output handler can route responses back
-	o.mu.Lock()
-	o.lastMeta[agentID] = msg.Meta
-	o.pendingMeta[msgID] = msg.Meta
-	o.pendingMsgID[msgID] = agentID
-	o.mu.Unlock()
+	o.trackPending(agentID, msgID, msg)
 
 	data, _ := json.Marshal(payload)
 	topic := natsbus.TopicAgentInput(agentID)
@@ -375,6 +394,7 @@ func (o *Orchestrator) handleAgentOutput(msg *nats.Msg) {
 		Content        string `json:"content"`
 		MsgID          string `json:"msg_id"`
 		TerminalReason string `json:"terminal_reason,omitempty"`
+		FileSent       bool   `json:"file_sent,omitempty"` // run replied with a file only
 	}
 	if err := json.Unmarshal(msg.Data, &output); err != nil {
 		return
@@ -390,24 +410,31 @@ func (o *Orchestrator) handleAgentOutput(msg *nats.Msg) {
 			slog.Warn("agent query terminated abnormally", "agent", agentID, "terminal_reason", output.TerminalReason)
 		}
 
-		// Save to DB if there's content or an abnormal termination
-		if content != "" || abnormal {
+		// Get metadata: try msg_id first (parallel-safe), fall back to per-agent lastMeta
+		meta, deferred := o.popPending(output.MsgID)
+		if meta == nil {
+			meta = o.getLastMeta(agentID)
+		}
+
+		// Save to DB if there's content, a file was sent, or an abnormal termination
+		if content != "" || output.FileSent || abnormal {
+			if deferred != nil {
+				_ = o.store.SaveMessage(deferred)
+				o.publishMessageEvent(deferred)
+			}
 			agentMsg := &store.Message{
 				AgentID: agentID,
 				Sender:  "agent",
 				Content: content,
+			}
+			if content == "" && output.FileSent {
+				agentMsg.Content = "[file sent]"
 			}
 			if abnormal {
 				agentMsg.Metadata, _ = json.Marshal(map[string]string{"terminal_reason": output.TerminalReason})
 			}
 			_ = o.store.SaveMessage(agentMsg)
 			o.publishMessageEvent(agentMsg, output.TerminalReason)
-		}
-
-		// Get metadata: try msg_id first (parallel-safe), fall back to per-agent lastMeta
-		meta := o.popPendingMeta(output.MsgID)
-		if meta == nil {
-			meta = o.getLastMeta(agentID)
 		}
 
 		// Append terminal reason notice for listeners (e.g. Telegram)
@@ -433,18 +460,34 @@ func (o *Orchestrator) getLastMeta(agentID string) map[string]string {
 	return o.lastMeta[agentID]
 }
 
-func (o *Orchestrator) popPendingMeta(msgID string) map[string]string {
+// trackPending records an in-flight message so its output can be routed back.
+func (o *Orchestrator) trackPending(agentID, msgID string, msg QueuedMessage) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.lastMeta[agentID] = msg.Meta
+	o.pendingMeta[msgID] = msg.Meta
+	o.pendingMsgID[msgID] = agentID
+	if msg.DeferredLog != nil {
+		o.pendingLog[msgID] = msg.DeferredLog
+	}
+}
+
+// popPending removes an in-flight message's tracking and returns its meta and
+// its deferred history entry, if any.
+func (o *Orchestrator) popPending(msgID string) (map[string]string, *store.Message) {
 	if msgID == "" {
-		return nil
+		return nil, nil
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	meta, ok := o.pendingMeta[msgID]
+	deferred := o.pendingLog[msgID]
 	if ok {
 		delete(o.pendingMeta, msgID)
 		delete(o.pendingMsgID, msgID)
+		delete(o.pendingLog, msgID)
 	}
-	return meta
+	return meta, deferred
 }
 
 func (o *Orchestrator) handleIPC(msg *nats.Msg) {
@@ -1025,6 +1068,7 @@ func (o *Orchestrator) clearPendingMessages(agentID string) {
 		if aid == agentID {
 			delete(o.pendingMsgID, msgID)
 			delete(o.pendingMeta, msgID)
+			delete(o.pendingLog, msgID)
 		}
 	}
 }

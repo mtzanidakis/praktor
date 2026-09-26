@@ -35,7 +35,7 @@ func (s *Store) GetMessages(agentID string, limit int) ([]Message, error) {
 		SELECT id, agent_id, sender, content, metadata, created_at
 		FROM messages
 		WHERE agent_id = ?
-		ORDER BY created_at DESC
+		ORDER BY created_at DESC, id DESC
 		LIMIT ?`, agentID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("get messages: %w", err)
@@ -70,7 +70,7 @@ func (s *Store) GetRecentMessages(limit int) ([]Message, error) {
 	rows, err := s.db.Query(`
 		SELECT id, agent_id, sender, content, metadata, created_at
 		FROM messages
-		ORDER BY created_at DESC
+		ORDER BY created_at DESC, id DESC
 		LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("get recent messages: %w", err)
