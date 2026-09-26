@@ -575,6 +575,30 @@ export function decideTaskFinalResponse(
   return { content: "", warn: true };
 }
 
+const FILE_SEND_TOOL = "mcp__praktor-file__file_send";
+
+// Tracks file_send calls in a task's event stream. A file counts as sent only
+// when the call's tool_result comes back without an error, so a rejected send
+// (missing file, over the size limit) isn't reported as a reply.
+export class FileSendTracker {
+  private pending = new Set<string>();
+  sent = false;
+
+  observe(event: unknown): void {
+    const e = event as { type?: string; message?: { content?: unknown } };
+    const blocks = e.message?.content;
+    if (!Array.isArray(blocks)) return;
+    for (const block of blocks as Array<Record<string, unknown>>) {
+      if (e.type === "assistant" && block.type === "tool_use" && block.name === FILE_SEND_TOOL) {
+        this.pending.add(block.id as string);
+      } else if (e.type === "user" && block.type === "tool_result" && this.pending.has(block.tool_use_id as string)) {
+        this.pending.delete(block.tool_use_id as string);
+        if (!block.is_error) this.sent = true;
+      }
+    }
+  }
+}
+
 async function executeTask(data: Record<string, unknown>): Promise<void> {
   const text = data.text as string;
   const msgId = data.msg_id as string | undefined;
@@ -589,7 +613,7 @@ async function executeTask(data: Record<string, unknown>): Promise<void> {
   let fullResponse = "";
   let terminalReason: string | undefined;
   let hasStreamedOutput = false;
-  let hasFileSent = false;
+  const fileSends = new FileSendTracker();
 
   try {
     let prompt = text;
@@ -625,6 +649,7 @@ async function executeTask(data: Record<string, unknown>): Promise<void> {
 
     try {
       for await (const event of { [Symbol.asyncIterator]: () => iter }) {
+        fileSends.observe(event);
         if (event.type === "system" && (event as Record<string, unknown>).subtype === "task_started") {
           incBg(bgKey);
         } else if (event.type === "system" && (event as Record<string, unknown>).subtype === "task_notification") {
@@ -644,15 +669,12 @@ async function executeTask(data: Record<string, unknown>): Promise<void> {
               await bridge.publishOutput(block.text, "text", msgId);
             } else if (block.type === "tool_use" || block.type === "server_tool_use") {
               console.log(`[task] tool: ${block.name}`);
-              if (block.name === "mcp__praktor-file__file_send") {
-                hasFileSent = true;
-              }
             }
           }
         }
       }
     } catch (streamErr) {
-      if (fullResponse || hasStreamedOutput || hasFileSent) {
+      if (fullResponse || hasStreamedOutput || fileSends.sent) {
         console.warn(`[task] claude process exited with error after output, ignoring:`, streamErr);
       } else {
         throw streamErr;
@@ -663,12 +685,12 @@ async function executeTask(data: Record<string, unknown>): Promise<void> {
       const decision = decideTaskFinalResponse({
         result: fullResponse,
         hasStreamedOutput,
-        hasFileSent,
+        hasFileSent: fileSends.sent,
       });
       if (decision.warn) {
         console.warn(`[task] completed with no output (msg_id=${msgId}, terminal=${terminalReason ?? "none"})`);
       }
-      await bridge.publishResult(decision.content, msgId, terminalReason, hasFileSent);
+      await bridge.publishResult(decision.content, msgId, terminalReason, fileSends.sent);
     }
     if (terminalReason && terminalReason !== "completed") {
       console.log(`[task] completed (terminal_reason: ${terminalReason})`);

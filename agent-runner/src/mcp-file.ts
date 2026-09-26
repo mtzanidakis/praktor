@@ -55,6 +55,7 @@ server.tool(
     } catch {
       return {
         content: [{ type: "text" as const, text: `Error: file not found: ${path}` }],
+        isError: true,
       };
     }
 
@@ -67,6 +68,7 @@ server.tool(
             text: `Error: file too large (${sizeMB}MB). Maximum size is 12MB.`,
           },
         ],
+        isError: true,
       };
     }
 
@@ -85,6 +87,7 @@ server.tool(
     if (resp.error) {
       return {
         content: [{ type: "text" as const, text: `Error: ${resp.error}` }],
+        isError: true,
       };
     }
 
