@@ -720,10 +720,17 @@ async function executeTask(data: Record<string, unknown>): Promise<void> {
   }
 }
 
+// isRunnableMessage reports whether an input message has work to do. A
+// message needs text, except a check-only scheduled task: it has no prompt,
+// and its check_command is the work.
+export function isRunnableMessage(data: Record<string, unknown>): boolean {
+  if (data.text) return true;
+  return data.sender === "scheduler" && !!data.check_command;
+}
+
 async function handleMessage(data: Record<string, unknown>): Promise<void> {
+  if (!isRunnableMessage(data)) return;
   const text = (data.text as string | undefined) ?? "";
-  // A check-only scheduled task has no prompt; its check_command is the work.
-  if (!text && !data.check_command) return;
 
   const sender = data.sender as string | undefined;
   const msgId = data.msg_id as string | undefined;
