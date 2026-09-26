@@ -58,18 +58,21 @@ func scanTimeString(s *string) *time.Time {
 }
 
 type ScheduledTask struct {
-	ID          string     `json:"id"`
-	AgentID     string     `json:"agent_id"`
-	Name        string     `json:"name"`
-	Schedule    string     `json:"schedule"`
-	Prompt      string     `json:"prompt"`
-	ContextMode string     `json:"context_mode"`
-	Status      string     `json:"status"`
-	NextRunAt   *time.Time `json:"next_run_at,omitempty"`
-	LastRunAt   *time.Time `json:"last_run_at,omitempty"`
-	LastStatus  string     `json:"last_status,omitempty"`
-	LastError   string     `json:"last_error,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID       string `json:"id"`
+	AgentID  string `json:"agent_id"`
+	Name     string `json:"name"`
+	Schedule string `json:"schedule"`
+	Prompt   string `json:"prompt"`
+	// CheckCommand is an optional shell command run in the agent container
+	// before the prompt. Empty output ends the run without calling Claude.
+	CheckCommand string     `json:"check_command,omitempty"`
+	ContextMode  string     `json:"context_mode"`
+	Status       string     `json:"status"`
+	NextRunAt    *time.Time `json:"next_run_at,omitempty"`
+	LastRunAt    *time.Time `json:"last_run_at,omitempty"`
+	LastStatus   string     `json:"last_status,omitempty"`
+	LastError    string     `json:"last_error,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 func scanTask(scanner interface {
@@ -78,8 +81,8 @@ func scanTask(scanner interface {
 	t := &ScheduledTask{}
 	var lastStatus, lastError *string
 	var nextRunAt, lastRunAt, createdAt *string
-	err := scanner.Scan(&t.ID, &t.AgentID, &t.Name, &t.Schedule, &t.Prompt, &t.ContextMode, &t.Status,
-		&nextRunAt, &lastRunAt, &lastStatus, &lastError, &createdAt)
+	err := scanner.Scan(&t.ID, &t.AgentID, &t.Name, &t.Schedule, &t.Prompt, &t.CheckCommand,
+		&t.ContextMode, &t.Status, &nextRunAt, &lastRunAt, &lastStatus, &lastError, &createdAt)
 	if err != nil {
 		return nil, err
 	}
@@ -111,17 +114,19 @@ func timeToUTC(t *time.Time) *string {
 
 func (s *Store) SaveTask(t *ScheduledTask) error {
 	_, err := s.db.Exec(`
-		INSERT INTO scheduled_tasks (id, agent_id, name, schedule, prompt, context_mode, status, next_run_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO scheduled_tasks (id, agent_id, name, schedule, prompt, check_command, context_mode, status, next_run_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			agent_id = excluded.agent_id,
 			name = excluded.name,
 			schedule = excluded.schedule,
 			prompt = excluded.prompt,
+			check_command = excluded.check_command,
 			context_mode = excluded.context_mode,
 			status = excluded.status,
 			next_run_at = excluded.next_run_at`,
-		t.ID, t.AgentID, t.Name, t.Schedule, t.Prompt, t.ContextMode, t.Status, timeToUTC(t.NextRunAt))
+		t.ID, t.AgentID, t.Name, t.Schedule, t.Prompt, t.CheckCommand, t.ContextMode, t.Status,
+		timeToUTC(t.NextRunAt))
 	if err != nil {
 		return fmt.Errorf("save task: %w", err)
 	}
@@ -130,7 +135,7 @@ func (s *Store) SaveTask(t *ScheduledTask) error {
 
 func (s *Store) GetTask(id string) (*ScheduledTask, error) {
 	row := s.db.QueryRow(`
-		SELECT id, agent_id, name, schedule, prompt, context_mode, status,
+		SELECT id, agent_id, name, schedule, prompt, check_command, context_mode, status,
 		       next_run_at, last_run_at, last_status, last_error, created_at
 		FROM scheduled_tasks WHERE id = ?`, id)
 	t, err := scanTask(row)
@@ -145,7 +150,7 @@ func (s *Store) GetTask(id string) (*ScheduledTask, error) {
 
 func (s *Store) ListTasks() ([]ScheduledTask, error) {
 	rows, err := s.db.Query(`
-		SELECT id, agent_id, name, schedule, prompt, context_mode, status,
+		SELECT id, agent_id, name, schedule, prompt, check_command, context_mode, status,
 		       next_run_at, last_run_at, last_status, last_error, created_at
 		FROM scheduled_tasks ORDER BY created_at`)
 	if err != nil {
@@ -166,7 +171,7 @@ func (s *Store) ListTasks() ([]ScheduledTask, error) {
 
 func (s *Store) ListTasksForAgent(agentID string) ([]ScheduledTask, error) {
 	rows, err := s.db.Query(`
-		SELECT id, agent_id, name, schedule, prompt, context_mode, status,
+		SELECT id, agent_id, name, schedule, prompt, check_command, context_mode, status,
 		       next_run_at, last_run_at, last_status, last_error, created_at
 		FROM scheduled_tasks WHERE agent_id = ? ORDER BY created_at`, agentID)
 	if err != nil {
@@ -190,7 +195,7 @@ func (s *Store) GetDueTasks(now time.Time) ([]ScheduledTask, error) {
 	// the DB may contain mixed timestamp formats (pre-fix vs RFC3339) that
 	// break SQLite's lexicographic string comparison.
 	rows, err := s.db.Query(`
-		SELECT id, agent_id, name, schedule, prompt, context_mode, status,
+		SELECT id, agent_id, name, schedule, prompt, check_command, context_mode, status,
 		       next_run_at, last_run_at, last_status, last_error, created_at
 		FROM scheduled_tasks
 		WHERE status = 'active' AND next_run_at IS NOT NULL`)

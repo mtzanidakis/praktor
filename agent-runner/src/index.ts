@@ -1,6 +1,7 @@
 import { query, startup, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, type McpServerConfig, type WarmQuery } from "@anthropic-ai/claude-agent-sdk";
 import { NatsBridge } from "./nats-bridge.js";
 import { applyExtensions } from "./extensions.js";
+import { evaluateTaskCheck } from "./task-check.js";
 import { readFileSync, readdirSync, mkdirSync, writeFileSync, rmSync, symlinkSync, existsSync, lstatSync, readlinkSync, unlinkSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
@@ -94,6 +95,16 @@ function rewarm(): void {
 const MAX_PARALLEL_TASKS = parseInt(process.env.MAX_PARALLEL_TASKS || "3", 10);
 let activeTaskCount = 0;
 const activeQueries = new Map<string, AsyncIterator<unknown>>();
+// Running task check commands, so /stop kills them too.
+const activeChecks = new Set<AbortController>();
+// A check command is shell execution: agents whose allowed_tools exclude Bash
+// must not get one even if a check_command reaches them (defense in depth; the
+// gateway refuses to store one in the first place).
+const CHECKS_ALLOWED = (() => {
+  const tools = parseAllowedTools(ALLOWED_TOOLS_ENV);
+  return !tools || tools.includes("Bash");
+})();
+const TASK_CHECK_STATE_DIR = "/workspace/agent/.state/task-checks";
 const pendingTasks: Array<Record<string, unknown>> = [];
 
 // Swarm collaborative chat buffer
@@ -567,6 +578,8 @@ export function decideTaskFinalResponse(
 async function executeTask(data: Record<string, unknown>): Promise<void> {
   const text = data.text as string;
   const msgId = data.msg_id as string | undefined;
+  const taskId = data.task_id as string | undefined;
+  const checkCommand = (data.check_command as string | undefined) || "";
   const bgKey = msgId ?? `__task-${++taskKeyCounter}`;
   console.log(`[task] executing parallel task: ${text.substring(0, 100)}...`);
 
@@ -579,7 +592,33 @@ async function executeTask(data: Record<string, unknown>): Promise<void> {
   let hasFileSent = false;
 
   try {
-    const opts = buildQueryOptions(text);
+    let prompt = text;
+    if (checkCommand && !CHECKS_ALLOWED) {
+      console.warn(`[task] ignoring check_command: Bash is not in this agent's allowed_tools`);
+    } else if (checkCommand) {
+      const controller = new AbortController();
+      activeChecks.add(controller);
+      let gate;
+      try {
+        gate = await evaluateTaskCheck({
+          command: checkCommand,
+          prompt: text,
+          taskId,
+          stateDir: TASK_CHECK_STATE_DIR,
+          signal: controller.signal,
+        });
+      } finally {
+        activeChecks.delete(controller);
+      }
+      if (gate.action === "publish") {
+        if (!aborted) await bridge.publishResult(gate.content, msgId);
+        console.log(`[task] check: ${gate.content ? "delivered output" : "nothing to do"}`);
+        return;
+      }
+      prompt = gate.prompt;
+    }
+
+    const opts = buildQueryOptions(prompt);
     const result = query(opts);
 
     const iter = result[Symbol.asyncIterator]();
@@ -914,6 +953,11 @@ async function handleControl(
         currentQueryIter.return?.(undefined);
         currentQueryIter = null;
       }
+      // Abort running task check commands
+      for (const controller of activeChecks) {
+        controller.abort();
+      }
+      activeChecks.clear();
       // Abort all parallel task queries
       for (const [id, iter] of activeQueries) {
         iter.return?.(undefined);

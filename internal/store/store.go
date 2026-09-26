@@ -147,6 +147,7 @@ func (s *Store) migrate() error {
 		`ALTER TABLE swarm_runs ADD COLUMN lead_agent TEXT DEFAULT ''`,
 		`ALTER TABLE agents ADD COLUMN extensions TEXT DEFAULT '{}'`,
 		`ALTER TABLE agents ADD COLUMN extension_status TEXT DEFAULT '{}'`,
+		`ALTER TABLE scheduled_tasks ADD COLUMN check_command TEXT NOT NULL DEFAULT ''`,
 	} {
 		_, _ = s.db.Exec(stmt)
 	}

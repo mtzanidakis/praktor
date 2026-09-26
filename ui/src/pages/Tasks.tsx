@@ -9,6 +9,7 @@ interface Task {
   agent_id?: string;
   agent_name?: string;
   prompt?: string;
+  check_command?: string;
   enabled: boolean;
   status: string;
   last_run?: string;
@@ -20,6 +21,7 @@ interface TaskForm {
   schedule: string;
   agent_id: string;
   prompt: string;
+  check_command: string;
   enabled: boolean;
 }
 
@@ -28,7 +30,7 @@ interface Agent {
   name: string;
 }
 
-const emptyForm: TaskForm = { name: '', schedule: '', agent_id: '', prompt: '', enabled: true };
+const emptyForm: TaskForm = { name: '', schedule: '', agent_id: '', prompt: '', check_command: '', enabled: true };
 
 const card: React.CSSProperties = {
   background: 'var(--bg-card)',
@@ -179,6 +181,7 @@ function Tasks() {
       schedule: parseScheduleForEdit(task.schedule),
       agent_id: task.agent_id ?? '',
       prompt: task.prompt ?? '',
+      check_command: task.check_command ?? '',
       enabled: task.enabled,
     });
     setEditing(task.id);
@@ -293,6 +296,17 @@ function Tasks() {
               value={form.prompt}
               onChange={(e) => setForm({ ...form, prompt: e.target.value })}
               placeholder="What should the agent do?"
+            />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 15, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>
+              Check command (optional)
+            </label>
+            <input
+              style={inputStyle}
+              value={form.check_command}
+              onChange={(e) => setForm({ ...form, check_command: e.target.value })}
+              placeholder="Shell command run first; no output = task ends silently"
             />
           </div>
           <button type="submit" style={btnPrimary}>
