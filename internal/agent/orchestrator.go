@@ -510,9 +510,10 @@ func CheckCommandAllowed(allowedTools []string) bool {
 }
 
 func (o *Orchestrator) mayRunCheckCommand(agentID string) bool {
+	// Fail closed: an agent missing from the registry gets no shell commands.
 	def, ok := o.registry.GetDefinition(agentID)
 	if !ok {
-		return true
+		return false
 	}
 	return CheckCommandAllowed(def.AllowedTools)
 }
@@ -528,8 +529,12 @@ func (o *Orchestrator) ipcCreateTask(msg *nats.Msg, agentID string, payload json
 		o.respondIPC(msg, map[string]any{"error": "invalid payload"})
 		return
 	}
-	if req.Name == "" || req.Schedule == "" || req.Prompt == "" {
-		o.respondIPC(msg, map[string]any{"error": "name, schedule, and prompt are required"})
+	if req.Name == "" || req.Schedule == "" {
+		o.respondIPC(msg, map[string]any{"error": "name and schedule are required"})
+		return
+	}
+	if !(&store.ScheduledTask{Prompt: req.Prompt, CheckCommand: req.CheckCommand}).HasWork() {
+		o.respondIPC(msg, map[string]any{"error": "prompt or check_command is required"})
 		return
 	}
 	if req.CheckCommand != "" && !o.mayRunCheckCommand(agentID) {
@@ -572,20 +577,22 @@ func (o *Orchestrator) ipcListTasks(msg *nats.Msg, agentID string) {
 	}
 
 	type taskEntry struct {
-		ID       string `json:"id"`
-		Name     string `json:"name"`
-		Schedule string `json:"schedule"`
-		Prompt   string `json:"prompt"`
-		Status   string `json:"status"`
+		ID           string `json:"id"`
+		Name         string `json:"name"`
+		Schedule     string `json:"schedule"`
+		Prompt       string `json:"prompt"`
+		CheckCommand string `json:"check_command,omitempty"`
+		Status       string `json:"status"`
 	}
 	out := make([]taskEntry, 0, len(tasks))
 	for _, t := range tasks {
 		out = append(out, taskEntry{
-			ID:       t.ID,
-			Name:     t.Name,
-			Schedule: t.Schedule,
-			Prompt:   t.Prompt,
-			Status:   t.Status,
+			ID:           t.ID,
+			Name:         t.Name,
+			Schedule:     t.Schedule,
+			Prompt:       t.Prompt,
+			CheckCommand: t.CheckCommand,
+			Status:       t.Status,
 		})
 	}
 	o.respondIPC(msg, map[string]any{"ok": true, "tasks": out})
@@ -624,6 +631,10 @@ func (o *Orchestrator) ipcUpdateTask(msg *nats.Msg, payload json.RawMessage) {
 			return
 		}
 		t.CheckCommand = *req.CheckCommand
+	}
+	if !t.HasWork() {
+		o.respondIPC(msg, map[string]any{"error": "prompt or check_command is required"})
+		return
 	}
 	if req.Schedule != "" {
 		normalized, err := schedule.NormalizeSchedule(req.Schedule)

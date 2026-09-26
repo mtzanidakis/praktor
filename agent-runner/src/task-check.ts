@@ -7,6 +7,9 @@
 // A failing command stays silent, except that CHECK_FAILURE_ALERT consecutive
 // failures produce one warning so a broken check can't go unnoticed forever.
 // Failure counts are kept per task id.
+// When the agent may not run shell commands (no Bash in allowed_tools) the
+// check is ignored: the prompt runs as a plain task, or, if it is empty, the
+// task ends silently.
 
 import { execFile } from "child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
@@ -50,6 +53,9 @@ export interface TaskCheckOptions {
   prompt: string;
   taskId?: string;
   stateDir: string;
+  // False when this agent may not run shell commands; the gateway rejects
+  // such tasks too, this is defense in depth.
+  allowed?: boolean;
   signal?: AbortSignal;
   run?: CheckRunner;
 }
@@ -62,6 +68,10 @@ function failureFile(stateDir: string, taskId: string | undefined): string {
 
 export async function evaluateTaskCheck(opts: TaskCheckOptions): Promise<TaskCheckOutcome> {
   const { command, prompt, taskId, stateDir, signal } = opts;
+  if (opts.allowed === false) {
+    console.warn(`[task] ignoring check_command: Bash is not in this agent's allowed_tools`);
+    return prompt.trim() ? { action: "query", prompt } : { action: "publish", content: "" };
+  }
   const run = opts.run ?? runShell;
   const file = failureFile(stateDir, taskId);
   const res = await run(command, signal);

@@ -269,8 +269,12 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	if body.AgentID == "" || body.Name == "" || body.Schedule == "" || body.Prompt == "" {
-		jsonError(w, "agent_id, name, schedule, and prompt are required", http.StatusBadRequest)
+	if body.AgentID == "" || body.Name == "" || body.Schedule == "" {
+		jsonError(w, "agent_id, name, and schedule are required", http.StatusBadRequest)
+		return
+	}
+	if !(&store.ScheduledTask{Prompt: body.Prompt, CheckCommand: body.CheckCommand}).HasWork() {
+		jsonError(w, "prompt or check_command is required", http.StatusBadRequest)
 		return
 	}
 
@@ -349,6 +353,10 @@ func (s *Server) updateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.CheckCommand != nil {
 		existing.CheckCommand = *body.CheckCommand
+	}
+	if !existing.HasWork() {
+		jsonError(w, "prompt or check_command is required", http.StatusBadRequest)
+		return
 	}
 	if body.AgentID != nil {
 		existing.AgentID = *body.AgentID

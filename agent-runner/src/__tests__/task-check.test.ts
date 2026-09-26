@@ -76,4 +76,24 @@ describe("evaluateTaskCheck", () => {
     await evaluate({ prompt: "", signal: controller.signal, run });
     expect(seen).toBe(controller.signal);
   });
+
+  describe("when the agent may not run shell commands", () => {
+    const neverRun: CheckRunner = async () => {
+      throw new Error("check must not run");
+    };
+
+    it("runs the prompt without the check", async () => {
+      expect(await evaluate({ allowed: false, run: neverRun })).toEqual({
+        action: "query",
+        prompt: "body",
+      });
+    });
+
+    it("ends silently when the prompt is empty", async () => {
+      expect(await evaluate({ allowed: false, prompt: " ", run: neverRun })).toEqual({
+        action: "publish",
+        content: "",
+      });
+    });
+  });
 });

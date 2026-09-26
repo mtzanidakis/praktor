@@ -71,7 +71,9 @@ server.tool(
       };
     }
     const lines = resp.tasks.map(
-      (t) => `- ${t.id} [${t.status}] "${t.name}" schedule=${t.schedule}`
+      (t) =>
+        `- ${t.id} [${t.status}] "${t.name}" schedule=${t.schedule}` +
+        (t.check_command ? ` check_command=${JSON.stringify(t.check_command)}` : "")
     );
     return { content: [{ type: "text" as const, text: lines.join("\n") }] };
   }

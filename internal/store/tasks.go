@@ -75,6 +75,13 @@ type ScheduledTask struct {
 	CreatedAt    time.Time  `json:"created_at"`
 }
 
+// HasWork reports whether the task has something to run: a prompt, a check
+// command, or both. A task with only a check command delivers the check's
+// output verbatim.
+func (t *ScheduledTask) HasWork() bool {
+	return strings.TrimSpace(t.Prompt) != "" || strings.TrimSpace(t.CheckCommand) != ""
+}
+
 func scanTask(scanner interface {
 	Scan(dest ...any) error
 }) (*ScheduledTask, error) {

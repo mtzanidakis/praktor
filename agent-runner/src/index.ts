@@ -593,9 +593,7 @@ async function executeTask(data: Record<string, unknown>): Promise<void> {
 
   try {
     let prompt = text;
-    if (checkCommand && !CHECKS_ALLOWED) {
-      console.warn(`[task] ignoring check_command: Bash is not in this agent's allowed_tools`);
-    } else if (checkCommand) {
+    if (checkCommand) {
       const controller = new AbortController();
       activeChecks.add(controller);
       let gate;
@@ -605,6 +603,7 @@ async function executeTask(data: Record<string, unknown>): Promise<void> {
           prompt: text,
           taskId,
           stateDir: TASK_CHECK_STATE_DIR,
+          allowed: CHECKS_ALLOWED,
           signal: controller.signal,
         });
       } finally {
