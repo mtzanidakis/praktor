@@ -1,11 +1,18 @@
 package agent
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/mtzanidakis/praktor/internal/store"
+)
 
 type QueuedMessage struct {
 	AgentID string
 	Text    string
 	Meta    map[string]string
+	// DeferredLog is the history entry for a gated scheduled task. It is
+	// saved only when the run produces a reply.
+	DeferredLog *store.Message
 }
 
 type AgentQueue struct {
