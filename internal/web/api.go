@@ -257,19 +257,24 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		AgentID     string `json:"agent_id"`
-		Name        string `json:"name"`
-		Schedule    string `json:"schedule"`
-		Prompt      string `json:"prompt"`
-		ContextMode string `json:"context_mode"`
-		Enabled     *bool  `json:"enabled"`
+		AgentID      string `json:"agent_id"`
+		Name         string `json:"name"`
+		Schedule     string `json:"schedule"`
+		Prompt       string `json:"prompt"`
+		CheckCommand string `json:"check_command"`
+		ContextMode  string `json:"context_mode"`
+		Enabled      *bool  `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	if body.AgentID == "" || body.Name == "" || body.Schedule == "" || body.Prompt == "" {
-		jsonError(w, "agent_id, name, schedule, and prompt are required", http.StatusBadRequest)
+	if body.AgentID == "" || body.Name == "" || body.Schedule == "" {
+		jsonError(w, "agent_id, name, and schedule are required", http.StatusBadRequest)
+		return
+	}
+	if !(&store.ScheduledTask{Prompt: body.Prompt, CheckCommand: body.CheckCommand}).HasWork() {
+		jsonError(w, "prompt or check_command is required", http.StatusBadRequest)
 		return
 	}
 
@@ -286,13 +291,14 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t := store.ScheduledTask{
-		ID:          uuid.New().String(),
-		AgentID:     body.AgentID,
-		Name:        body.Name,
-		Schedule:    normalized,
-		Prompt:      body.Prompt,
-		ContextMode: body.ContextMode,
-		Status:      status,
+		ID:           uuid.New().String(),
+		AgentID:      body.AgentID,
+		Name:         body.Name,
+		Schedule:     normalized,
+		Prompt:       body.Prompt,
+		CheckCommand: body.CheckCommand,
+		ContextMode:  body.ContextMode,
+		Status:       status,
 	}
 	if t.ContextMode == "" {
 		t.ContextMode = "isolated"
@@ -324,13 +330,14 @@ func (s *Server) updateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Name        *string `json:"name"`
-		Schedule    *string `json:"schedule"`
-		Prompt      *string `json:"prompt"`
-		AgentID     *string `json:"agent_id"`
-		ContextMode *string `json:"context_mode"`
-		Enabled     *bool   `json:"enabled"`
-		Status      *string `json:"status"`
+		Name         *string `json:"name"`
+		Schedule     *string `json:"schedule"`
+		Prompt       *string `json:"prompt"`
+		CheckCommand *string `json:"check_command"`
+		AgentID      *string `json:"agent_id"`
+		ContextMode  *string `json:"context_mode"`
+		Enabled      *bool   `json:"enabled"`
+		Status       *string `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, "invalid request body", http.StatusBadRequest)
@@ -343,6 +350,13 @@ func (s *Server) updateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Prompt != nil {
 		existing.Prompt = *body.Prompt
+	}
+	if body.CheckCommand != nil {
+		existing.CheckCommand = *body.CheckCommand
+	}
+	if !existing.HasWork() {
+		jsonError(w, "prompt or check_command is required", http.StatusBadRequest)
+		return
 	}
 	if body.AgentID != nil {
 		existing.AgentID = *body.AgentID
@@ -613,6 +627,7 @@ func taskToAPI(t store.ScheduledTask, agentNames map[string]string) map[string]a
 		"schedule_display": schedule.FormatSchedule(t.Schedule),
 		"agent_id":         t.AgentID,
 		"prompt":           t.Prompt,
+		"check_command":    t.CheckCommand,
 		"enabled":          t.Status == "active",
 		"status":           t.Status,
 	}

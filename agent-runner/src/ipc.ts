@@ -15,6 +15,7 @@ export interface IPCResponse {
     name: string;
     schedule: string;
     prompt: string;
+    check_command?: string;
     status: string;
   }>;
 }

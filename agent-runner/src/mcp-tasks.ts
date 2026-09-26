@@ -31,14 +31,20 @@ Supported formats:
 
 IMPORTANT: For relative delays ("in 30 seconds", "in 5 minutes") ALWAYS use the +Ns/+Nm/+Nh format. Use cron only for absolute times and recurring schedules.`
       ),
+    check_command: z
+      .string()
+      .optional()
+      .describe(
+        "Optional shell command run in this container before the prompt, to make frequent polling cheap: if it prints nothing the task ends silently (no tokens, no message); if it prints something and `prompt` is empty, that output is delivered as the message; otherwise the prompt runs with the output appended inside <check_output>. Only available to agents that may use Bash."
+      ),
     prompt: z
       .string()
       .describe(
         "Instruction sent to the agent when the task fires. The agent's text reply is delivered to the user as a Telegram message automatically — no send tool needed. Write as a directive, e.g. 'Reply with: Hello!' Do NOT write 'send a message to the user' — just say what to reply with."
       ),
   },
-  async ({ name, schedule, prompt }) => {
-    const resp = await sendIPC("create_task", { name, schedule, prompt });
+  async ({ name, schedule, prompt, check_command }) => {
+    const resp = await sendIPC("create_task", { name, schedule, prompt, check_command });
     if (resp.error) {
       return { content: [{ type: "text" as const, text: `Error: ${resp.error}` }] };
     }
@@ -65,7 +71,9 @@ server.tool(
       };
     }
     const lines = resp.tasks.map(
-      (t) => `- ${t.id} [${t.status}] "${t.name}" schedule=${t.schedule}`
+      (t) =>
+        `- ${t.id} [${t.status}] "${t.name}" schedule=${t.schedule}` +
+        (t.check_command ? ` check_command=${JSON.stringify(t.check_command)}` : "")
     );
     return { content: [{ type: "text" as const, text: lines.join("\n") }] };
   }

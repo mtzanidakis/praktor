@@ -21,7 +21,7 @@ Personal AI agent assistant. A single Go binary that receives messages from Tele
 - **Persistent memory** — Per-agent SQLite memory database with hybrid search (FTS5 keyword + vector semantic similarity via all-MiniLM-L6-v2) for storing and recalling facts across sessions
 - **Agent identity** — Each agent has an `AGENT.md` for personality and expertise, editable from Mission Control or by agents themselves
 - **User profile** — Agents know who you are via `USER.md`, editable from Mission Control or by agents themselves
-- **Scheduled tasks** — Cron, interval, or one-shot jobs that run agents and deliver results via Telegram. Multiple tasks execute in parallel (up to 3 concurrent) with independent sessions
+- **Scheduled tasks** — Cron, interval, or one-shot jobs that run agents and deliver results via Telegram. Multiple tasks execute in parallel (up to 3 concurrent) with independent sessions. Give a task a `check_command` to gate it on a shell check: the agent (and your Telegram) only hear from it when the command prints something.
 - **Secure vault** — AES-256-GCM encrypted secrets injected as env vars or files at container start, never exposed to the LLM
 - **Web & browser access** — Agents can search the web and automate browsers via [agent-browser](https://github.com/vercel-labs/agent-browser)
 - **Voice messages** — Send voice messages in any language; they're transcribed via OpenAI Whisper and delivered as text. Optional TTS replies voice messages back using OpenAI TTS

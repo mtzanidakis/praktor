@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"maps"
 	"math/rand/v2"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -500,18 +501,44 @@ func (o *Orchestrator) respondIPC(msg *nats.Msg, data any) {
 	}
 }
 
+// CheckCommandAllowed reports whether an agent with these allowed_tools may use
+// a task check command. A check command is shell execution, so an agent whose
+// list excludes Bash must not be able to create one — otherwise scheduled tasks
+// would be a way around the restriction. An empty list means unrestricted.
+func CheckCommandAllowed(allowedTools []string) bool {
+	return len(allowedTools) == 0 || slices.Contains(allowedTools, "Bash")
+}
+
+func (o *Orchestrator) mayRunCheckCommand(agentID string) bool {
+	// Fail closed: an agent missing from the registry gets no shell commands.
+	def, ok := o.registry.GetDefinition(agentID)
+	if !ok {
+		return false
+	}
+	return CheckCommandAllowed(def.AllowedTools)
+}
+
 func (o *Orchestrator) ipcCreateTask(msg *nats.Msg, agentID string, payload json.RawMessage) {
 	var req struct {
-		Name     string `json:"name"`
-		Schedule string `json:"schedule"`
-		Prompt   string `json:"prompt"`
+		Name         string `json:"name"`
+		Schedule     string `json:"schedule"`
+		Prompt       string `json:"prompt"`
+		CheckCommand string `json:"check_command"`
 	}
 	if err := json.Unmarshal(payload, &req); err != nil {
 		o.respondIPC(msg, map[string]any{"error": "invalid payload"})
 		return
 	}
-	if req.Name == "" || req.Schedule == "" || req.Prompt == "" {
-		o.respondIPC(msg, map[string]any{"error": "name, schedule, and prompt are required"})
+	if req.Name == "" || req.Schedule == "" {
+		o.respondIPC(msg, map[string]any{"error": "name and schedule are required"})
+		return
+	}
+	if !(&store.ScheduledTask{Prompt: req.Prompt, CheckCommand: req.CheckCommand}).HasWork() {
+		o.respondIPC(msg, map[string]any{"error": "prompt or check_command is required"})
+		return
+	}
+	if req.CheckCommand != "" && !o.mayRunCheckCommand(agentID) {
+		o.respondIPC(msg, map[string]any{"error": "check_command requires Bash in this agent's allowed_tools"})
 		return
 	}
 
@@ -522,14 +549,15 @@ func (o *Orchestrator) ipcCreateTask(msg *nats.Msg, agentID string, payload json
 	}
 
 	t := &store.ScheduledTask{
-		ID:          uuid.New().String(),
-		AgentID:     agentID,
-		Name:        req.Name,
-		Schedule:    normalized,
-		Prompt:      req.Prompt,
-		ContextMode: "isolated",
-		Status:      "active",
-		NextRunAt:   schedule.CalculateNextRun(normalized),
+		ID:           uuid.New().String(),
+		AgentID:      agentID,
+		Name:         req.Name,
+		Schedule:     normalized,
+		Prompt:       req.Prompt,
+		CheckCommand: req.CheckCommand,
+		ContextMode:  "isolated",
+		Status:       "active",
+		NextRunAt:    schedule.CalculateNextRun(normalized),
 	}
 
 	if err := o.store.SaveTask(t); err != nil {
@@ -549,20 +577,22 @@ func (o *Orchestrator) ipcListTasks(msg *nats.Msg, agentID string) {
 	}
 
 	type taskEntry struct {
-		ID       string `json:"id"`
-		Name     string `json:"name"`
-		Schedule string `json:"schedule"`
-		Prompt   string `json:"prompt"`
-		Status   string `json:"status"`
+		ID           string `json:"id"`
+		Name         string `json:"name"`
+		Schedule     string `json:"schedule"`
+		Prompt       string `json:"prompt"`
+		CheckCommand string `json:"check_command,omitempty"`
+		Status       string `json:"status"`
 	}
 	out := make([]taskEntry, 0, len(tasks))
 	for _, t := range tasks {
 		out = append(out, taskEntry{
-			ID:       t.ID,
-			Name:     t.Name,
-			Schedule: t.Schedule,
-			Prompt:   t.Prompt,
-			Status:   t.Status,
+			ID:           t.ID,
+			Name:         t.Name,
+			Schedule:     t.Schedule,
+			Prompt:       t.Prompt,
+			CheckCommand: t.CheckCommand,
+			Status:       t.Status,
 		})
 	}
 	o.respondIPC(msg, map[string]any{"ok": true, "tasks": out})
@@ -570,10 +600,11 @@ func (o *Orchestrator) ipcListTasks(msg *nats.Msg, agentID string) {
 
 func (o *Orchestrator) ipcUpdateTask(msg *nats.Msg, payload json.RawMessage) {
 	var req struct {
-		ID       string `json:"id"`
-		Name     string `json:"name"`
-		Schedule string `json:"schedule"`
-		Prompt   string `json:"prompt"`
+		ID           string  `json:"id"`
+		Name         string  `json:"name"`
+		Schedule     string  `json:"schedule"`
+		Prompt       string  `json:"prompt"`
+		CheckCommand *string `json:"check_command"`
 	}
 	if err := json.Unmarshal(payload, &req); err != nil || req.ID == "" {
 		o.respondIPC(msg, map[string]any{"error": "id is required"})
@@ -591,6 +622,19 @@ func (o *Orchestrator) ipcUpdateTask(msg *nats.Msg, payload json.RawMessage) {
 	}
 	if req.Prompt != "" {
 		t.Prompt = req.Prompt
+	}
+	if req.CheckCommand != nil {
+		if *req.CheckCommand != "" && !o.mayRunCheckCommand(t.AgentID) {
+			o.respondIPC(msg, map[string]any{
+				"error": "check_command requires Bash in this agent's allowed_tools",
+			})
+			return
+		}
+		t.CheckCommand = *req.CheckCommand
+	}
+	if !t.HasWork() {
+		o.respondIPC(msg, map[string]any{"error": "prompt or check_command is required"})
+		return
 	}
 	if req.Schedule != "" {
 		normalized, err := schedule.NormalizeSchedule(req.Schedule)
