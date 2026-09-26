@@ -721,8 +721,9 @@ async function executeTask(data: Record<string, unknown>): Promise<void> {
 }
 
 async function handleMessage(data: Record<string, unknown>): Promise<void> {
-  const text = data.text as string;
-  if (!text) return;
+  const text = (data.text as string | undefined) ?? "";
+  // A check-only scheduled task has no prompt; its check_command is the work.
+  if (!text && !data.check_command) return;
 
   const sender = data.sender as string | undefined;
   const msgId = data.msg_id as string | undefined;
