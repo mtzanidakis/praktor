@@ -3,6 +3,7 @@ package main
 import (
 	"archive/tar"
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -293,15 +294,21 @@ func TestPrefixEntriesLongUSTARPath(t *testing.T) {
 	if err := sw.WriteHeader(&tar.Header{Name: long, Mode: 0644, Size: 5, Format: tar.FormatUSTAR}); err != nil {
 		t.Fatalf("source header: %v", err)
 	}
-	_, _ = sw.Write([]byte("hello"))
-	_ = sw.Close()
+	if _, err := sw.Write([]byte("hello")); err != nil {
+		t.Fatalf("source data: %v", err)
+	}
+	if err := sw.Close(); err != nil {
+		t.Fatalf("source close: %v", err)
+	}
 
 	var out bytes.Buffer
 	tw := tar.NewWriter(&out)
 	if err := prefixEntries(tar.NewReader(&src), tw, "praktor-nix-general"); err != nil {
 		t.Fatalf("prefixEntries: %v", err)
 	}
-	_ = tw.Close()
+	if err := tw.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
 
 	tr := tar.NewReader(&out)
 	hdr, err := tr.Next()
@@ -311,8 +318,85 @@ func TestPrefixEntriesLongUSTARPath(t *testing.T) {
 	if want := "praktor-nix-general/" + long; hdr.Name != want {
 		t.Errorf("name = %q, want %q", hdr.Name, want)
 	}
-	data, _ := io.ReadAll(tr)
+	// The prefixed name no longer fits USTAR, so the writer must fall back to PAX.
+	if hdr.Format != tar.FormatPAX {
+		t.Errorf("format = %v, want %v", hdr.Format, tar.FormatPAX)
+	}
+	data, err := io.ReadAll(tr)
+	if err != nil {
+		t.Fatalf("read content: %v", err)
+	}
 	if string(data) != "hello" {
 		t.Errorf("content = %q, want %q", data, "hello")
+	}
+}
+
+func TestWriteArchive(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "backup.tar.zst")
+
+	err := writeArchive(out, func(tw *tar.Writer) error {
+		if err := tw.WriteHeader(&tar.Header{Name: "praktor-data/db.sqlite", Mode: 0644, Size: 2}); err != nil {
+			return err
+		}
+		_, err := tw.Write([]byte("db"))
+		return err
+	})
+	if err != nil {
+		t.Fatalf("writeArchive: %v", err)
+	}
+
+	volumes, err := scanArchiveVolumes(out)
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if len(volumes) != 1 || volumes[0] != "praktor-data" {
+		t.Errorf("volumes = %v, want [praktor-data]", volumes)
+	}
+	assertOnlyFiles(t, dir, "backup.tar.zst")
+}
+
+func TestWriteArchive_FailureKeepsExisting(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "backup.tar.zst")
+	if err := os.WriteFile(out, []byte("previous backup"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	fillErr := errors.New("volume failed")
+	err := writeArchive(out, func(tw *tar.Writer) error {
+		if err := tw.WriteHeader(&tar.Header{Name: "praktor-data/partial", Mode: 0644, Size: 4}); err != nil {
+			return err
+		}
+		_, _ = tw.Write([]byte("part"))
+		return fillErr
+	})
+	if !errors.Is(err, fillErr) {
+		t.Fatalf("err = %v, want %v", err, fillErr)
+	}
+
+	// The older archive is untouched and no temp file is left behind.
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "previous backup" {
+		t.Errorf("existing archive was overwritten: %q", data)
+	}
+	assertOnlyFiles(t, dir, "backup.tar.zst")
+}
+
+func assertOnlyFiles(t *testing.T, dir string, want ...string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, e := range entries {
+		got = append(got, e.Name())
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("files in %s = %v, want %v", dir, got, want)
 	}
 }

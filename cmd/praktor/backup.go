@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -73,27 +74,56 @@ func runBackup(args []string) error {
 		return fmt.Errorf("pull helper image: %w", err)
 	}
 
-	// Create output file
-	f, err := os.Create(outputPath)
+	err = writeArchive(outputPath, func(tw *tar.Writer) error {
+		for _, vol := range volumes {
+			slog.Info("backing up volume", "name", vol)
+			if err := backupVolume(ctx, docker, tw, vol, helperImage); err != nil {
+				return fmt.Errorf("backup volume %s: %w", vol, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	info, _ := os.Stat(outputPath)
+	size := int64(0)
+	if info != nil {
+		size = info.Size()
+	}
+
+	fmt.Printf("Backup complete: %d volumes, %s\n", len(volumes), formatSize(size))
+	return nil
+}
+
+// writeArchive writes a zstd-compressed tar to outputPath, filled in by
+// fill. It writes to a temp file next to outputPath and renames it into
+// place only once the archive is complete, so a failed backup never leaves
+// a truncated archive behind or clobbers an older one.
+func writeArchive(outputPath string, fill func(tw *tar.Writer) error) (err error) {
+	f, err := os.CreateTemp(filepath.Dir(outputPath), filepath.Base(outputPath)+".*.tmp")
 	if err != nil {
 		return fmt.Errorf("create output file: %w", err)
 	}
-	defer func() { _ = f.Close() }()
+	tmpPath := f.Name()
+	defer func() {
+		if err != nil {
+			_ = f.Close()
+			_ = os.Remove(tmpPath)
+		}
+	}()
 
 	zw, err := zstd.NewWriter(f)
 	if err != nil {
 		return fmt.Errorf("create zstd writer: %w", err)
 	}
-	defer func() { _ = zw.Close() }()
-
 	tw := tar.NewWriter(zw)
-	defer func() { _ = tw.Close() }()
 
-	for _, vol := range volumes {
-		slog.Info("backing up volume", "name", vol)
-		if err := backupVolume(ctx, docker, tw, vol, helperImage); err != nil {
-			return fmt.Errorf("backup volume %s: %w", vol, err)
-		}
+	if err := fill(tw); err != nil {
+		_ = tw.Close()
+		_ = zw.Close()
+		return err
 	}
 
 	// Close everything explicitly to catch write errors
@@ -106,14 +136,9 @@ func runBackup(args []string) error {
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("close file: %w", err)
 	}
-
-	info, _ := os.Stat(outputPath)
-	size := int64(0)
-	if info != nil {
-		size = info.Size()
+	if err := os.Rename(tmpPath, outputPath); err != nil {
+		return fmt.Errorf("rename output file: %w", err)
 	}
-
-	fmt.Printf("Backup complete: %d volumes, %s\n", len(volumes), formatSize(size))
 	return nil
 }
 
