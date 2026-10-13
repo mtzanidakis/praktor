@@ -59,6 +59,7 @@ agents:
 
 router:
   default_agent: general
+  model: "claude-haiku-5-5"          # Model for smart-routing queries ("" = default agent's own model)
 
 web:
   enabled: true

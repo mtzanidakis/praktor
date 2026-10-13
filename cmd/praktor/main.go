@@ -308,10 +308,10 @@ func reloadConfig(
 		slog.Info("defaults updated")
 	}
 
-	// Update router default agent and vector threshold
+	// Update router default agent and routing model
 	if diff.RouterChanged {
-		rtr.SetDefaultAgent(diff.NewDefaultAgent)
-		slog.Info("router updated", "default_agent", diff.NewDefaultAgent)
+		rtr.UpdateConfig(diff.NewRouter)
+		slog.Info("router updated", "default_agent", diff.NewRouter.DefaultAgent, "model", diff.NewRouter.Model)
 	}
 
 	// Update scheduler

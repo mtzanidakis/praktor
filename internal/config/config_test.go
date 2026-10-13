@@ -46,6 +46,74 @@ func TestDefaults(t *testing.T) {
 	if cfg.Speech.APIKey != "" {
 		t.Errorf("expected empty speech api_key by default, got %s", cfg.Speech.APIKey)
 	}
+	if cfg.Router.Model != "claude-haiku-5-5" {
+		t.Errorf("expected default router model claude-haiku-5-5, got %s", cfg.Router.Model)
+	}
+}
+
+func TestLoadRouterModelDefault(t *testing.T) {
+	t.Setenv("PRAKTOR_CONFIG", "/nonexistent/config.yaml")
+	t.Setenv("PRAKTOR_ROUTER_MODEL", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Router.Model != DefaultRouterModel {
+		t.Errorf("expected router model %s, got %s", DefaultRouterModel, cfg.Router.Model)
+	}
+}
+
+func TestLoadRouterModelEnvOverride(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	yaml := `
+router:
+  model: "claude-sonnet-5-5"
+`
+	if err := os.WriteFile(cfgPath, []byte(yaml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PRAKTOR_CONFIG", cfgPath)
+	t.Setenv("PRAKTOR_ROUTER_MODEL", "claude-opus-5-5")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Router.Model != "claude-opus-5-5" {
+		t.Errorf("expected env override claude-opus-5-5, got %s", cfg.Router.Model)
+	}
+}
+
+func TestLoadRouterModelFromYAML(t *testing.T) {
+	t.Setenv("PRAKTOR_ROUTER_MODEL", "")
+	dir := t.TempDir()
+
+	for _, tc := range []struct {
+		name, yaml, want string
+	}{
+		{"custom", "router:\n  model: \"claude-sonnet-5-5\"\n", "claude-sonnet-5-5"},
+		// An explicit empty value means "use the default agent's own model".
+		{"empty", "router:\n  model: \"\"\n", ""},
+		{"unset", "router: {}\n", DefaultRouterModel},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfgPath := filepath.Join(dir, tc.name+".yaml")
+			if err := os.WriteFile(cfgPath, []byte(tc.yaml), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PRAKTOR_CONFIG", cfgPath)
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if cfg.Router.Model != tc.want {
+				t.Errorf("expected router model %q, got %q", tc.want, cfg.Router.Model)
+			}
+		})
+	}
 }
 
 func TestLoadWithEnvOverrides(t *testing.T) {

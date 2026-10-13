@@ -11,8 +11,8 @@ type ConfigDiff struct {
 	DefaultsChanged bool
 	NewDefaults     DefaultsConfig
 
-	RouterChanged   bool
-	NewDefaultAgent string
+	RouterChanged bool
+	NewRouter     RouterConfig
 
 	SchedulerChanged bool
 	NewPollInterval  SchedulerConfig
@@ -65,9 +65,9 @@ func Diff(old, new *Config) ConfigDiff {
 	}
 
 	// Router
-	if old.Router.DefaultAgent != new.Router.DefaultAgent {
+	if old.Router != new.Router {
 		d.RouterChanged = true
-		d.NewDefaultAgent = new.Router.DefaultAgent
+		d.NewRouter = new.Router
 	}
 
 	// Scheduler

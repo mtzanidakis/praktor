@@ -298,7 +298,14 @@ func (o *Orchestrator) executeMessage(ctx context.Context, agentID string, msg Q
 	return o.client.Flush()
 }
 
-func (o *Orchestrator) RouteQuery(ctx context.Context, agentID string, message string) (string, error) {
+// routeRequest is the payload sent on agent.{agentID}.route. Model is omitted
+// when empty so the agent falls back to its own model.
+type routeRequest struct {
+	Text  string `json:"text"`
+	Model string `json:"model,omitempty"`
+}
+
+func (o *Orchestrator) RouteQuery(ctx context.Context, agentID, message, model string) (string, error) {
 	// Ensure the agent container is running
 	info := o.containers.GetRunning(agentID)
 	if info == nil {
@@ -361,7 +368,7 @@ func (o *Orchestrator) RouteQuery(ctx context.Context, agentID string, message s
 
 	// Send routing query via NATS request-reply
 	topic := natsbus.TopicAgentRoute(agentID)
-	data, _ := json.Marshal(map[string]string{"text": message})
+	data, _ := json.Marshal(routeRequest{Text: message, Model: model})
 	resp, err := o.client.Request(topic, data, 30*time.Second)
 	if err != nil {
 		return "", fmt.Errorf("route query: %w", err)

@@ -118,8 +118,29 @@ func TestDiff_RouterChanged(t *testing.T) {
 	if !d.RouterChanged {
 		t.Error("expected router changed")
 	}
-	if d.NewDefaultAgent != "bot2" {
-		t.Errorf("expected bot2, got %s", d.NewDefaultAgent)
+	if d.NewRouter.DefaultAgent != "bot2" {
+		t.Errorf("expected bot2, got %s", d.NewRouter.DefaultAgent)
+	}
+}
+
+func TestDiff_RouterModelChanged(t *testing.T) {
+	old := &Config{Router: RouterConfig{DefaultAgent: "bot", Model: "claude-haiku-5-5"}}
+	new := &Config{Router: RouterConfig{DefaultAgent: "bot", Model: "claude-sonnet-5-5"}}
+	d := Diff(old, new)
+	if !d.RouterChanged {
+		t.Fatal("expected router changed")
+	}
+	if !d.HasChanges() {
+		t.Error("expected router model change to count as a reloadable change")
+	}
+	if d.NewRouter.Model != "claude-sonnet-5-5" {
+		t.Errorf("expected new router model claude-sonnet-5-5, got %s", d.NewRouter.Model)
+	}
+	if d.NewRouter.DefaultAgent != "bot" {
+		t.Errorf("expected default agent bot carried over, got %s", d.NewRouter.DefaultAgent)
+	}
+	if len(d.NonReloadable) != 0 {
+		t.Errorf("expected router model to be reloadable, got non-reloadable %v", d.NonReloadable)
 	}
 }
 

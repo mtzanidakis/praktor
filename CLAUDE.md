@@ -20,7 +20,7 @@ Telegram ←→ Go Gateway ←→ Router ←→ Embedded NATS ←→ Agent Conta
 
 The gateway binary runs all core services: Telegram bot, message router, NATS message bus, agent orchestrator, scheduler, swarm coordinator, and HTTP/WebSocket server. Agent containers are spawned on demand via the Docker API and communicate with the host over NATS pub/sub.
 
-**Named Agents:** Multiple agents are defined in YAML config, each with its own description, model, image, env vars, secrets, allowed tools, and workspace. Messages are routed to agents via a 3-tier chain: `@agent_name` prefix → smart routing via default agent container → default agent fallback.
+**Named Agents:** Multiple agents are defined in YAML config, each with its own description, model, image, env vars, secrets, allowed tools, and workspace. Messages are routed to agents via a 3-tier chain: `@agent_name` prefix → smart routing via default agent container → default agent fallback. Smart routing sends the gateway's `router.model` (default `claude-haiku-5-5`) in the `agent.{agentID}.route` payload; `handleRoute` in `agent-runner/src/index.ts` uses it for the one-shot classification query and falls back to the agent's own model when it is absent or empty.
 
 ## Project Structure
 
@@ -108,6 +108,7 @@ Loaded from YAML (default: `config/praktor.yaml`, override with `PRAKTOR_CONFIG`
 | `PRAKTOR_WEB_PASSWORD` | `web.auth` | Password for web UI (session-based + Basic Auth fallback) |
 | `PRAKTOR_WEB_PORT` | `web.port` | Web UI port (default: 8080) |
 | `PRAKTOR_AGENT_MODEL` | `defaults.model` | Override default Claude model |
+| `PRAKTOR_ROUTER_MODEL` | `router.model` | Model for smart-routing queries (default: `claude-haiku-5-5`; `""` in YAML = default agent's own model) |
 | `PRAKTOR_VAULT_PASSPHRASE` | `vault.passphrase` | Encryption passphrase for secrets vault |
 | `AGENTMAIL_API_KEY` | `agentmail.api_key` | AgentMail API key for email capabilities (optional) |
 | `OPENAI_API_KEY` | `speech.api_key` | OpenAI API key for voice transcription (STT) and synthesis (TTS) |
@@ -130,7 +131,7 @@ Agents are defined in the `agents` map in YAML config. Each agent has:
 - `nix_enabled` - Enable nix package manager in agent container (starts nix-daemon)
 - `agentmail_inbox_id` - AgentMail inbox ID for email capabilities (optional, requires `agentmail.api_key`)
 
-The `router.default_agent` must reference an existing agent.
+The `router.default_agent` must reference an existing agent. `router.model` sets the model used for smart-routing classification (default `claude-haiku-5-5`); an explicit empty string makes the default agent classify with its own model.
 
 ### Agent Extensions
 
@@ -160,7 +161,9 @@ Claude Code's claude.ai account sync (`syncClaudeAiSkills` / `syncClaudeAiPlugin
 
 The gateway watches the config file for changes (mtime polled every 3s, SHA-256 hash verified on mtime change). When a change is detected, it automatically reloads without restarting the gateway process. SIGHUP also triggers a reload.
 
-**Reloadable:** Agent definitions (all fields), defaults (model, image, max_running, idle_timeout), router.default_agent, scheduler poll_interval, telegram main_chat_id.
+**Reloadable:** Agent definitions (all fields), defaults (model, image, max_running, idle_timeout), router.default_agent, router.model, scheduler poll_interval, telegram main_chat_id.
+
+A `router.model` change applies on the next routed message without restarting the default agent's container, because the model travels in each route request.
 
 **Not reloadable** (warning logged): telegram.token, web.port, nats.data_dir, vault.passphrase, agentmail.api_key, speech.api_key.
 
@@ -187,7 +190,7 @@ Key implementation: `internal/web/server.go` (session store, handlers, middlewar
 agent.{agentID}.input           # Host → Container: user messages (includes msg_id for correlation)
 agent.{agentID}.output          # Container → Host: agent responses (text, result) with msg_id
 agent.{agentID}.control         # Host → Container: shutdown, ping
-agent.{agentID}.route           # Host → Container: routing classification queries
+agent.{agentID}.route           # Host → Container: routing classification queries ({text, model})
 host.ipc.{agentID}              # Container → Host: IPC commands
 swarm.{swarmID}.chat.{groupID}  # Inter-agent collaborative chat within a swarm group
 swarm.{swarmID}.*               # Other inter-agent swarm communication
@@ -337,7 +340,7 @@ All agent containers include [agent-browser](https://github.com/vercel-labs/agen
 
 - Telegram I/O - Message Claude from your phone
 - Named agents - Multiple agents with distinct roles, models, and configurations
-- Smart routing - `@agent_name` prefix or AI-powered routing via default agent
+- Smart routing - `@agent_name` prefix or AI-powered routing via default agent, classified with `router.model` (default Haiku 5.5)
 - Isolated agent context - Each agent has its own CLAUDE.md memory, isolated filesystem, and runs in its own container sandbox
 - Persistent memory - SQLite-backed per-agent memory (`/workspace/agent/memory.db`) with MCP tools (memory_store, memory_recall, memory_list, memory_delete, memory_forget). Uses hybrid search combining FTS5 keyword matching with vector semantic similarity (all-MiniLM-L6-v2, 384 dims, quantized int8 via `@huggingface/transformers`) using Reciprocal Rank Fusion. Embeddings are computed async on store and backfilled on first MCP server start for existing memories. Existing memory keys are listed in the system prompt so agents know what's stored. The key list is the only part of the system prompt placed after `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` (`assembleSystemPrompt` in `agent-runner/src/index.ts`), so the static prefix stays cacheable across sessions.
 - Scheduled tasks - Cron/interval/relative delay (+30s, +5m, +2h)/one-shot jobs that run Claude and deliver results. Tasks execute in parallel (up to `MAX_PARALLEL_TASKS`, default 3) with fresh sessions, while regular user messages remain sequential with conversation continuity. An optional `check_command` on a task runs in the agent container before the prompt (`agent-runner/src/task-check.ts`): empty stdout ends the run silently with no Claude call, stdout with an empty prompt is delivered verbatim, and stdout plus a prompt runs Claude with the output appended in `<check_output>`. Failing checks stay silent except for one warning on the 4th consecutive failure (counted per task id) — so frequent polling (new mail, CalDAV reminders, health checks) costs no tokens when nothing happened. A task needs a prompt, a `check_command`, or both. The check is shell execution, so the gateway refuses a `check_command` for agents whose `allowed_tools` exclude Bash (and for agents missing from the registry), and the runner ignores one that reaches it anyway, ending the run silently if the prompt is empty. A gated run is logged to the message history only when it replies (`incomingMessage` in `internal/agent/orchestrator.go`; a check-only task is logged as `[check] <command>`), so silent polling leaves no trace.
