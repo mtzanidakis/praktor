@@ -402,6 +402,9 @@ func (o *Orchestrator) handleAgentOutput(msg *nats.Msg) {
 		MsgID          string `json:"msg_id"`
 		TerminalReason string `json:"terminal_reason,omitempty"`
 		FileSent       bool   `json:"file_sent,omitempty"` // run replied with a file only
+		// Background work the run started is still going: follow-up results
+		// for the same msg_id may arrive after this one.
+		Background bool `json:"background,omitempty"`
 	}
 	if err := json.Unmarshal(msg.Data, &output); err != nil {
 		return
@@ -417,14 +420,16 @@ func (o *Orchestrator) handleAgentOutput(msg *nats.Msg) {
 			slog.Warn("agent query terminated abnormally", "agent", agentID, "terminal_reason", output.TerminalReason)
 		}
 
+		// Save to DB if there's content, a file was sent, or an abnormal termination
+		save := content != "" || output.FileSent || abnormal
+
 		// Get metadata: try msg_id first (parallel-safe), fall back to per-agent lastMeta
-		meta, deferred := o.popPending(output.MsgID)
+		meta, deferred := o.takePending(output.MsgID, output.Background, save)
 		if meta == nil {
 			meta = o.getLastMeta(agentID)
 		}
 
-		// Save to DB if there's content, a file was sent, or an abnormal termination
-		if content != "" || output.FileSent || abnormal {
+		if save {
 			if deferred != nil {
 				_ = o.store.SaveMessage(deferred)
 				o.publishMessageEvent(deferred)
@@ -482,17 +487,32 @@ func (o *Orchestrator) trackPending(agentID, msgID string, msg QueuedMessage) {
 // popPending removes an in-flight message's tracking and returns its meta and
 // its deferred history entry, if any.
 func (o *Orchestrator) popPending(msgID string) (map[string]string, *store.Message) {
+	return o.takePending(msgID, false, true)
+}
+
+// takePending returns an in-flight message's meta and deferred history entry
+// for one of its results. With more set (background work may still produce
+// follow-up results for the message) the tracking stays in place, so those
+// results reach the same chat. The deferred entry is handed out once: when
+// the result is saved (claim), or with the message's last result.
+func (o *Orchestrator) takePending(msgID string, more, claim bool) (map[string]string, *store.Message) {
 	if msgID == "" {
 		return nil, nil
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	meta, ok := o.pendingMeta[msgID]
-	deferred := o.pendingLog[msgID]
-	if ok {
+	if !ok {
+		return nil, nil
+	}
+	var deferred *store.Message
+	if claim || !more {
+		deferred = o.pendingLog[msgID]
+		delete(o.pendingLog, msgID)
+	}
+	if !more {
 		delete(o.pendingMeta, msgID)
 		delete(o.pendingMsgID, msgID)
-		delete(o.pendingLog, msgID)
 	}
 	return meta, deferred
 }

@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   backgroundTasksByQuery,
-  incBg,
-  decBg,
+  setBg,
   totalBgTasks,
 } from "../index.js";
 
@@ -15,69 +14,36 @@ describe("background task counters", () => {
     expect(totalBgTasks()).toBe(0);
   });
 
-  it("counts a single task_started", () => {
-    incBg("q1");
-    expect(totalBgTasks()).toBe(1);
-  });
-
-  it("sums counters across concurrent queries", () => {
-    incBg("__regular");
-    incBg("task-1");
-    incBg("task-1");
-    incBg("task-2");
-    expect(totalBgTasks()).toBe(4);
-  });
-
-  it("decBg on one key does not affect other keys", () => {
-    incBg("__regular");
-    incBg("task-1");
-    incBg("task-1");
-    decBg("task-1");
-    expect(backgroundTasksByQuery.get("__regular")).toBe(1);
-    expect(backgroundTasksByQuery.get("task-1")).toBe(1);
+  it("records the live count of a run", () => {
+    setBg("q1", 2);
     expect(totalBgTasks()).toBe(2);
   });
 
-  it("decBg removes the entry when count reaches zero", () => {
-    incBg("q1");
-    decBg("q1");
+  it("replaces the count on each change (level signal)", () => {
+    setBg("q1", 3);
+    setBg("q1", 1);
+    expect(totalBgTasks()).toBe(1);
+  });
+
+  it("sums counts across concurrent runs", () => {
+    setBg("__regular", 1);
+    setBg("task-1", 2);
+    setBg("task-2", 1);
+    expect(totalBgTasks()).toBe(4);
+  });
+
+  it("a zero count removes the entry", () => {
+    setBg("q1", 2);
+    setBg("q1", 0);
     expect(backgroundTasksByQuery.has("q1")).toBe(false);
     expect(totalBgTasks()).toBe(0);
   });
 
-  it("decBg clamps at zero and never goes negative", () => {
-    decBg("nonexistent");
-    decBg("nonexistent");
-    expect(backgroundTasksByQuery.has("nonexistent")).toBe(false);
-    expect(totalBgTasks()).toBe(0);
-  });
-
-  it("deleting a key in finally drops leaked counters regardless of value", () => {
-    // Simulates the SDK emitting task_started without a matching
-    // task_notification — the entry would otherwise leak forever.
-    incBg("q1");
-    incBg("q1");
-    incBg("q1");
-    expect(backgroundTasksByQuery.get("q1")).toBe(3);
-
-    // finally block: drop everything scoped to this query
-    backgroundTasksByQuery.delete("q1");
-
-    expect(totalBgTasks()).toBe(0);
-  });
-
-  it("a leaked query cannot keep another query's counter alive", () => {
-    // Query A leaks a task_started. Query B completes cleanly.
-    incBg("queryA");
-    incBg("queryB");
-    decBg("queryB");
-
-    // Query B's finally runs
-    backgroundTasksByQuery.delete("queryB");
-    expect(totalBgTasks()).toBe(1); // only A's leak remains
-
-    // Query A's finally runs
-    backgroundTasksByQuery.delete("queryA");
-    expect(totalBgTasks()).toBe(0);
+  it("one run's change does not affect another run", () => {
+    setBg("__regular", 1);
+    setBg("task-1", 2);
+    setBg("task-1", 0);
+    expect(backgroundTasksByQuery.get("__regular")).toBe(1);
+    expect(totalBgTasks()).toBe(1);
   });
 });
