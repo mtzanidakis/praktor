@@ -889,6 +889,19 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
   }
 }
 
+/**
+ * Model for a routing query: the gateway sends `router.model` in the route
+ * payload (hot-reloadable, no container restart). An absent or empty value —
+ * older gateways, or `router.model: ""` — falls back to the agent's own model.
+ */
+export function resolveRouteModel(
+  data: Record<string, unknown>,
+  fallback: string | undefined
+): string | undefined {
+  const model = typeof data.model === "string" ? data.model.trim() : "";
+  return model || fallback;
+}
+
 async function handleRoute(
   data: Record<string, unknown>,
   msg: import("nats").Msg
@@ -907,7 +920,8 @@ async function handleRoute(
     return;
   }
 
-  console.log("[agent] routing query");
+  const model = resolveRouteModel(data, CLAUDE_MODEL);
+  console.log(`[agent] routing query (model: ${model ?? "default"})`);
 
   try {
     const systemPrompt = loadSystemPrompt(false);
@@ -924,7 +938,7 @@ async function handleRoute(
     const result = query({
       prompt: routingPrompt,
       options: {
-        model: CLAUDE_MODEL,
+        model,
         cwd,
         pathToClaudeCodeExecutable: "/usr/local/bin/claude",
         systemPrompt,

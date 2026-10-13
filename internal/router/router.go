@@ -5,25 +5,32 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 
 	"github.com/mtzanidakis/praktor/internal/config"
 	"github.com/mtzanidakis/praktor/internal/registry"
 )
 
 type Orchestrator interface {
-	RouteQuery(ctx context.Context, agentID string, message string) (string, error)
+	// RouteQuery asks agentID's container to classify message. model selects
+	// the Claude model for the classification; empty means the agent's own.
+	RouteQuery(ctx context.Context, agentID, message, model string) (string, error)
 }
 
 type Router struct {
-	registry     *registry.Registry
+	registry *registry.Registry
+	orch     Orchestrator
+
+	mu           sync.RWMutex // guards defaultAgent and model (hot reload)
 	defaultAgent string
-	orch         Orchestrator
+	model        string
 }
 
 func New(reg *registry.Registry, cfg config.RouterConfig) *Router {
 	return &Router{
 		registry:     reg,
 		defaultAgent: cfg.DefaultAgent,
+		model:        cfg.Model,
 	}
 }
 
@@ -51,11 +58,15 @@ func (r *Router) Route(ctx context.Context, message string) (agentID string, cle
 		// Unknown agent name in prefix — fall through to smart routing
 	}
 
+	r.mu.RLock()
+	defaultAgent, model := r.defaultAgent, r.model
+	r.mu.RUnlock()
+
 	// 2. Try smart routing via default agent
-	if r.orch != nil && r.defaultAgent != "" {
+	if r.orch != nil && defaultAgent != "" {
 		descs := r.registry.AgentDescriptions()
 		if len(descs) > 1 {
-			routedAgent, routeErr := r.orch.RouteQuery(ctx, r.defaultAgent, buildRoutingPrompt(descs, message))
+			routedAgent, routeErr := r.orch.RouteQuery(ctx, defaultAgent, buildRoutingPrompt(descs, message), model)
 			if routeErr != nil {
 				slog.Debug("route query failed, using default agent", "error", routeErr)
 			} else {
@@ -70,19 +81,33 @@ func (r *Router) Route(ctx context.Context, message string) (agentID string, cle
 	}
 
 	// 3. Fall back to default agent
-	if r.defaultAgent == "" {
+	if defaultAgent == "" {
 		return "", message, fmt.Errorf("no default agent configured")
 	}
-	return r.defaultAgent, message, nil
+	return defaultAgent, message, nil
 }
 
 func (r *Router) DefaultAgent() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.defaultAgent
 }
 
-// SetDefaultAgent updates the default agent used for routing.
-func (r *Router) SetDefaultAgent(agent string) {
-	r.defaultAgent = agent
+// Model returns the model used for smart-routing queries.
+func (r *Router) Model() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.model
+}
+
+// UpdateConfig applies a reloaded router config (default agent and routing
+// model). The model is sent with every route query, so a change takes effect
+// on the next message without restarting the default agent's container.
+func (r *Router) UpdateConfig(cfg config.RouterConfig) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.defaultAgent = cfg.DefaultAgent
+	r.model = cfg.Model
 }
 
 func buildRoutingPrompt(descs map[string]string, message string) string {

@@ -101,7 +101,14 @@ type FileMount struct {
 
 type RouterConfig struct {
 	DefaultAgent string `yaml:"default_agent"`
+	// Model is the Claude model used for smart-routing classification queries.
+	// An empty string makes the default agent use its own model.
+	Model string `yaml:"model"`
 }
+
+// DefaultRouterModel is the model used for smart routing when router.model
+// is not set.
+const DefaultRouterModel = "claude-haiku-5-5"
 
 type NATSConfig struct {
 	DataDir string `yaml:"data_dir"`
@@ -135,6 +142,9 @@ func defaults() Config {
 				Tmpfs:            true,
 				ReadonlyRootfs:   false,
 			},
+		},
+		Router: RouterConfig{
+			Model: DefaultRouterModel,
 		},
 		NATS: NATSConfig{
 			DataDir: "data/nats",
@@ -234,6 +244,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("PRAKTOR_AGENT_MODEL"); v != "" {
 		cfg.Defaults.Model = v
+	}
+	if v := os.Getenv("PRAKTOR_ROUTER_MODEL"); v != "" {
+		cfg.Router.Model = v
 	}
 	if v := os.Getenv("PRAKTOR_VAULT_PASSPHRASE"); v != "" {
 		cfg.Vault.Passphrase = v

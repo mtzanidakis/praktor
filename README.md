@@ -84,6 +84,7 @@ agents:
 
 router:
   default_agent: general
+  model: "claude-haiku-5-5"   # Smart-routing classifier (default; "" = default agent's model)
 ```
 
 ### 2. Build and Run
@@ -108,7 +109,7 @@ Hello!                              → smart routing picks best agent
 @researcher find papers on RAG      → explicit routing to researcher
 ```
 
-Routing works in 3 tiers: `@agent_name` prefix → AI-powered classification via default agent → default agent fallback.
+Routing works in 3 tiers: `@agent_name` prefix → AI-powered classification via default agent → default agent fallback. The classification runs on `router.model` (default `claude-haiku-5-5`, override with `PRAKTOR_ROUTER_MODEL`), so it stays cheap and fast regardless of the default agent's own model.
 
 For a secure setup without exposed ports, see [Production Deployment](https://github.com/mtzanidakis/praktor/wiki/Production-Deployment).
 
