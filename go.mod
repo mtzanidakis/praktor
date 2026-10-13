@@ -8,7 +8,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/klauspost/compress v1.20.1
 	github.com/moby/go-archive v0.3.3
-	github.com/moby/moby/api v1.56.0
+	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.0
 	github.com/mymmrac/telego v1.12.1
 	github.com/nats-io/nats-server/v2 v2.15.0
