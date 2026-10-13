@@ -2,6 +2,7 @@ import { query, startup, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, type McpServerConfig, t
 import { NatsBridge } from "./nats-bridge.js";
 import { applyExtensions } from "./extensions.js";
 import { evaluateTaskCheck } from "./task-check.js";
+import { SessionRun, backgroundCeilingMs, type SessionRunHooks, type StartQuery, type UserTurn } from "./session-run.js";
 import { readFileSync, readdirSync, mkdirSync, writeFileSync, rmSync, symlinkSync, existsSync, lstatSync, readlinkSync, unlinkSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
@@ -42,19 +43,20 @@ const CLAUDE_SETTINGS = { syncClaudeAiSkills: false, syncClaudeAiPlugins: false 
 let bridge: NatsBridge;
 let isProcessing = false;
 let lastSessionId: string | undefined;
-let currentQueryIter: AsyncIterator<unknown> | null = null;
+// The Claude Code process of the conversational session. It outlives the
+// turn's result while background work runs (see session-run.ts), and new
+// messages are pushed into it meanwhile.
+let activeRun: SessionRun | null = null;
 let aborted = false;
-// Per-query background task counter. Incremented on SDK `task_started`,
-// decremented on `task_notification`. Scoped by query key so counts can
-// never leak across queries — the entry is deleted in the query's finally.
+// How long a run may outlive its last result waiting for background work.
+const BACKGROUND_CEILING_MS = backgroundCeilingMs(process.env.CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS);
+// Live background tasks per run, from the SDK's background_tasks_changed level
+// signal. Keyed by run so counts never leak across runs — the entry is deleted
+// when the run ends.
 export const backgroundTasksByQuery = new Map<string, number>();
 let taskKeyCounter = 0;
-export function incBg(key: string): void {
-  backgroundTasksByQuery.set(key, (backgroundTasksByQuery.get(key) ?? 0) + 1);
-}
-export function decBg(key: string): void {
-  const n = backgroundTasksByQuery.get(key) ?? 0;
-  if (n > 1) backgroundTasksByQuery.set(key, n - 1);
+export function setBg(key: string, n: number): void {
+  if (n > 0) backgroundTasksByQuery.set(key, n);
   else backgroundTasksByQuery.delete(key);
 }
 export function totalBgTasks(): number {
@@ -71,30 +73,39 @@ const pendingMessages: Array<Record<string, unknown>> = [];
 // scheduled tasks (multiple concurrent subprocesses).
 let warmHandle: WarmQuery | null = null;
 let warmForSessionId: string | undefined;
+let warming = false;
 function rewarm(): void {
-  if (SWARM_CHAT_TOPIC) return;
+  // Never warm while a run is alive: the spare would resume a session the
+  // live process is still writing to.
+  if (SWARM_CHAT_TOPIC || activeRun) return;
   const target = lastSessionId;
-  if (warmHandle && warmForSessionId === target) return;
+  if ((warmHandle || warming) && warmForSessionId === target) return;
   const prev = warmHandle;
   warmHandle = null;
   if (prev) { try { prev.close(); } catch { /* ignore */ } }
   warmForSessionId = target;
+  warming = true;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   startup({ options: buildRunOptions(target) as any })
     .then((w) => {
-      // If session changed while we were warming, discard.
-      if (warmForSessionId !== target) { try { w.close(); } catch { /* ignore */ } return; }
+      // Discard if the session changed while warming, or a run started
+      // meanwhile (it resumes the session itself).
+      if (warmForSessionId !== target || activeRun || warmHandle) { try { w.close(); } catch { /* ignore */ } return; }
       warmHandle = w;
     })
     .catch((err) => {
       console.warn("[agent] pre-warm failed:", err instanceof Error ? err.message : err);
+    })
+    .finally(() => {
+      if (warmForSessionId === target) warming = false;
     });
 }
 
 // Parallel task execution
 const MAX_PARALLEL_TASKS = parseInt(process.env.MAX_PARALLEL_TASKS || "3", 10);
 let activeTaskCount = 0;
-const activeQueries = new Map<string, AsyncIterator<unknown>>();
+// Running scheduled-task runs, so /stop kills them (and their background work).
+const activeTaskRuns = new Set<SessionRun>();
 // Running task check commands, so /stop kills them too.
 const activeChecks = new Set<AbortController>();
 // A check command is shell execution: agents whose allowed_tools exclude Bash
@@ -306,6 +317,17 @@ function loadSystemPrompt(includeIdentity = true): string[] {
     "- Keep scheduled task replies short and direct — the user sees them as Telegram messages."
   );
 
+  // Background work: follow-up turns are delivered like any other reply
+  const ceilingMinutes = Math.round(BACKGROUND_CEILING_MS / 60000);
+  parts.push(
+    "BACKGROUND TASKS — Bash commands run with run_in_background and background subagents keep running after your reply.\n" +
+    "- When one finishes you get a new turn; your text reply in that turn is sent to the user as a new Telegram message, so report the outcome briefly.\n" +
+    "- The user can keep messaging you while background work runs.\n" +
+    (ceilingMinutes > 0
+      ? `- Background work still running ${ceilingMinutes} minutes after your last reply is stopped. Do not start long-lived servers or watchers in the background.`
+      : "- Do not start long-lived servers or watchers in the background.")
+  );
+
   // Telegram formatting: instruct agent to use Telegram-compatible Markdown
   parts.push(
     "TELEGRAM FORMATTING — Your messages are rendered in Telegram, which only supports MarkdownV1.\n" +
@@ -441,12 +463,13 @@ export function inferTerminalReason(errorMsg: string): string | undefined {
   return undefined;
 }
 
-// verbatimPrompts: the prompt is delivered as written — no `@path` expansion
-// or slash-command dispatch. Used for prompts assembled from text the user did
-// not type (inbound email, routing). Trade-off: the CLI also skips its
-// turn-start attachments (skill listings, nested CLAUDE.md) until the turn's
-// first tool call.
-function buildRunOptions(sessionId?: string, verbatimPrompts = false) {
+// Prompts assembled from text the user did not type (inbound email) are
+// delivered verbatim — no `@path` expansion or slash-command dispatch — per
+// message, via UserTurn.verbatim (the SDK's client_composed flag, which is
+// what the verbatimPrompts option sets on every message). Trade-off: the CLI
+// also skips its turn-start attachments (skill listings, nested CLAUDE.md)
+// until the turn's first tool call.
+function buildRunOptions(sessionId?: string) {
   const systemPrompt = loadSystemPrompt();
   const cwd = "/workspace/agent";
   const tools = parseAllowedTools(ALLOWED_TOOLS_ENV);
@@ -531,17 +554,12 @@ function buildRunOptions(sessionId?: string, verbatimPrompts = false) {
       maxTurns: MAX_TURNS,
       mcpServers,
       settings: CLAUDE_SETTINGS,
-      ...(verbatimPrompts ? { verbatimPrompts: true } : {}),
       permissionMode: "bypassPermissions" as const,
       allowDangerouslySkipPermissions: true,
       stderr: (data: string) => {
         console.error(`[claude-stderr] ${data.trimEnd()}`);
       },
   };
-}
-
-function buildQueryOptions(prompt: string, sessionId?: string, verbatimPrompts = false) {
-  return { prompt, options: buildRunOptions(sessionId, verbatimPrompts) };
 }
 
 // Execute a scheduled task in parallel (fresh session, no resume)
@@ -599,6 +617,32 @@ export class FileSendTracker {
   }
 }
 
+function logTools(prefix: string, event: unknown): void {
+  const e = event as { type?: string; parent_tool_use_id?: string | null; message?: { content?: unknown } };
+  if (e.type !== "assistant" || e.parent_tool_use_id || !Array.isArray(e.message?.content)) return;
+  for (const block of e.message.content as Array<{ type?: string; name?: string }>) {
+    if (block.type === "tool_use" || block.type === "server_tool_use") {
+      console.log(`${prefix} tool: ${block.name}`);
+    }
+  }
+}
+
+// backgroundTimeoutNotice is published when a run is killed with background
+// work still running after the ceiling, so the user knows the job is gone.
+async function publishBackgroundTimeout(prefix: string, msgId: string | undefined, background: number): Promise<void> {
+  const minutes = Math.round(BACKGROUND_CEILING_MS / 60000);
+  if (background === 0) {
+    console.warn(`${prefix} run still alive ${minutes} min after its last result, stopping it`);
+    return;
+  }
+  console.warn(`${prefix} ${background} background task(s) still running ${minutes} min after the last result, stopping them`);
+  await bridge.publishResult(
+    `${background} background task(s) were still running ${minutes} min after my last reply and were stopped.`,
+    msgId,
+    "background_timeout",
+  );
+}
+
 async function executeTask(data: Record<string, unknown>): Promise<void> {
   const text = data.text as string;
   const msgId = data.msg_id as string | undefined;
@@ -607,13 +651,10 @@ async function executeTask(data: Record<string, unknown>): Promise<void> {
   const bgKey = msgId ?? `__task-${++taskKeyCounter}`;
   console.log(`[task] executing parallel task: ${text.substring(0, 100)}...`);
 
-  // Hoisted to function scope so the outer catch can read terminalReason —
-  // the previous block-scoped declaration crashed the catch with a
-  // ReferenceError, swallowing the failure path silently.
-  let fullResponse = "";
-  let terminalReason: string | undefined;
-  let hasStreamedOutput = false;
   const fileSends = new FileSendTracker();
+  let fileSentReported = false;
+  let delivered = false;
+  let run: SessionRun | undefined;
 
   try {
     let prompt = text;
@@ -641,73 +682,81 @@ async function executeTask(data: Record<string, unknown>): Promise<void> {
       prompt = gate.prompt;
     }
 
-    const opts = buildQueryOptions(prompt);
-    const result = query(opts);
-
-    const iter = result[Symbol.asyncIterator]();
-    if (msgId) activeQueries.set(msgId, iter);
+    // Fresh session per task. Each turn's result (the task's reply, then any
+    // follow-up after a background job completes) is published as it arrives.
+    const hooks: SessionRunHooks = {
+      onEvent: (event) => {
+        fileSends.observe(event);
+        logTools("[task]", event);
+      },
+      onText: (blockText, id) => bridge.publishOutput(blockText, "text", id),
+      onBackgroundChange: (n) => setBg(bgKey, n),
+      onTurnEnd: async (outcome) => {
+        // A file counts toward the turn it was sent in.
+        const fileSent = fileSends.sent && !fileSentReported;
+        if (fileSent) fileSentReported = true;
+        const decision = decideTaskFinalResponse({
+          result: outcome.result,
+          hasStreamedOutput: outcome.streamed,
+          hasFileSent: fileSent,
+        });
+        if (decision.warn && !outcome.followUp) {
+          console.warn(`[task] completed with no output (msg_id=${msgId}, terminal=${outcome.terminalReason ?? "none"})`);
+        }
+        await bridge.publishResult(decision.content, msgId, outcome.terminalReason, fileSent, outcome.background);
+        delivered = true;
+        const label = outcome.followUp ? "follow-up turn completed" : "completed";
+        const extra = [
+          outcome.terminalReason && outcome.terminalReason !== "completed" ? `terminal_reason: ${outcome.terminalReason}` : "",
+          outcome.background ? "background work still running" : "",
+        ].filter(Boolean).join(", ");
+        console.log(`[task] ${label}${extra ? ` (${extra})` : ""}`);
+      },
+      onCeiling: (id, background) => publishBackgroundTimeout("[task]", id ?? msgId, background),
+    };
+    const taskRun = new SessionRun(
+      (input) => query({ prompt: input, options: buildRunOptions() }),
+      hooks,
+      BACKGROUND_CEILING_MS,
+    );
+    run = taskRun;
+    activeTaskRuns.add(taskRun);
+    taskRun.push({ text: prompt, msgId });
 
     try {
-      for await (const event of { [Symbol.asyncIterator]: () => iter }) {
-        fileSends.observe(event);
-        if (event.type === "system" && (event as Record<string, unknown>).subtype === "task_started") {
-          incBg(bgKey);
-        } else if (event.type === "system" && (event as Record<string, unknown>).subtype === "task_notification") {
-          decBg(bgKey);
-        } else if (event.type === "result" && event.subtype === "success") {
-          fullResponse = event.result;
-          terminalReason = (event as Record<string, unknown>).terminal_reason as string | undefined;
-        } else if (event.type === "result" && typeof event.subtype === "string" && event.subtype.startsWith("error")) {
-          // SDK uses subtypes like "error_max_turns", "error_blocking_limit"
-          terminalReason = (event as Record<string, unknown>).terminal_reason as string | undefined
-            || event.subtype.replace(/^error_?/, "") || event.subtype;
-          break;
-        } else if (event.type === "assistant") {
-          for (const block of event.message.content) {
-            if (block.type === "text") {
-              hasStreamedOutput = true;
-              await bridge.publishOutput(block.text, "text", msgId);
-            } else if (block.type === "tool_use" || block.type === "server_tool_use") {
-              console.log(`[task] tool: ${block.name}`);
-            }
-          }
-        }
-      }
+      await taskRun.run();
     } catch (streamErr) {
-      if (fullResponse || hasStreamedOutput || fileSends.sent) {
+      if (taskRun.killed) throw streamErr;
+      if (delivered || taskRun.currentStreamed || fileSends.sent) {
         console.warn(`[task] claude process exited with error after output, ignoring:`, streamErr);
       } else {
         throw streamErr;
       }
     }
 
-    if (!aborted) {
+    if (!delivered && !taskRun.killed) {
+      // The process ended without a result for the task's turn.
+      const fileSent = fileSends.sent && !fileSentReported;
       const decision = decideTaskFinalResponse({
-        result: fullResponse,
-        hasStreamedOutput,
-        hasFileSent: fileSends.sent,
+        result: "",
+        hasStreamedOutput: taskRun.currentStreamed,
+        hasFileSent: fileSent,
       });
       if (decision.warn) {
-        console.warn(`[task] completed with no output (msg_id=${msgId}, terminal=${terminalReason ?? "none"})`);
+        console.warn(`[task] completed with no output (msg_id=${msgId}, terminal=none)`);
       }
-      await bridge.publishResult(decision.content, msgId, terminalReason, fileSends.sent);
-    }
-    if (terminalReason && terminalReason !== "completed") {
-      console.log(`[task] completed (terminal_reason: ${terminalReason})`);
-    } else {
-      console.log(`[task] completed`);
+      await bridge.publishResult(decision.content, msgId, undefined, fileSent);
     }
   } catch (err) {
-    if (aborted) {
+    if (aborted || run?.killed) {
       console.log("[task] aborted");
       return;
     }
     const errorMsg = err instanceof Error ? err.message : String(err);
-    const reason = terminalReason || inferTerminalReason(errorMsg);
     console.error(`[task] error:`, err);
-    await bridge.publishResult(`Error: ${errorMsg}`, msgId, reason);
+    await bridge.publishResult(`Error: ${errorMsg}`, msgId, inferTerminalReason(errorMsg));
   } finally {
-    if (msgId) activeQueries.delete(msgId);
+    if (run) activeTaskRuns.delete(run);
     backgroundTasksByQuery.delete(bgKey);
     activeTaskCount--;
     // Dequeue next pending task
@@ -730,10 +779,8 @@ export function isRunnableMessage(data: Record<string, unknown>): boolean {
 
 async function handleMessage(data: Record<string, unknown>): Promise<void> {
   if (!isRunnableMessage(data)) return;
-  const text = (data.text as string | undefined) ?? "";
 
   const sender = data.sender as string | undefined;
-  const msgId = data.msg_id as string | undefined;
 
   // Scheduled tasks run in parallel with fresh sessions
   if (sender === "scheduler") {
@@ -747,8 +794,9 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
     return;
   }
 
-  // Regular messages: sequential with session continuity
-  if (isProcessing) {
+  // Regular messages: sequential with session continuity. A turn in progress,
+  // or a run that is only finishing up, queues the message.
+  if (isProcessing || (activeRun && !activeRun.acceptsInput)) {
     pendingMessages.push(data);
     console.log(`[agent] already processing, queued message (${pendingMessages.length} pending)`);
     return;
@@ -756,137 +804,145 @@ async function handleMessage(data: Record<string, unknown>): Promise<void> {
 
   isProcessing = true;
   aborted = false;
-  const bgKey = "__regular";
-  backgroundTasksByQuery.delete(bgKey);
-  console.log(`[agent] processing message for agent ${AGENT_ID}: ${text.substring(0, 100)}...`);
+  const turn = userTurn(data);
+  console.log(`[agent] processing message for agent ${AGENT_ID}: ${turn.text.substring(0, 100)}...`);
 
-  // Hoisted to function scope so the outer catch can read terminalReason —
-  // the previous block-scoped declaration crashed the catch with a
-  // ReferenceError, swallowing the failure path silently.
-  let fullResponse = "";
-  let terminalReason: string | undefined;
-  let hasStreamedOutput = false;
+  if (activeRun) {
+    // The previous turn's background work is still running in this
+    // session's process: hand the message to it instead of starting a second
+    // process on the same session.
+    console.log(`[agent] background work still running, sending message to the live session`);
+    activeRun.push(turn);
+    return;
+  }
 
-  try {
-    // Prepend swarm chat context if in collaborative mode
-    let augmentedText = text;
-    if (SWARM_CHAT_TOPIC && chatHistory.length > 0) {
-      const chatContext = chatHistory
-        .map((m) => `[${m.from}]: ${m.content}`)
-        .join("\n");
-      augmentedText = `## Collaborative Chat History\n\n${chatContext}\n\n---\n\n${text}`;
-      console.log(`[agent] prepended ${chatHistory.length} chat messages to prompt`);
-    }
+  startRun(turn);
+}
 
-    // Use the pre-warmed subprocess if available and fresh for the current
-    // session; otherwise spawn a new one. The warm path skips the CLI
-    // spawn + initialize handshake latency on the first token.
+const REGULAR_BG_KEY = "__regular";
+
+// userTurn builds the turn for a regular message.
+function userTurn(data: Record<string, unknown>): UserTurn {
+  let text = (data.text as string | undefined) ?? "";
+  // Prepend swarm chat context if in collaborative mode
+  if (SWARM_CHAT_TOPIC && chatHistory.length > 0) {
+    const chatContext = chatHistory
+      .map((m) => `[${m.from}]: ${m.content}`)
+      .join("\n");
+    text = `## Collaborative Chat History\n\n${chatContext}\n\n---\n\n${text}`;
+    console.log(`[agent] prepended ${chatHistory.length} chat messages to prompt`);
+  }
+  return {
+    text,
+    msgId: data.msg_id as string | undefined,
     // Inbound email carries text from arbitrary senders: deliver it verbatim.
-    // The warm handle was started without that option, so drop it (rewarm()
-    // in finally starts a fresh one for the next message).
-    const verbatim = sender === "agentmail";
-    if (verbatim && warmHandle) {
-      try { warmHandle.close(); } catch { /* ignore */ }
-      warmHandle = null;
-    }
+    verbatim: data.sender === "agentmail",
+  };
+}
 
-    let result;
+// startRun starts a Claude Code process for the conversational session and
+// sends it the turn. The process lives until no turn is pending and no
+// background work is running.
+function startRun(turn: UserTurn): void {
+  // Use the pre-warmed subprocess if available and fresh for the current
+  // session; otherwise spawn a new one. The warm path skips the CLI
+  // spawn + initialize handshake latency on the first token.
+  const start: StartQuery = (input) => {
     if (warmHandle && warmForSessionId === lastSessionId && !SWARM_CHAT_TOPIC) {
       console.log(`[agent] starting claude query (warm)`);
       const handle = warmHandle;
       warmHandle = null;
       try {
-        result = handle.query(augmentedText);
+        return handle.query(input);
       } catch (warmErr) {
         console.warn("[agent] warm query failed, falling back:", warmErr instanceof Error ? warmErr.message : warmErr);
         try { handle.close(); } catch { /* ignore */ }
       }
     }
-    if (!result) {
-      console.log(`[agent] starting claude query`);
-      const opts = buildQueryOptions(augmentedText, lastSessionId, verbatim);
-      result = query(opts);
-    }
+    console.log(`[agent] starting claude query`);
+    return query({ prompt: input, options: buildRunOptions(lastSessionId) });
+  };
 
-    // Process streaming result
-    const iter = result[Symbol.asyncIterator]();
-    currentQueryIter = iter;
-    try {
-      for await (const event of { [Symbol.asyncIterator]: () => iter }) {
-        console.log(`[agent] event: type=${event.type}${"subtype" in event ? ` subtype=${event.subtype}` : ""}`);
-        if (event.type === "system" && (event as Record<string, unknown>).subtype === "task_started") {
-          incBg(bgKey);
-        } else if (event.type === "system" && (event as Record<string, unknown>).subtype === "task_notification") {
-          decBg(bgKey);
-        } else if (event.type === "result" && event.subtype === "success") {
-          fullResponse = event.result;
-          lastSessionId = event.session_id;
-          terminalReason = (event as Record<string, unknown>).terminal_reason as string | undefined;
-        } else if (event.type === "result" && typeof event.subtype === "string" && event.subtype.startsWith("error")) {
-          // SDK uses subtypes like "error_max_turns", "error_blocking_limit"
-          terminalReason = (event as Record<string, unknown>).terminal_reason as string | undefined
-            || event.subtype.replace(/^error_?/, "") || event.subtype;
-          const errEvent = event as Record<string, unknown>;
-          if (errEvent.session_id) lastSessionId = errEvent.session_id as string;
-          break;
-        } else if (event.type === "assistant") {
-          for (const block of event.message.content) {
-            if (block.type === "text") {
-              hasStreamedOutput = true;
-              await bridge.publishOutput(block.text, "text", msgId);
-            } else if (block.type === "tool_use" || block.type === "server_tool_use") {
-              console.log(`[agent] tool: ${block.name}`);
-            }
-          }
-        }
-      }
-    } catch (streamErr) {
-      if (fullResponse || hasStreamedOutput) {
-        console.warn(`[agent] claude process exited with error after output, ignoring:`, streamErr);
-      } else {
-        throw streamErr;
-      }
-    }
-
-    // Send final result (skip if aborted — orchestrator already notified the user)
-    if (!aborted) {
-      if (!fullResponse && hasStreamedOutput) {
-        fullResponse = "[response was streamed]";
-      }
-      if (fullResponse || terminalReason) {
-        await bridge.publishResult(fullResponse, msgId, terminalReason);
+  const hooks: SessionRunHooks = {
+    onEvent: (event) => {
+      console.log(`[agent] event: type=${event.type}${"subtype" in event ? ` subtype=${event.subtype}` : ""}`);
+      logTools("[agent]", event);
+    },
+    onText: (text, msgId) => bridge.publishOutput(text, "text", msgId),
+    onBackgroundChange: (n) => setBg(REGULAR_BG_KEY, n),
+    onTurnEnd: async (outcome) => {
+      if (outcome.sessionId) lastSessionId = outcome.sessionId;
+      let content = outcome.result;
+      if (!content && outcome.streamed) content = "[response was streamed]";
+      if (content || outcome.terminalReason) {
+        await bridge.publishResult(content, outcome.msgId, outcome.terminalReason, false, outcome.background);
       } else {
         // Interactive path: keep silence (user might have just sent "thanks"),
         // but log so silent failures are visible in container logs.
-        console.warn(`[agent] completed with no output (msg_id=${msgId})`);
+        console.warn(`[agent] completed with no output (msg_id=${outcome.msgId})`);
       }
-    }
+      const extra = [
+        outcome.terminalReason && outcome.terminalReason !== "completed" ? `terminal_reason=${outcome.terminalReason}` : "",
+        outcome.background ? `background_tasks=${run.background}` : "",
+      ].filter(Boolean).join(", ");
+      console.log(`[agent] ${outcome.followUp ? "follow-up turn completed" : "completed processing"} for agent ${AGENT_ID} (session=${lastSessionId}${extra ? `, ${extra}` : ""})`);
 
-    console.log(`[agent] completed processing for agent ${AGENT_ID} (session=${lastSessionId}${terminalReason && terminalReason !== "completed" ? `, terminal_reason=${terminalReason}` : ""})`);
-  } catch (err) {
-    if (aborted) {
-      console.log("[agent] query aborted by user");
-      return;
-    }
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    const reason = terminalReason || inferTerminalReason(errorMsg);
-    console.error(`[agent] error processing message:`, err);
-    await bridge.publishResult(`Error: ${errorMsg}`, msgId, reason);
-  } finally {
-    currentQueryIter = null;
-    isProcessing = false;
-    backgroundTasksByQuery.delete(bgKey);
+      isProcessing = run.busy;
+      // While background work keeps the process alive, queued messages go to
+      // it. Otherwise the process is about to exit and the next message starts
+      // a fresh one (with a freshly built system prompt).
+      if (!run.busy && run.background > 0 && pendingMessages.length > 0) {
+        const next = pendingMessages.shift()!;
+        console.log(`[agent] dequeuing next message into the live session (${pendingMessages.length} remaining)`);
+        isProcessing = true;
+        run.push(userTurn(next));
+      }
+    },
+    onCeiling: (msgId, background) => publishBackgroundTimeout("[agent]", msgId, background),
+  };
 
-    // Pre-warm the subprocess for the next regular message.
-    rewarm();
+  const run = new SessionRun(start, hooks, BACKGROUND_CEILING_MS);
+  activeRun = run;
+  run.push(turn);
 
-    // Process next queued message if any
-    if (pendingMessages.length > 0) {
-      const next = pendingMessages.shift()!;
-      console.log(`[agent] dequeuing next message (${pendingMessages.length} remaining)`);
-      handleMessage(next);
-    }
-  }
+  run.run()
+    .catch(async (err) => {
+      if (run.killed || aborted) {
+        console.log("[agent] query aborted by user");
+        return;
+      }
+      const pending = run.pendingMsgIds;
+      if (pending.length === 0) {
+        console.warn(`[agent] claude process exited with error after output, ignoring:`, err);
+        return;
+      }
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[agent] error processing message:`, err);
+      for (const [i, msgId] of pending.entries()) {
+        if (i === 0 && run.currentStreamed) {
+          await bridge.publishResult("[response was streamed]", msgId);
+        } else {
+          await bridge.publishResult(`Error: ${errorMsg}`, msgId, inferTerminalReason(errorMsg));
+        }
+      }
+    })
+    .catch((err) => console.error("[agent] failed to report run error:", err))
+    .finally(() => {
+      if (activeRun !== run) return; // aborted; a newer run may be active
+      activeRun = null;
+      isProcessing = false;
+      backgroundTasksByQuery.delete(REGULAR_BG_KEY);
+
+      // Pre-warm the subprocess for the next regular message.
+      rewarm();
+
+      // Process next queued message if any
+      if (pendingMessages.length > 0) {
+        const next = pendingMessages.shift()!;
+        console.log(`[agent] dequeuing next message (${pendingMessages.length} remaining)`);
+        handleMessage(next);
+      }
+    });
 }
 
 async function handleRoute(
@@ -977,22 +1033,22 @@ async function handleControl(
     case "abort":
       console.log("[agent] aborting current run...");
       aborted = true;
-      // Abort conversational query
-      if (currentQueryIter) {
-        currentQueryIter.return?.(undefined);
-        currentQueryIter = null;
+      // Kill the conversational process, background work included.
+      if (activeRun) {
+        activeRun.kill();
+        activeRun = null;
       }
       // Abort running task check commands
       for (const controller of activeChecks) {
         controller.abort();
       }
       activeChecks.clear();
-      // Abort all parallel task queries
-      for (const [id, iter] of activeQueries) {
-        iter.return?.(undefined);
+      // Kill all parallel task runs. Each one's finally releases its slot
+      // (activeTaskCount) once its process is gone.
+      for (const run of activeTaskRuns) {
+        run.kill();
       }
-      activeQueries.clear();
-      activeTaskCount = 0;
+      activeTaskRuns.clear();
       backgroundTasksByQuery.clear();
       // Discard the pre-warmed subprocess; it will be recreated below.
       if (warmHandle) { try { warmHandle.close(); } catch { /* ignore */ } warmHandle = null; }
@@ -1016,6 +1072,15 @@ async function handleControl(
     case "clear_session":
       console.log("[agent] clearing session...");
       lastSessionId = undefined;
+      // A process kept alive only by background work belongs to the old
+      // session: its follow-up turns would land in the transcript being
+      // deleted. Stop it (a turn in progress is left to finish, as before).
+      if (activeRun && !activeRun.busy) {
+        console.log("[agent] stopping background work of the old session");
+        activeRun.kill();
+        activeRun = null;
+        backgroundTasksByQuery.delete(REGULAR_BG_KEY);
+      }
       // The warm handle was prepared for the old session; discard it.
       if (warmHandle) { try { warmHandle.close(); } catch { /* ignore */ } warmHandle = null; }
       for (const dir of [

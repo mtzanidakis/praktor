@@ -120,3 +120,66 @@ func TestGatedTaskLoggedOnlyWhenRunReplies(t *testing.T) {
 		t.Errorf("file-only run logged %+v / %+v", msgs[2], msgs[3])
 	}
 }
+
+func TestBackgroundFollowUpResults(t *testing.T) {
+	s, err := store.New(filepath.Join(t.TempDir(), "praktor.db"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	if err := s.SaveAgent(&store.Agent{ID: "iris", Name: "iris", Workspace: "iris"}); err != nil {
+		t.Fatalf("save agent: %v", err)
+	}
+
+	bus, err := natsbus.NewForTest(config.NATSConfig{DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("new bus: %v", err)
+	}
+	t.Cleanup(bus.Close)
+
+	agents := map[string]config.AgentDefinition{"iris": {Description: "test"}}
+	reg := registry.New(s, agents, config.DefaultsConfig{}, t.TempDir())
+	o := NewOrchestrator(bus, nil, s, reg, config.DefaultsConfig{}, nil)
+
+	var delivered []string
+	o.OnOutput(func(agentID, content string, meta map[string]string) {
+		delivered = append(delivered, meta["chat_id"]+":"+content)
+	})
+	result := func(msgID, content string, background bool) {
+		t.Helper()
+		out := map[string]any{"type": "result", "content": content, "msg_id": msgID}
+		if background {
+			out["background"] = true
+		}
+		data, _ := json.Marshal(out)
+		o.handleAgentOutput(&nats.Msg{Subject: "agent.iris.output", Data: data})
+	}
+
+	// A gated task whose first turn is silent but starts a background job:
+	// the follow-up replies must still reach the task's chat and log the task.
+	meta := map[string]string{"sender": "scheduler", "chat_id": "42", "check_command": "echo due"}
+	msg, _ := incomingMessage("iris", "", meta)
+	o.trackPending("iris", "task", QueuedMessage{AgentID: "iris", Meta: meta, DeferredLog: msg})
+	// A later message from another chat moves the per-agent fallback away.
+	o.trackPending("iris", "other", QueuedMessage{AgentID: "iris", Meta: map[string]string{"chat_id": "7"}})
+
+	result("task", "", true)
+	result("task", "build finished", true)
+	result("task", "all done", false)
+
+	want := []string{"42:build finished", "42:all done"}
+	if len(delivered) != len(want) || delivered[0] != want[0] || delivered[1] != want[1] {
+		t.Fatalf("delivered %v, want %v", delivered, want)
+	}
+	msgs, err := s.GetMessages("iris", 10)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	// The task entry is logged once, before its first reply.
+	if len(msgs) != 3 || msgs[0].Content != "[check] echo due" || msgs[1].Content != "build finished" || msgs[2].Content != "all done" {
+		t.Fatalf("logged %+v", msgs)
+	}
+	if meta, _ := o.popPending("task"); meta != nil {
+		t.Fatal("last result left the task tracked")
+	}
+}

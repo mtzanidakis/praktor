@@ -49,6 +49,7 @@ agent-runner/src/                # TypeScript: NATS bridge + Claude Code SDK + M
   index.ts                       # Main entrypoint: agent lifecycle, message handling (sequential user messages + parallel scheduled tasks), MCP server registration
   extensions.ts                  # Apply agent extensions on startup (MCP servers, plugins, skills)
   nats-bridge.ts                 # NATS pub/sub wrapper for agent ↔ host communication
+  session-run.ts                 # SessionRun: one streaming-input CLI process; per-turn results, background-work tail, ceiling
   ipc.ts                         # Shared NATS IPC helper (sendIPC + IPCResponse)
   mcp-tasks.ts                   # MCP server: scheduled_task_create/list/delete
   mcp-profile.ts                 # MCP server: user_profile_read/update
@@ -180,6 +181,16 @@ Mission Control uses cookie-based session auth with a login page. When `web.auth
 - **UI:** `App.tsx` checks auth on mount, shows `Login.tsx` if unauthenticated. Sidebar has a "Sign out" button.
 
 Key implementation: `internal/web/server.go` (session store, handlers, middleware), `ui/src/components/Login.tsx`, `ui/src/App.tsx` (auth gate).
+
+## Background Commands
+
+Since Claude Code 2.1.292 a query waits for background work (Bash `run_in_background`, background subagents) instead of killing it 5s after the result, and each completion starts a follow-up turn with its own `result`. `agent-runner/src/session-run.ts` (`SessionRun`) drives each Claude Code process in streaming-input mode to make that work for chat:
+
+- Every turn's `result` is published as it arrives — the reply is not held back until background jobs finish, and follow-up turns reach Telegram as new messages (attributed to the last answered `msg_id`; correlation uses the SDK's `user_message_uuids`).
+- stdin stays open while background tasks are live (counted from the `background_tasks_changed` level signal, ambient tasks excluded). A new user message is pushed into the same process rather than starting a second CLI on the session, so it is answered while the job runs. Once no turn is pending and nothing is live, stdin closes; a closed-input CLI still finishes work it started and runs the follow-up turn before exiting.
+- Ceiling: a run that outlives its last result by `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS` (default 600000, `0` = none; set per agent via `env`) is killed with its background work, and the user gets a `background_timeout` notice. The timer resets when a turn starts, so it never cuts a follow-up turn short.
+- Results published while work is still live carry `background: true`; the gateway then keeps the message's routing meta (`takePending` in `internal/agent/orchestrator.go`) so follow-ups go to the same chat, and a gated task's deferred history entry is logged once.
+- The container reports `processing=false` + `background_tasks=N` during the tail, which the idle reaper treats as busy. `/stop` kills the run including background work; `/reset` kills a run kept alive only by background work. Scheduled tasks use the same mechanism (one run per task, slot held until the run ends). Swarm agents deliver only their first result.
 
 ## NATS Topics
 
@@ -351,7 +362,7 @@ All agent containers include [agent-browser](https://github.com/vercel-labs/agen
 - Container isolation - Agents sandboxed in Docker containers with NATS communication
 - Agent swarms - Graph-based orchestration: fan-out (parallel), pipeline (sequential with context passing), and collaborative (real-time chat) execution patterns. Visual graph editor in Mission Control, `@swarm` Telegram integration
 - Secure vault - AES-256-GCM encrypted secrets, injected as env vars or files at container start (never exposed to LLM)
-- AgentMail integration - Agents with `agentmail_inbox_id` can send and receive email via the agentmail CLI (v1.x: nested subcommands are space-separated, `agentmail inboxes messages send`, not the 0.7.x `inboxes:messages` colon form). Gateway maintains a WebSocket connection to AgentMail for real-time `message.received` events, which are dispatched to the appropriate agent. Each agent is locked to its own inbox ID. Email-triggered turns (and routing queries) run with the SDK's `verbatimPrompts`, so `@path` mentions and slash commands in inbound text are never expanded.
+- AgentMail integration - Agents with `agentmail_inbox_id` can send and receive email via the agentmail CLI (v1.x: nested subcommands are space-separated, `agentmail inboxes messages send`, not the 0.7.x `inboxes:messages` colon form). Gateway maintains a WebSocket connection to AgentMail for real-time `message.received` events, which are dispatched to the appropriate agent. Each agent is locked to its own inbox ID. Email-triggered turns are sent as `client_composed` user messages (what the SDK's `verbatimPrompts` option sets per message; routing queries use the option itself), so `@path` mentions and slash commands in inbound text are never expanded.
 - Backup & restore - `praktor backup` and `praktor restore` create/restore zstd-compressed tarballs of all `praktor-*` Docker volumes
 - Hot config reload - Config file changes are detected automatically (file polling every 3s) or via SIGHUP; only affected agents are restarted
 - Mission Control UI - Real-time dashboard with WebSocket updates

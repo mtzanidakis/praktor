@@ -356,7 +356,12 @@ func (c *Coordinator) runSwarmAgent(ctx context.Context, swarmID string, agent S
 			Content string `json:"content"`
 		}
 		if err := json.Unmarshal(msg.Data, &output); err == nil && output.Type == "result" {
-			resultCh <- output.Content
+			// The first result is the agent's reply. A run with background
+			// work publishes more (follow-up turns); never block on them.
+			select {
+			case resultCh <- output.Content:
+			default:
+			}
 		}
 	})
 	if err != nil {
