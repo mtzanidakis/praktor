@@ -67,7 +67,7 @@ RUN useradd \
 COPY --from=go-build /ptask /usr/local/bin/ptask
 COPY --from=go-build /getcc /usr/local/bin/getcc
 RUN NPM_GLOBAL=$(npm root -g) && \
-    npm install --loglevel=error -g agentmail-cli@1.8.0 @huggingface/transformers@3 && \
+    npm install --loglevel=error -g agentmail-cli@1.9.0 @huggingface/transformers@3 && \
     rm -rf -- /root/.npm /tmp/node-compile-cache && \
     cd "$NPM_GLOBAL/@huggingface/transformers/node_modules" && \
     rm -rf onnxruntime-node && mkdir -p onnxruntime-node && \
@@ -82,14 +82,14 @@ RUN NPM_GLOBAL=$(npm root -g) && \
       > onnxruntime-node/index.js
 
 # Install agent-browser binary from GitHub release
-ARG AGENT_BROWSER_VERSION=v0.38.2
+ARG AGENT_BROWSER_VERSION=v0.39.0
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "amd64" ]; then \
       AB_ARCH="linux-x64"; \
-      AB_SHA256="a54b765192db774666f0513fa8b545a298753b6f29e73bcdf4a1e78f18e7c0e1"; \
+      AB_SHA256="d258593db4899577748a4b2a671a315f76f07a4553ba7fbbeaa95f0d16a4aaa8"; \
     elif [ "$ARCH" = "arm64" ]; then \
       AB_ARCH="linux-arm64"; \
-      AB_SHA256="690c02d952de8497bba4f8cc58b59acbf27dc27b346755869b518f4b411c7f40"; \
+      AB_SHA256="54eedbcaedcbd8b49f840098ea85dda653af0a036e28609b526ece068de6c0ab"; \
     else \
       echo "Unsupported architecture: $ARCH" && exit 1; \
     fi && \
