@@ -1,6 +1,6 @@
 module github.com/mtzanidakis/praktor
 
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/adhocore/gronx v1.20.5
@@ -11,7 +11,7 @@ require (
 	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.2
 	github.com/mymmrac/telego v1.12.1
-	github.com/nats-io/nats-server/v2 v2.15.1
+	github.com/nats-io/nats-server/v2 v2.15.2
 	github.com/nats-io/nats.go v1.55.0
 	golang.org/x/crypto v0.58.0
 	gopkg.in/yaml.v3 v3.0.1
