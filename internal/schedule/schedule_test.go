@@ -75,6 +75,25 @@ func TestCalculateNextRunOnce(t *testing.T) {
 	}
 }
 
+func TestNextRunAfterRun(t *testing.T) {
+	// A one-off task picked up before its at_ms (next_run_at is stored with
+	// second precision) must not be rescheduled, or it runs twice.
+	soon := time.Now().Add(500 * time.Millisecond).UnixMilli()
+	if next := NextRunAfterRun(fmt.Sprintf(`{"kind":"once","at_ms":%d}`, soon)); next != nil {
+		t.Errorf("expected nil for a once schedule after it ran, got %v", next)
+	}
+
+	if next := NextRunAfterRun(`{"kind":"interval","interval_ms":60000}`); next == nil {
+		t.Error("expected a next run for an interval schedule")
+	}
+	if next := NextRunAfterRun(`{"kind":"cron","cron_expr":"*/5 * * * *"}`); next == nil {
+		t.Error("expected a next run for a cron schedule")
+	}
+	if next := NextRunAfterRun(`invalid json`); next != nil {
+		t.Error("expected nil for invalid JSON")
+	}
+}
+
 func TestCalculateNextRunInvalid(t *testing.T) {
 	next := CalculateNextRun(`invalid json`)
 	if next != nil {
