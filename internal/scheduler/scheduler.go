@@ -119,7 +119,7 @@ func (s *Scheduler) execute(ctx context.Context, task store.ScheduledTask) {
 	}
 
 	// Calculate next run time
-	nextRun := schedule.CalculateNextRun(task.Schedule)
+	nextRun := schedule.NextRunAfterRun(task.Schedule)
 
 	if err := s.store.UpdateTaskRun(task.ID, lastStatus, lastError, nextRun); err != nil {
 		slog.Error("failed to update task run", "id", task.ID, "error", err)
