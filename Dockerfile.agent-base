@@ -1,5 +1,5 @@
 # Build Go CLIs (ptask + getcc) and download Claude Code binary
-FROM golang:1.27.3-trixie AS go-build
+FROM golang:1.27.4-trixie AS go-build
 WORKDIR /src
 COPY . .
 RUN go mod download
@@ -67,7 +67,7 @@ RUN useradd \
 COPY --from=go-build /ptask /usr/local/bin/ptask
 COPY --from=go-build /getcc /usr/local/bin/getcc
 RUN NPM_GLOBAL=$(npm root -g) && \
-    npm install --loglevel=error -g agentmail-cli@1.10.0 @huggingface/transformers@3 && \
+    npm install --loglevel=error -g agentmail-cli@1.10.2 @huggingface/transformers@3 && \
     rm -rf -- /root/.npm /tmp/node-compile-cache && \
     cd "$NPM_GLOBAL/@huggingface/transformers/node_modules" && \
     rm -rf onnxruntime-node && mkdir -p onnxruntime-node && \
@@ -82,14 +82,14 @@ RUN NPM_GLOBAL=$(npm root -g) && \
       > onnxruntime-node/index.js
 
 # Install agent-browser binary from GitHub release
-ARG AGENT_BROWSER_VERSION=v0.41.0
+ARG AGENT_BROWSER_VERSION=v0.45.0
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "amd64" ]; then \
       AB_ARCH="linux-x64"; \
-      AB_SHA256="399c7e9f06bd29aa933fdf25c0bd958eea06927fc0ce6f536ba6347aabd64628"; \
+      AB_SHA256="5eff2baaabb337ec728e4571ccfb228ad1fb6babce529fcaf7a6062fcdec6087"; \
     elif [ "$ARCH" = "arm64" ]; then \
       AB_ARCH="linux-arm64"; \
-      AB_SHA256="e196e9cabe6cb1b01bd5912973628361b9f40a332683a12426abad007f0d3589"; \
+      AB_SHA256="dcdab91ae7ce8ee3bd6a189e3e5ce41b8f713e4b07c25cb18506b984960cd224"; \
     else \
       echo "Unsupported architecture: $ARCH" && exit 1; \
     fi && \
