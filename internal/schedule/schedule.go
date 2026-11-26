@@ -57,6 +57,19 @@ func CalculateNextRun(scheduleJSON string) *time.Time {
 	return &next
 }
 
+// NextRunAfterRun returns the next run time for a task that has just run.
+// A one-off task is finished once it has run, so it never gets a next run.
+// CalculateNextRun can't decide that on its own: next_run_at is stored with
+// second precision, so a task whose at_ms has a sub-second part may be picked
+// up just before at_ms, and CalculateNextRun would schedule it again.
+func NextRunAfterRun(scheduleJSON string) *time.Time {
+	s, err := ParseSchedule(scheduleJSON)
+	if err != nil || s.Kind == "once" {
+		return nil
+	}
+	return CalculateNextRun(scheduleJSON)
+}
+
 // FormatSchedule returns a human-readable description of a schedule JSON string.
 func FormatSchedule(scheduleJSON string) string {
 	s, err := ParseSchedule(scheduleJSON)
