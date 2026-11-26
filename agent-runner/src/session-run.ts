@@ -14,9 +14,11 @@ import type { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 // - keeps stdin open while background work is live, so a new user message is
 //   pushed into the same process (one CLI per session, never two writing the
 //   same transcript) instead of waiting behind the job;
-// - closes stdin as soon as no turn is pending and no background task is live.
-//   A closed-input CLI still waits for work it already started and runs the
-//   follow-up turn before it exits;
+// - closes stdin once no turn is pending or running and no background task is
+//   live. When the last job ends, its completion starts a follow-up turn that
+//   may launch new background work, so stdin stays open through that turn (or
+//   for followUpGraceMs if none starts); closing it earlier would leave a
+//   message sent meanwhile queued behind a process that no longer reads input;
 // - is bounded: if nothing happens on the main thread for ceilingMs after the
 //   last result, the process (and its background work) is killed.
 
@@ -106,6 +108,10 @@ export interface RunnableQuery {
   close(): void;
 }
 
+// FOLLOW_UP_GRACE_MS is how long stdin stays open after the last background
+// task ends, waiting for the follow-up turn its completion starts.
+export const FOLLOW_UP_GRACE_MS = 5_000;
+
 export type StartQuery = (prompt: AsyncIterable<SDKUserMessage>) => RunnableQuery;
 
 export function buildUserMessage(turn: UserTurn, uuid: string): SDKUserMessage {
@@ -125,6 +131,10 @@ export class SessionRun {
   private lastAnswered: string | undefined;
   private streamed = false;
   private ceilingTimer: ReturnType<typeof setTimeout> | undefined;
+  private graceTimer: ReturnType<typeof setTimeout> | undefined;
+  // A turn (pushed message or background follow-up) has started and its
+  // result has not arrived yet.
+  private turnActive = false;
   private query: RunnableQuery | null = null;
   private killedFlag = false;
   background = 0;
@@ -133,6 +143,7 @@ export class SessionRun {
     private readonly start: StartQuery,
     private readonly hooks: SessionRunHooks,
     private readonly ceilingMs: number,
+    private readonly followUpGraceMs: number = FOLLOW_UP_GRACE_MS,
   ) {}
 
   // push queues a user turn. Returns false once stdin is closed: the caller
@@ -143,6 +154,7 @@ export class SessionRun {
     this.awaiting.set(uuid, turn.msgId);
     if (this.lastAnswered === undefined) this.lastAnswered = turn.msgId;
     this.clearCeiling();
+    this.clearGrace();
     return this.input.push(buildUserMessage(turn, uuid));
   }
 
@@ -173,6 +185,7 @@ export class SessionRun {
   kill(): void {
     this.killedFlag = true;
     this.clearCeiling();
+    this.clearGrace();
     this.input.close();
     try { this.query?.close(); } catch { /* ignore */ }
   }
@@ -193,6 +206,7 @@ export class SessionRun {
       if (!this.killedFlag) throw err;
     } finally {
       this.clearCeiling();
+      this.clearGrace();
       this.input.close();
       if (this.background !== 0) {
         this.background = 0;
@@ -212,9 +226,17 @@ export class SessionRun {
 
     const live = liveBackgroundTasks(event);
     if (live !== undefined) {
+      const before = this.background;
       if (live !== this.background) {
         this.background = live;
         this.hooks.onBackgroundChange?.(live);
+      }
+      if (live === 0 && before > 0) {
+        // The last job ended: its completion starts a follow-up turn, which
+        // may start new background work. Keep stdin open through that turn
+        // (its result closes it) or, if none is running yet, for a grace period.
+        if (!this.turnActive) this.armGrace();
+        return;
       }
       this.maybeCloseInput();
       return;
@@ -223,6 +245,8 @@ export class SessionRun {
     const e = event as Record<string, unknown>;
     if (event.type === "system" && e.subtype === "init") {
       // A turn is starting (a pushed message or a background follow-up).
+      this.turnActive = true;
+      this.clearGrace();
       this.clearCeiling();
       return;
     }
@@ -231,6 +255,8 @@ export class SessionRun {
       // Subagent messages carry their parent tool_use id; only main-thread
       // text is the agent talking to the user.
       if (event.parent_tool_use_id) return;
+      this.turnActive = true;
+      this.clearGrace();
       this.clearCeiling();
       for (const block of event.message.content) {
         if (block.type === "text") {
@@ -242,6 +268,7 @@ export class SessionRun {
     }
 
     if (event.type === "result") {
+      this.turnActive = false;
       const uuids = (e.user_message_uuids as string[] | undefined)
         ?? (e.user_message_uuid ? [e.user_message_uuid as string] : []);
       let msgId: string | undefined;
@@ -286,8 +313,23 @@ export class SessionRun {
   }
 
   private maybeCloseInput(): void {
-    if (this.input.closed || this.awaiting.size > 0 || this.background > 0) return;
+    if (this.input.closed || this.awaiting.size > 0 || this.background > 0 || this.turnActive) return;
+    this.clearGrace();
     this.input.close();
+  }
+
+  private armGrace(): void {
+    this.clearGrace();
+    this.graceTimer = setTimeout(() => {
+      this.graceTimer = undefined;
+      this.maybeCloseInput();
+    }, this.followUpGraceMs);
+    this.graceTimer.unref?.();
+  }
+
+  private clearGrace(): void {
+    if (this.graceTimer) clearTimeout(this.graceTimer);
+    this.graceTimer = undefined;
   }
 
   private armCeiling(): void {

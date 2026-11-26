@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import type { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
+  FOLLOW_UP_GRACE_MS,
   InputQueue,
   SessionRun,
   backgroundCeilingMs,
@@ -148,14 +149,15 @@ describe("SessionRun", () => {
     expect(fake().inputEnded).toBe(false);
     expect(run.acceptsInput).toBe(true);
 
-    // Job finishes: stdin closes (the CLI still runs the follow-up turn).
+    // Job finishes: stdin stays open for the follow-up turn, then closes.
     fake().emit(bgChanged([]));
     await tick();
-    expect(fake().inputEnded).toBe(true);
+    expect(fake().inputEnded).toBe(false);
     fake().emit({ type: "system", subtype: "init" });
     fake().emit(result("FINISHED", []));
     await tick();
     expect(turns[1]).toMatchObject({ msgId: "m1", result: "FINISHED", followUp: true, background: false });
+    expect(fake().inputEnded).toBe(true);
     expect(bgCounts).toEqual([1, 0]);
     fake().end();
     await done;
@@ -203,6 +205,65 @@ describe("SessionRun", () => {
     await tick();
     expect(fake().inputEnded).toBe(false);
     fake().emit(result("ok", [uuidOf(fake().received[1])]));
+    await tick();
+    expect(fake().inputEnded).toBe(true);
+    fake().end();
+    await done;
+  });
+
+  it("accepts a message during a follow-up turn that starts new background work", async () => {
+    const { run, turns, fake } = setup();
+    run.push({ text: "start a job", msgId: "m1" });
+    const done = run.run();
+    await tick();
+    fake().emit(bgChanged([{ task_id: "b1" }]));
+    fake().emit(result("STARTED", [uuidOf(fake().received[0])]));
+    await tick();
+
+    // b1 ends; its follow-up turn starts b2.
+    fake().emit(bgChanged([]));
+    fake().emit({ type: "system", subtype: "init" });
+    fake().emit(bgChanged([{ task_id: "b2" }]));
+    await tick();
+    expect(fake().inputEnded).toBe(false);
+    expect(run.acceptsInput).toBe(true);
+    fake().emit(result("B1 DONE, B2 STARTED", []));
+    await tick();
+    expect(turns[1]).toMatchObject({ msgId: "m1", followUp: true, background: true });
+
+    // A message sent now is answered by the live process, not queued.
+    expect(run.push({ text: "ping", msgId: "m2" })).toBe(true);
+    await tick();
+    expect(fake().received).toHaveLength(2);
+    fake().emit(result("PONG", [uuidOf(fake().received[1])]));
+    await tick();
+    expect(turns[2]).toMatchObject({ msgId: "m2", result: "PONG", followUp: false });
+    expect(fake().inputEnded).toBe(false);
+
+    fake().emit(bgChanged([]));
+    fake().emit({ type: "system", subtype: "init" });
+    fake().emit(result("B2 DONE", []));
+    await tick();
+    expect(fake().inputEnded).toBe(true);
+    fake().end();
+    await done;
+  });
+
+  it("closes stdin after the grace period when no follow-up turn starts", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { run, fake } = setup();
+    run.push({ text: "start", msgId: "m1" });
+    const done = run.run();
+    await tick();
+    fake().emit(bgChanged([{ task_id: "b1" }]));
+    fake().emit(result("STARTED", [uuidOf(fake().received[0])]));
+    await tick();
+    fake().emit(bgChanged([]));
+    await tick();
+    vi.advanceTimersByTime(FOLLOW_UP_GRACE_MS - 1);
+    await tick();
+    expect(fake().inputEnded).toBe(false);
+    vi.advanceTimersByTime(1);
     await tick();
     expect(fake().inputEnded).toBe(true);
     fake().end();
