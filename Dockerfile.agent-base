@@ -66,7 +66,11 @@ RUN useradd \
 # Copy built artifacts from builder stages
 COPY --from=go-build /ptask /usr/local/bin/ptask
 COPY --from=go-build /getcc /usr/local/bin/getcc
+# onnxruntime-node is replaced below by an onnxruntime-web shim, so its install
+# script must not download the CUDA binaries (the v1.21.0 GPU release asset it
+# fetches is gone from GitHub and returns 404).
 RUN NPM_GLOBAL=$(npm root -g) && \
+    ONNXRUNTIME_NODE_INSTALL_CUDA=skip \
     npm install --loglevel=error -g agentmail-cli@1.10.2 @huggingface/transformers@3 && \
     rm -rf -- /root/.npm /tmp/node-compile-cache && \
     cd "$NPM_GLOBAL/@huggingface/transformers/node_modules" && \
